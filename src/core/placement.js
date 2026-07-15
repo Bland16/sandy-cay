@@ -84,7 +84,9 @@ export function computeWindows(schedule, task, date, { ignoreZone = false } = {}
   const b = dayWindowBounds(schedule.config, date);
   const base = [{ start: b.start, end: b.end }];
   let windows;
-  const matching = ignoreZone ? [] : schedule.zones.filter((z) => z.matches(task));
+  // A zone only constrains the days it's in force on: a summer job's hours must
+  // stop shaping September (§1.2 effectiveFrom/effectiveUntil).
+  const matching = ignoreZone ? [] : schedule.zones.filter((z) => z.activeOn(date) && z.matches(task));
   if (matching.length > 0) {
     const zoneIvs = matching.flatMap((z) => zoneIntervalsOnDay(z, date));
     // intersect with base
@@ -98,7 +100,9 @@ export function computeWindows(schedule, task, date, { ignoreZone = false } = {}
   } else {
     const exclusiveHoles = ignoreZone
       ? []
-      : schedule.zones.filter((z) => z.exclusive).flatMap((z) => zoneIntervalsOnDay(z, date));
+      : schedule.zones
+        .filter((z) => z.exclusive && z.activeOn(date))
+        .flatMap((z) => zoneIntervalsOnDay(z, date));
     windows = subtractIntervals(base, exclusiveHoles);
   }
   if (task.deadline) {
@@ -222,7 +226,10 @@ export function findBestSlot(schedule, task, opts = {}) {
  */
 export function placeTask(schedule, task, opts = {}) {
   const config = schedule.config;
-  const matchesZone = schedule.zones.some((z) => z.matches(task));
+  // Only a zone that's actually in force can relax or flag "placed outside" —
+  // an expired zone must not leave a badge about a rule that no longer exists.
+  const zoneDay = opts.from || task.startTime;
+  const matchesZone = schedule.zones.some((z) => z.activeOn(zoneDay) && z.matches(task));
   // Deadline caps the search end.
   const searchOpts = { ...opts };
   if (task.deadline) {

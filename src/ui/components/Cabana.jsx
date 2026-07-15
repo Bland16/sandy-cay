@@ -3,7 +3,7 @@
 // Tag roles (protected tags), Footlocker (export/import), Insights
 // (getTagBreakdown + learned weights read), Retrain.
 import { useRef, useState } from 'react';
-import { exportState, summarizeImport } from '../../core/index.js';
+import { exportState, summarizeImport, dateKey, dateFromKey } from '../../core/index.js';
 import { DAY_NAMES, DAY_KEYS, fmtDur } from '../format.js';
 import Icon from '../Icon.jsx';
 import CalendarCard from './CalendarCard.jsx';
@@ -196,6 +196,28 @@ export default function Cabana({ sched, mutate, weekStart, onBack, onReplace, sh
                   <input type="checkbox" checked={z.exclusive} onChange={(e) => mutate((s) => s.updateZone(z.id, { exclusive: e.target.checked }))} />
                   exclusive · reserve this time
                 </label>
+
+                {/* A zone can be temporary — a summer job, a term. Blank = always. */}
+                <div className="zonewin">
+                  <span>runs:</span>
+                  <input
+                    type="date"
+                    value={z.effectiveFrom ? dateKey(z.effectiveFrom) : ''}
+                    onChange={(e) => mutate((s) => s.updateZone(z.id, { effectiveFrom: e.target.value ? dateFromKey(e.target.value) : null }))}
+                    aria-label="Zone start date"
+                  />
+                  →
+                  <input
+                    type="date"
+                    value={z.effectiveUntil ? dateKey(z.effectiveUntil) : ''}
+                    onChange={(e) => mutate((s) => s.updateZone(z.id, { effectiveUntil: e.target.value ? dateFromKey(e.target.value) : null }))}
+                    aria-label="Zone end date"
+                  />
+                </div>
+                <p className="insight" style={{ opacity: 0.7 }}>
+                  Leave blank for always. The end date is the last day it stops <i>after</i> —
+                  a summer job ending Fri the 24th runs until the 25th.
+                </p>
                 <button className="btn2 ghost" style={{ marginTop: 8, padding: '5px 9px' }} onClick={() => { removeZone(z.id); setEditingId(null); }}>remove zone</button>
               </>
             );
