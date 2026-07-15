@@ -188,8 +188,14 @@ export function findBestSlot(schedule, task, opts = {}) {
 
     for (const win of windows) {
       // Clamp the window start to the search lower bound (forward-only / now).
+      //
+      // The clamp is unconditional on purpose. It used to also require
+      // `from < win.end`, which quietly did nothing for a window lying entirely
+      // BEHIND `from` — so searching from 19:00 walked Wednesday's 08:00–18:00
+      // window from 08:00 and placed the task eleven hours into the past. Clamp
+      // first, then let the next line drop any window `from` has already passed.
       let wStart = win.start;
-      if (from.getTime() > wStart.getTime() && from.getTime() < win.end.getTime()) wStart = new Date(from.getTime());
+      if (from.getTime() > wStart.getTime()) wStart = new Date(from.getTime());
       if (wStart.getTime() >= win.end.getTime()) continue;
       const cands = walkGaps({ windowStart: wStart, windowEnd: win.end, occupied: dayOccupied, durationMin, breakMin });
       for (const slot of cands) {
