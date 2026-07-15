@@ -2,7 +2,7 @@
 // Never invents tasks. Cold start (<10 ratings): urgency/fit/priority only.
 // Reasons are generated from the actual scoring terms.
 
-import { sameDay, minutesBetween, clamp } from './time.js';
+import { sameDay, minutesBetween, clamp, weekStart as weekStartOf } from './time.js';
 import { dayWindowBounds } from './placement.js';
 
 /**
@@ -78,12 +78,20 @@ export function whatToDo(schedule, now = new Date(), options = {}) {
   const eligible = (t) => {
     if (t.completion !== null) return false;
     if (t.chunking) return false; // parent is a bookkeeping record, not a thing to do
-    if (t.recurrence) return false; // pattern, not an occurrence
+    if (t.recurrence) return false; // the pattern itself is not a thing to do
     const movable = t.type === 'flexible' && !t.pinned;
     return movable || happeningNow(t);
   };
 
-  let candidates = schedule.tasks.filter(eligible);
+  // Recurring work lives in virtual occurrences, which are never in
+  // schedule.tasks — so filtering the pattern out (correct) also made the
+  // session you are literally sitting in invisible to "what should I do now?".
+  // Occurrences are anchors, so they only qualify while they're happening.
+  const occurrencesNow = schedule
+    .getTasksForWeek(weekStartOf(now))
+    .filter((t) => t.isOccurrence && t.completion === null && happeningNow(t));
+
+  let candidates = schedule.tasks.filter(eligible).concat(occurrencesNow);
   if (filterTags && filterTags.length) {
     candidates = candidates.filter((t) => (t.tags || []).some((x) => filterTags.includes(x)));
   }

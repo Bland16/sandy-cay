@@ -49,7 +49,12 @@ function compareCandidates(a, b) {
   const adur = a.t.getDuration();
   const bdur = b.t.getDuration();
   if (adur !== bdur) return bdur - adur; // duration DESC
-  return a.t.title.localeCompare(b.t.title); // title ASC
+  const byTitle = a.t.title.localeCompare(b.t.title); // title ASC
+  if (byTitle !== 0) return byTitle;
+  // §2.4's chain ends at title, which is NOT a total order: project chunks all
+  // carry the parent's title, so ties are routine. Stable sort would preserve
+  // input order, but leaning on that is a subtlety; id makes it explicit.
+  return String(a.t.id).localeCompare(String(b.t.id));
 }
 
 /**
@@ -59,7 +64,12 @@ export function autoSchedule(schedule, opts = {}) {
   const config = schedule.config;
   const now = opts.now || new Date();
   const ws = opts.weekStart ? new Date(opts.weekStart) : weekStartOf(now);
-  const from = opts.from ? new Date(opts.from) : ws;
+  // Never place into the past. Re-optimizing on Thursday used to start the
+  // search at Monday, so work was "scheduled" into hours that have already
+  // happened. An explicit opts.from still wins (callers like backfill mean it).
+  const weekEnd = addDays(ws, 7);
+  const floor = now.getTime() > ws.getTime() && now.getTime() < weekEnd.getTime() ? now : ws;
+  const from = opts.from ? new Date(opts.from) : floor;
   const to = opts.to ? new Date(opts.to) : addDays(ws, 6);
   const protectedTags = config.protectedTags;
 

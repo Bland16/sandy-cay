@@ -108,3 +108,26 @@ describe('autoSchedule preserves placedBy (F6 regression)', () => {
     expect(t.placedBy).toBe('user'); // still remembered on the second run
   });
 });
+
+describe('autoSchedule never places into the past', () => {
+  beforeEach(() => resetIds());
+
+  it('re-optimizing on Thursday does not schedule work back on Monday', () => {
+    // `from` defaulted to the week start, so a mid-week Re-optimize happily
+    // "scheduled" work into hours that had already happened.
+    const s = new Schedule({ config: defaultConfig });
+    const t = s.addFlexible({ title: 'Later work', startTime: D(3, 15), endTime: D(3, 16) });
+    const thursdayNoon = D(3, 12);
+
+    s.autoSchedule({ weekStart: MON, now: thursdayNoon });
+
+    expect(t.startTime.getTime()).toBeGreaterThanOrEqual(thursdayNoon.getTime());
+  });
+
+  it('a fresh week still starts at the week start', () => {
+    const s = new Schedule({ config: defaultConfig });
+    const t = s.addFlexible({ title: 'Anywhere', from: MON });
+    s.autoSchedule({ weekStart: MON, now: new Date(2026, 6, 6, 9) }); // now is BEFORE the week
+    expect(t.startTime.getTime()).toBeGreaterThanOrEqual(MON.getTime());
+  });
+});

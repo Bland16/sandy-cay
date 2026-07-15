@@ -83,3 +83,37 @@ describe('§6 whatToDo (cold start)', () => {
     expect(titles).toEqual(['Essay']);
   });
 });
+
+describe('§6 whatToDo sees the session you are in', () => {
+  beforeEach(() => { resetIds(); });
+
+  it('a recurring session happening right now IS an answer to "what now?"', () => {
+    // Recurring work lives in virtual occurrences, which are never in
+    // schedule.tasks — so filtering the pattern out also hid the seminar you
+    // are literally sitting in.
+    const s = new Schedule({ config: defaultConfig });
+    const sem = s.addFixed({ title: 'Seminar', startTime: D(0, 13), endTime: D(0, 15) });
+    sem.recurrence = {
+      periods: [{ windows: [{ day: 'mon', start: '13:00', end: '15:00' }], interval: 1, effectiveFrom: null, effectiveUntil: null }],
+      anchorDate: MON,
+      exceptions: [],
+    };
+    const picks = s.whatToDo(D(0, 13, 30)); // you are in it
+    expect(picks[0].task.title).toBe('Seminar');
+    expect(picks[0].reasons).toContain('happening now');
+  });
+
+  it('but a recurring session on another day is still not an answer', () => {
+    const s = new Schedule({ config: defaultConfig });
+    const sem = s.addFixed({ title: 'Seminar', startTime: D(0, 13), endTime: D(0, 15) });
+    sem.recurrence = {
+      periods: [{ windows: [{ day: 'mon', start: '13:00', end: '15:00' }], interval: 1, effectiveFrom: null, effectiveUntil: null }],
+      anchorDate: MON,
+      exceptions: [],
+    };
+    s.addFlexible({ title: 'Movable', priority: 3, startTime: D(0, 16), endTime: D(0, 17) });
+    const titles = s.whatToDo(D(0, 10)).map((p) => p.task.title); // 10:00, seminar is at 13:00
+    expect(titles).not.toContain('Seminar');
+    expect(titles).toContain('Movable');
+  });
+});
