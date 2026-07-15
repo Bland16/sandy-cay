@@ -57,3 +57,38 @@ describe('§5 learning module', () => {
     expect(s._weights().preference).toBeGreaterThan(0);
   });
 });
+
+describe('R-5 a diverged model is discarded, never shipped', () => {
+  beforeEach(() => resetIds());
+
+  it('non-finite weights stay cold-start instead of poisoning every score', () => {
+    const samples = [];
+    for (let i = 0; i < 6; i += 1) samples.push(ratedTask(`m${i}`, 9, 5));
+    for (let i = 0; i < 6; i += 1) samples.push(ratedTask(`e${i}`, 19, 1));
+
+    const lm = new LearningModule(defaultConfig);
+    // A runaway learning rate diverges gradient descent to Infinity/NaN.
+    lm.train(samples, { learningRate: 1e9, epochs: 200 });
+
+    expect(lm.diverged).toBe(true);
+    expect(lm.trained).toBe(false); // refuses to claim it learned anything
+    expect(lm.weights.every((w) => Number.isFinite(w))).toBe(true);
+
+    // The whole point: scoring degrades to "no preference", never to NaN — a NaN
+    // makes every "highest wins" comparison false and placement picks slot one.
+    const score = lm.modelScore(samples[0], { start: day(0, 9), end: day(0, 10) });
+    expect(Number.isFinite(score)).toBe(true);
+    expect(score).toBe(0);
+  });
+
+  it('a healthy model still trains after a diverged run', () => {
+    const samples = [];
+    for (let i = 0; i < 6; i += 1) samples.push(ratedTask(`m${i}`, 9, 5));
+    for (let i = 0; i < 6; i += 1) samples.push(ratedTask(`e${i}`, 19, 1));
+    const lm = new LearningModule(defaultConfig);
+    lm.train(samples, { learningRate: 1e9, epochs: 50 });
+    lm.train(samples); // sane defaults
+    expect(lm.trained).toBe(true);
+    expect(lm.diverged).toBe(false);
+  });
+});

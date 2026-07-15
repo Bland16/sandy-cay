@@ -47,6 +47,50 @@ describe('§9 StorageAdapter fallback chain', () => {
   });
 });
 
+describe('§9 storage never lies about durability', () => {
+  /** localStorage that accepts the startup probe, then fills up. */
+  function quotaAfterProbe() {
+    const m = new Map();
+    let probed = false;
+    return {
+      getItem: (k) => (m.has(k) ? m.get(k) : null),
+      removeItem: (k) => m.delete(k),
+      setItem: (k, v) => {
+        if (!probed) { probed = true; m.set(k, v); return; } // the probe passes
+        const err = new Error('QuotaExceededError');
+        err.name = 'QuotaExceededError';
+        throw err;
+      },
+    };
+  }
+
+  it('a write that fails after the probe demotes to session, and says so', () => {
+    const a = new StorageAdapter({ localStorage: quotaAfterProbe() });
+    expect(a.status).toBe('persistent'); // the probe passed
+    expect(a.layer).toBe('localStorage');
+
+    const ok = a.save('k', { hello: 'world' });
+
+    expect(ok).toBe(false); // reports rather than throwing into a timer
+    expect(a.status).toBe('session'); // the dot must go amber
+    expect(a.layer).toBe('memory');
+    // …and the app keeps working: the state is still readable in memory.
+    expect(a.load('k')).toEqual({ hello: 'world' });
+  });
+
+  it('corrupt stored state loads as null instead of throwing', () => {
+    const backing = new Map([['k', '{not json']]);
+    const a = new StorageAdapter({
+      localStorage: {
+        getItem: (k) => (backing.has(k) ? backing.get(k) : null),
+        setItem: (k, v) => backing.set(k, v),
+        removeItem: (k) => backing.delete(k),
+      },
+    });
+    expect(a.load('k')).toBeNull();
+  });
+});
+
 describe('§9 export / import', () => {
   it('exports a versioned footlocker blob', () => {
     const s = seed(new Date(2026, 6, 13));

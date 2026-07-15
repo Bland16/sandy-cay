@@ -195,6 +195,9 @@ export default function App() {
             <span className={`dot ${persistence}`} />
             {persistence === 'persistent' ? 'Saved to this device' : 'Session only'}
             {saveState === 'dirty' ? ' · saving…' : ''}
+            {/* A write failed after startup (quota, private mode). Say so, and
+                point at the durable copy rather than quietly losing the week. */}
+            {saveState === 'unsaved' ? ' · couldn’t save — export from the Cabana to keep it' : ''}
           </span>
           <span className="grow" />
           <span>{weekTasks.length} items this week</span>

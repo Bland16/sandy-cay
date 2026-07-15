@@ -31,12 +31,11 @@ export function useEngine() {
   }
 
   const flush = useCallback(() => {
-    try {
-      storageRef.current.save(STORAGE_KEY, schedRef.current.toJSON());
-      setSaveState('saved');
-    } catch {
-      setSaveState('idle');
-    }
+    // save() reports rather than throws; a failure demotes the adapter to memory,
+    // so re-reading its status on this render turns the dot amber instead of
+    // leaving it green over a schedule that isn't being written anywhere.
+    const ok = storageRef.current.save(STORAGE_KEY, schedRef.current.toJSON());
+    setSaveState(ok ? 'saved' : 'unsaved');
   }, []);
 
   const mutate = useCallback((fn) => {

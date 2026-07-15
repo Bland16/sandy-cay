@@ -119,9 +119,22 @@ export class LearningModule {
       b -= (lr * gb) / totalW;
     }
 
+    // A diverged model is worse than no model. One non-finite weight makes every
+    // modelScore NaN, every "highest wins" comparison false, and placement
+    // silently degrades to "first slot" app-wide — with no error anywhere.
+    // Refuse to ship it and stay cold-start instead.
+    if (!w.every((v) => Number.isFinite(v)) || !Number.isFinite(b)) {
+      this.weights = new Array(dim).fill(0);
+      this.bias = 0;
+      this.trained = false;
+      this.diverged = true;
+      return this;
+    }
+
     this.weights = w;
     this.bias = b;
     this.trained = true;
+    this.diverged = false;
     return this;
   }
 
@@ -131,6 +144,8 @@ export class LearningModule {
     const x = this.featureVector(task, slot);
     let pred = this.bias;
     for (let j = 0; j < x.length; j += 1) pred += (this.weights[j] || 0) * x[j];
+    // Belt and braces: never let a NaN escape into the scoring function.
+    if (!Number.isFinite(pred)) return 0;
     return clamp(pred, 0, 1);
   }
 

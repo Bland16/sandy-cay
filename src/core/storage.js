@@ -63,14 +63,44 @@ export class StorageAdapter {
     this.status = picked.status; // 'persistent' (green) | 'session' (amber)
   }
 
+  /**
+   * @returns {boolean} true if it actually persisted.
+   *
+   * The startup probe passing does not mean every later write succeeds: the
+   * quota fills, private mode bites, permission gets revoked. A throw here used
+   * to escape into a debounced timer while `status` still said 'persistent' —
+   * the app claimed durability it no longer had. Demote instead of lying: keep
+   * working in memory and let the status dot go amber (§9).
+   */
   save(key, obj) {
-    this.backend.setItem(key, JSON.stringify(obj));
-    return true;
+    try {
+      this.backend.setItem(key, JSON.stringify(obj));
+      return true;
+    } catch (err) {
+      this.lastError = err;
+      if (this.layer !== 'memory') {
+        this.backend = makeMemoryBackend();
+        this.layer = 'memory';
+        this.status = 'session';
+        try {
+          this.backend.setItem(key, JSON.stringify(obj));
+        } catch {
+          /* memory cannot fail */
+        }
+      }
+      return false;
+    }
   }
 
+  /** Corrupt or unreadable state → null (start fresh) rather than throwing. */
   load(key) {
-    const raw = this.backend.getItem(key);
-    return raw ? JSON.parse(raw) : null;
+    try {
+      const raw = this.backend.getItem(key);
+      return raw ? JSON.parse(raw) : null;
+    } catch (err) {
+      this.lastError = err;
+      return null;
+    }
   }
 
   remove(key) {
