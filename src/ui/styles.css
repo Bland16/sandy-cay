@@ -7,8 +7,11 @@
      0   zone bands (behind cards)
      1   early-finish remainder crosshatch (§3.9 — behind its own card)
      2   task cards
-     5   top bar / day-view header (sticky chrome above the grid)
-     6   cabana page chrome
+     5   sticky day headers + cabana page chrome (above the grid, below the bar)
+     8   top bar / day-view header. HIGHER than the sticky headers on purpose:
+         a positioned z-index makes a stacking context, so a dropdown inside the
+         bar can never out-rank something outside it. Tie these and the sticky
+         headers paint over the open week menu.
      3   card resize strips (wave / sand — inside their own card only)
      4   card check control (sits above the sand strip's hit area)
      30  right panel (flex sibling; raised so its shadow sits over the grid)
@@ -41,6 +44,7 @@
   --font-body: 'Nunito', system-ui, -apple-system, sans-serif;
 
   --z-zone: 0; --z-remainder: 1; --z-card: 2; --z-strip: 3; --z-cardctl: 4; --z-chrome: 5;
+  --z-topbar: 8;
   --z-panel: 30; --z-menu: 40; --z-ctx: 45; --z-clearday: 48; --z-chooser: 50;
   --z-ghost: 55; --z-toast: 60;
 }
@@ -75,7 +79,12 @@ body {
 
 /* ---------- top bar ---------- */
 .topbar {
-  position: relative; z-index: var(--z-chrome); display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  /* Above --z-chrome, not equal to it. z-index on a positioned element creates a
+     STACKING CONTEXT, so the week menu's --z-menu (40) only ranks against its
+     topbar siblings — the whole subtree paints at the topbar's level. Sharing
+     --z-chrome with the sticky day headers therefore made DOM order decide, and
+     the headers (later) painted straight over the open menu. */
+  position: relative; z-index: var(--z-topbar); display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
   padding: 11px 15px; border-bottom: 2px solid var(--ink);
   background: linear-gradient(180deg, #ece2ce, #f1e9d8);
 }
@@ -449,7 +458,9 @@ body.sc-dragging { user-select: none; }
 }
 
 /* day view */
-.dvhead { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 2px solid var(--ink); background: linear-gradient(180deg, #ece2ce, #f1e9d8); position: relative; z-index: var(--z-chrome); }
+/* Same reasoning as .topbar: it can host an overlay, so it must outrank the
+   grid's own sticky chrome rather than tie with it. */
+.dvhead { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 2px solid var(--ink); background: linear-gradient(180deg, #ece2ce, #f1e9d8); position: relative; z-index: var(--z-topbar); }
 .dvhead .dvt { font-family: var(--font-display); font-size: 21px; }
 .dvhead .dvt small { font-family: var(--font-type); font-size: 11px; color: var(--ink-soft); display: block; letter-spacing: .05em; }
 .dvgrid { display: grid; grid-template-columns: 52px 1fr; max-width: 660px; }
