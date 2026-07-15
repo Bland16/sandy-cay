@@ -12,8 +12,7 @@
 // autoSchedule is never called (SPEC §2.4).
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { addDays, addMinutes, minutesBetween, addException, formatHHMM, sameDay } from '../core/index.js';
-import { gridDayOf } from './format.js';
+import { addDays, addMinutes, minutesBetween, addException, formatHHMM, dateKey } from '../core/index.js';
 import {
   MIN_DURATION_MIN,
   atMinutes,
@@ -137,15 +136,23 @@ export function useCardInteraction({ sched, mutate, showToast, weekStart }) {
    */
   const applyOccurrenceSpan = useCallback(
     (task, newStart, newEnd) => {
+      const toDate = dateKey(newStart);
+      const relocated = toDate !== task.occurrenceDate;
       mutate((s) => {
         const parent = s.tasks.find((t) => t.id === task.parentId);
         if (!parent) return;
         addException(parent, task.occurrenceDate, 'move', {
           start: formatHHMM(newStart),
           end: formatHHMM(newEnd),
+          // Keyed to the original date, so lived data follows the session (§4.4).
+          ...(relocated ? { toDate } : {}),
         });
       });
-      showToast('Just this session — the pattern is unchanged');
+      showToast(
+        relocated
+          ? 'Moved this session — the pattern is unchanged'
+          : 'Just this session — the pattern is unchanged',
+      );
     },
     [mutate, showToast],
   );
@@ -268,16 +275,8 @@ export function useCardInteraction({ sched, mutate, showToast, weekStart }) {
           return;
         }
         if (task.isOccurrence) {
-          // A `move` exception is keyed to its own date and carries only times,
-          // so "today's gym is at 10:00" is expressible and "today's gym happens
-          // Wednesday" is not. Refuse the cross-day move rather than silently
-          // rewriting the routine.
-          if (!sameDay(gridDayOf(task.startTime), gridDayOf(newStart))) {
-            showToast('Repeating sessions move within their own day — edit the pattern to change days');
-            rejectGhost(s.origin);
-            endSession();
-            return;
-          }
+          // Any date, including another day or week: the exception carries a
+          // toDate and keeps the session's identity. The pattern is untouched.
           applyOccurrenceSpan(task, newStart, newEnd);
           settleGhost(rectFor(col, startMin, dur));
           endSession();

@@ -23,6 +23,63 @@ function gymTask() {
   });
 }
 
+describe('§4.2 exceptions can relocate and add sessions', () => {
+  beforeEach(() => resetIds());
+
+  it('skips today and holds the session tomorrow instead (move + toDate)', () => {
+    const t = gymTask();
+    const tue = addDays(W0, 1);
+    addException(t, dateKey(W0), 'move', { toDate: dateKey(tue), start: '18:00', end: '19:00' });
+
+    const occs = expandRecurrence(t, W0);
+    expect(occs.length).toBe(1); // one gym this week, not two
+    expect(occs[0].startTime.getDate()).toBe(tue.getDate()); // it happened Tuesday
+    expect(occs[0].startTime.getHours()).toBe(18);
+    // Identity stays keyed to the ORIGINAL date, so its lived data follows it (§4.4).
+    expect(occs[0].id).toBe(`${t.id}@${dateKey(W0)}`);
+    // Monday is now empty.
+    expect(occs.some((o) => o.startTime.getDate() === W0.getDate())).toBe(false);
+  });
+
+  it('a session can be relocated across a week boundary', () => {
+    const t = gymTask();
+    const nextTue = addDays(W1, 1);
+    addException(t, dateKey(W0), 'move', { toDate: dateKey(nextTue), start: '07:00', end: '08:00' });
+
+    expect(expandRecurrence(t, W0).length).toBe(0); // gone from this week
+    const next = expandRecurrence(t, W1);
+    // Next week has its own Monday gym plus the one that moved in.
+    expect(next.length).toBe(2);
+    const moved = next.find((o) => o.id === `${t.id}@${dateKey(W0)}`);
+    expect(moved).toBeTruthy();
+    expect(moved.startTime.getDate()).toBe(nextTue.getDate());
+    expect(moved.startTime.getHours()).toBe(7);
+  });
+
+  it('adds an extra session for one week only, leaving the pattern alone', () => {
+    const t = gymTask();
+    const wed = addDays(W0, 2);
+    addException(t, dateKey(wed), 'add', { start: '12:00', end: '13:00' });
+
+    const occs = expandRecurrence(t, W0);
+    expect(occs.length).toBe(2); // the usual Monday + a bonus Wednesday
+    const extra = occs.find((o) => o.startTime.getDate() === wed.getDate());
+    expect(extra.startTime.getHours()).toBe(12);
+    expect(extra.parentId).toBe(t.id); // same task identity, so ratings still count
+
+    // The pattern is untouched: next week is back to a single Monday session.
+    expect(t.recurrence.periods[0].windows).toEqual([{ day: 'mon', start: '18:00', end: '19:00' }]);
+    expect(expandRecurrence(t, W1).length).toBe(1);
+  });
+
+  it('a relocated session still reports one occurrence, never a duplicate', () => {
+    const t = gymTask();
+    addException(t, dateKey(W0), 'move', { toDate: dateKey(addDays(W0, 3)), start: '18:00', end: '19:00' });
+    const occs = expandRecurrence(t, W0);
+    expect(occs.filter((o) => o.id === `${t.id}@${dateKey(W0)}`).length).toBe(1);
+  });
+});
+
 describe('§4 recurrence', () => {
   beforeEach(() => resetIds());
 

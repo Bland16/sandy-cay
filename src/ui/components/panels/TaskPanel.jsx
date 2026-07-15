@@ -33,6 +33,8 @@ export default function TaskPanel({ task, sched, mutate, weekStart, onClose, sho
   const [recModel, setRecModel] = useState(() => modelFromTask(editable || task));
   const [slots, setSlots] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [extraDay, setExtraDay] = useState(0);
+  const [extraStart, setExtraStart] = useState('18:00');
 
   if (!editable) {
     return (<><PanelHeader title={task.title} sub="occurrence" onClose={onClose} /><p className="empty">This occurrence's task is gone.</p></>);
@@ -78,6 +80,21 @@ export default function TaskPanel({ task, sched, mutate, weekStart, onClose, sho
       }
     });
     showToast('Pattern updated');
+  };
+
+  /** An extra session this week only — an `add` exception, not a pattern change
+   *  (§4.2). It keeps the task's identity, so the rating still counts toward the
+   *  same history. */
+  const addOneOff = () => {
+    const day = addDays(weekStart, extraDay);
+    const start = atTime(day, extraStart);
+    const end = addMinutes(start, durMin || 60);
+    mutate((s) => {
+      const parent = s.tasks.find((t) => t.id === editable.id);
+      if (!parent) return;
+      addException(parent, dateKey(day), 'add', { start: extraStart, end: formatHHMM(end) });
+    });
+    showToast(`Extra session added ${DAY_NAMES[extraDay]} — the pattern is unchanged`);
   };
 
   const skipOccurrence = () => {
@@ -180,6 +197,20 @@ export default function TaskPanel({ task, sched, mutate, weekStart, onClose, sho
           <Icon name="loop" /> {editable.recurrence ? 'Update pattern' : 'Make repeating'}
         </button>
         {isOcc && <button type="button" className="linkish soft" onClick={skipOccurrence}>Skip this occurrence</button>}
+
+        {editable.recurrence && (
+          <div className="fieldrow" style={{ marginTop: 10 }}>
+            <div className="flabel">Add a one-off session <span style={{ textTransform: 'none', letterSpacing: 0 }}>(this week only)</span></div>
+            <div className="winrow">
+              <select className="input" style={{ flex: 1 }} value={extraDay} onChange={(e) => setExtraDay(Number(e.target.value))} aria-label="Extra session day">
+                {DAY_NAMES.map((d, i) => <option key={d} value={i}>{d}</option>)}
+              </select>
+              <input className="timein" type="time" value={extraStart} onChange={(e) => setExtraStart(e.target.value)} aria-label="Extra session start" />
+              <button type="button" className="btn" style={{ width: 'auto' }} onClick={addOneOff}>＋ session</button>
+            </div>
+            <p className="psub-note">Adds a single extra session — the pattern stays as it is.</p>
+          </div>
+        )}
       </div>
 
       <div className="divide" />

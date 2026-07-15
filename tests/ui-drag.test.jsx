@@ -212,16 +212,17 @@ describe('B — resize via the themed borders (OD-1)', () => {
     expect(timeOf(after.find((c) => columnOf(c) === 4))).toBe('08:00–09:00'); // routine intact
   });
 
-  it('refuses to drag an occurrence to a different day (the exception is date-keyed)', () => {
+  it('skip today, do it tomorrow: an occurrence relocates to another day', () => {
     render(<App />);
     const mon = allCardsFor('Morning gym').find((c) => columnOf(c) === 0);
-    const before = timeOf(mon);
-    dragBody(mon, xAt(3), yAt(14)); // Monday → Thursday
+    dragBody(mon, xAt(3), yAt(14)); // Monday → Thursday 14:00
 
-    const still = allCardsFor('Morning gym').find((c) => columnOf(c) === 0);
-    expect(columnOf(still)).toBe(0); // stayed put
-    expect(timeOf(still)).toBe(before);
-    expect(allCardsFor('Morning gym').some((c) => columnOf(c) === 3)).toBe(false);
+    const after = allCardsFor('Morning gym');
+    expect(after.some((c) => columnOf(c) === 0)).toBe(false); // Monday freed up
+    const moved = after.find((c) => columnOf(c) === 3);
+    expect(moved).toBeTruthy();
+    expect(timeOf(moved)).toBe('14:00–15:00'); // it happened Thursday
+    expect(timeOf(after.find((c) => columnOf(c) === 4))).toBe('08:00–09:00'); // routine intact
   });
 
   it('body drag is move, never resize', () => {
