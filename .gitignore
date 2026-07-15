@@ -8,6 +8,11 @@ coverage/
 # Design mockups embed base64 fonts (~320KB each) — local-only comps, not code
 design/*.html
 
+# Real calendar data: personal schedules, other people's names, appointments.
+# This repo is public. Generated .ics files stay on the machine that made them.
+design/import/
+*.ics
+
 # Python (segmentation tooling)
 __pycache__/
 *.pyc

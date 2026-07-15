@@ -63,6 +63,17 @@ export default function Cabana({ sched, mutate, weekStart, onBack, onReplace, sh
     if (z) setEditingId(z.id);
   };
   const addZoneWindow = (id) => mutate((s) => { const z = s.zones.find((x) => x.id === id); z.windows = [...z.windows, { day: 'mon', start: '18:00', end: '20:00' }]; });
+  /** Most real zones are "every weekday, these hours" — five identical rows is a
+   *  silly thing to make someone build by hand. */
+  const addWeekdayWindows = (id) => mutate((s) => {
+    const z = s.zones.find((x) => x.id === id);
+    const [start, end] = z.windows.length ? [z.windows[0].start, z.windows[0].end] : ['09:00', '17:00'];
+    const have = new Set(z.windows.map((w) => `${w.day}${w.start}${w.end}`));
+    const add = ['mon', 'tue', 'wed', 'thu', 'fri']
+      .map((day) => ({ day, start, end }))
+      .filter((w) => !have.has(`${w.day}${w.start}${w.end}`));
+    z.windows = [...z.windows, ...add];
+  });
   const patchWindow = (id, i, delta) => mutate((s) => { const z = s.zones.find((x) => x.id === id); z.windows = z.windows.map((w, idx) => (idx === i ? { ...w, ...delta } : w)); });
   const removeWindow = (id, i) => mutate((s) => { const z = s.zones.find((x) => x.id === id); z.windows = z.windows.filter((_, idx) => idx !== i); });
   const removeZone = (id) => mutate((s) => s.removeZone(id));
@@ -177,7 +188,10 @@ export default function Cabana({ sched, mutate, weekStart, onBack, onReplace, sh
                     <button className="rm" onClick={() => removeWindow(z.id, i)} aria-label="Remove window">×</button>
                   </div>
                 ))}
-                <button className="btn2 ghost" style={{ marginTop: 4, padding: '5px 8px' }} onClick={() => addZoneWindow(z.id)}>＋ window</button>
+                <div className="chest" style={{ marginTop: 4 }}>
+                  <button className="btn2 ghost" style={{ padding: '5px 8px' }} onClick={() => addZoneWindow(z.id)}>＋ window</button>
+                  <button className="btn2 ghost" style={{ padding: '5px 8px' }} onClick={() => addWeekdayWindows(z.id)} title="Add Mon–Fri at the first window's hours">＋ every weekday</button>
+                </div>
                 <label className="zonewin" style={{ gap: 8, cursor: 'pointer' }}>
                   <input type="checkbox" checked={z.exclusive} onChange={(e) => mutate((s) => s.updateZone(z.id, { exclusive: e.target.checked }))} />
                   exclusive · reserve this time
