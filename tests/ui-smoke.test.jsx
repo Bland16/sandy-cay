@@ -87,3 +87,34 @@ describe('App smoke render', () => {
     expect(screen.getByText('The Cabana')).toBeTruthy();
   });
 });
+
+describe('7B — a fixed task goes where you say', () => {
+  it('"Dentist, Friday 2pm" is expressible — not auto-placed somewhere else', () => {
+    render(<App />);
+    fireEvent.click(screen.getByLabelText('Add task'));
+    const panel = document.querySelector('.panel');
+
+    // Fixed reveals the when-fields; they are not optional for a fixed task.
+    fireEvent.click(within(panel).getByText('Fixed'));
+    fireEvent.change(within(panel).getByPlaceholderText(/Call plumber/i), { target: { value: 'Dentist' } });
+    fireEvent.change(within(panel).getByLabelText('Day'), { target: { value: '4' } }); // Friday
+    fireEvent.change(within(panel).getByLabelText('Start time'), { target: { value: '14:00' } });
+    fireEvent.click(within(panel).getByText('Add to the week'));
+
+    const card = screen.getByText('Dentist').closest('.card');
+    expect(card.getAttribute('aria-label')).toContain('14:00–15:00'); // where I said
+    expect(Number(card.closest('[data-dropzone]').dataset.dayIndex)).toBe(4); // Friday
+  });
+
+  it('a flexible task is still auto-placed unless you ask to pick a time', () => {
+    render(<App />);
+    fireEvent.click(screen.getByLabelText('Add task'));
+    const panel = document.querySelector('.panel');
+    // Flexible is the default, and offers no when-fields until asked.
+    expect(within(panel).queryByLabelText('Start time')).toBeNull();
+    expect(within(panel).getByText(/no unscheduled tray/i)).toBeTruthy();
+
+    fireEvent.click(within(panel).getByText('pick a time'));
+    expect(within(panel).getByLabelText('Start time')).toBeTruthy();
+  });
+});

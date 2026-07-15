@@ -1,13 +1,33 @@
 // AddTaskPanel — quick capture. Title is the only required field (submit blocked
-// on empty, case 7A). Includes the shared recurrence editor so a task can be made
-// repeatable at creation. Submit places it immediately via a scored free slot.
+// on empty, case 7A).
+//
+// Two ways in, and the type decides which:
+//   FIXED    — you say when. "Dentist, Friday 2pm" (7B) is the whole point of a
+//              fixed task; auto-placing one would be nonsense.
+//   FLEXIBLE — placed immediately by score, no unscheduled tray (7A) — unless
+//              you tick "pick a time" and say where it goes yourself.
+// A time you chose means placedBy:'user', so re-optimize prefers to leave it be.
 import { useState } from 'react';
-import { addDays, dateFromKey } from '../../../core/index.js';
+import { addDays, addMinutes, atTime, dateFromKey, formatHHMM } from '../../../core/index.js';
 import { buildRecurrence, emptyRecurrence } from '../../recurrenceModel.js';
+import { DAY_NAMES } from '../../format.js';
 import PanelHeader from '../PanelHeader.jsx';
 import DurationControl from '../DurationControl.jsx';
 import TagEditor, { tagsInUse } from '../TagEditor.jsx';
 import RecurrenceEditor from '../RecurrenceEditor.jsx';
+
+/** Today if it's in the viewed week, else Monday — the likeliest day you mean. */
+function defaultDayIndex(weekStart) {
+  const idx = Math.floor((Date.now() - weekStart.getTime()) / 86400000);
+  return idx >= 0 && idx <= 6 ? idx : 0;
+}
+
+/** The next quarter-hour — a sane "when", not 00:00. */
+function defaultStart() {
+  const d = new Date();
+  d.setMinutes(Math.ceil((d.getMinutes() + 1) / 15) * 15, 0, 0);
+  return formatHHMM(d);
+}
 
 export default function AddTaskPanel({ sched, mutate, weekStart, onClose, showToast }) {
   const [type, setType] = useState('flexible');
@@ -18,8 +38,15 @@ export default function AddTaskPanel({ sched, mutate, weekStart, onClose, showTo
   const [pinned, setPinned] = useState(false);
   const [deadline, setDeadline] = useState('');
   const [recModel, setRecModel] = useState(emptyRecurrence);
+  const [pickTime, setPickTime] = useState(false);
+  const [day, setDay] = useState(() => defaultDayIndex(weekStart));
+  const [start, setStart] = useState(defaultStart);
 
   const canSubmit = title.trim().length > 0;
+  const repeats = !!recModel.enabled;
+  // A fixed task IS a time — the choice isn't optional. A repeating task gets
+  // its times from the pattern's windows instead.
+  const timed = !repeats && (type === 'fixed' || pickTime);
 
   const submit = () => {
     if (!canSubmit) return;
@@ -33,12 +60,29 @@ export default function AddTaskPanel({ sched, mutate, weekStart, onClose, showTo
     };
     const rec = buildRecurrence(recModel, weekStart);
     if (rec) data.recurrence = rec;
-    if (!rec) {
+
+    if (timed) {
+      const s = atTime(addDays(weekStart, day), start);
+      data.startTime = s;
+      data.endTime = addMinutes(s, dur);
+      data.placedBy = 'user'; // you chose it; don't let re-optimize wander it
+    } else if (!rec) {
       const slot = sched.findFreeSlot({ from: weekStart, to: addDays(weekStart, 6), durationMin: dur });
       if (slot) { data.startTime = slot.start; data.endTime = slot.end; }
     }
-    mutate((s) => (type === 'fixed' ? s.addFixed(data) : s.addFlexible(data)));
-    showToast(`Added "${data.title}" to the week`);
+
+    const added = mutate((s) => (type === 'fixed' ? s.addFixed(data) : s.addFlexible(data)));
+
+    // A time you picked can land on something. R-1 says your action wins, so
+    // flexibles move aside; an anchor won't, and you're told rather than left
+    // with a silent overlap.
+    let note = '';
+    if (timed && added) {
+      const res = mutate((s) => s.resolveDropConflicts(added));
+      if (res && res.rejected) note = ` · overlaps ${res.reason ? res.reason.split(': ').pop() : 'something fixed'}`;
+      else if (res && res.displaced.length) note = ` · ${res.displaced.length} moved aside`;
+    }
+    showToast(`Added "${data.title}"${timed ? ` at ${start}` : ''}${note}`);
     onClose();
   };
 
@@ -59,6 +103,44 @@ export default function AddTaskPanel({ sched, mutate, weekStart, onClose, showTo
         <div className="flabel">Duration</div>
         <DurationControl minutes={dur} onChange={setDur} />
       </div>
+
+      {/* When. A fixed task must say; a flexible one may. A repeating task takes
+          its times from the pattern, so asking twice would just contradict it. */}
+      {!repeats && (
+        <div className="fieldrow">
+          <div className="flabel">
+            {type === 'fixed' ? 'When' : 'When '}
+            {type !== 'fixed' && (
+              <label style={{ textTransform: 'none', letterSpacing: 0, cursor: 'pointer', fontWeight: 600 }}>
+                <input
+                  type="checkbox"
+                  checked={pickTime}
+                  onChange={(e) => setPickTime(e.target.checked)}
+                  style={{ marginRight: 5, verticalAlign: '-2px' }}
+                />
+                pick a time
+              </label>
+            )}
+          </div>
+          {timed ? (
+            <div className="winrow">
+              <select className="input" style={{ flex: 1 }} value={day} onChange={(e) => setDay(Number(e.target.value))} aria-label="Day">
+                {DAY_NAMES.map((d, i) => <option key={d} value={i}>{d}</option>)}
+              </select>
+              <input
+                className="timein"
+                type="time"
+                step="900"
+                value={start}
+                onChange={(e) => setStart(e.target.value)}
+                aria-label="Start time"
+              />
+            </div>
+          ) : (
+            <p className="psub-note">Placed immediately by score — no unscheduled tray.</p>
+          )}
+        </div>
+      )}
       <div className="fieldrow">
         <div className="flabel">Tags</div>
         <TagEditor tags={tags} onChange={setTags} suggestions={tagsInUse(sched)} />
@@ -83,7 +165,6 @@ export default function AddTaskPanel({ sched, mutate, weekStart, onClose, showTo
         <div className="flabel">Repeat?</div>
         <RecurrenceEditor model={recModel} onChange={setRecModel} />
       </div>
-      <p className="psub-note">Placed immediately by score — no unscheduled tray.</p>
       <button type="button" className="btn cta" style={{ marginTop: 8 }} disabled={!canSubmit} onClick={submit}>Add to the week</button>
     </>
   );
