@@ -34,10 +34,42 @@ const PATHS = {
 
 const VIEWBOX = { cabana: '0 0 64 60' };
 
+// Segmented sprite art (src/assets, green-keyed). Deliberately a SHORT list.
+//
+// The sheets have 57 sprites; almost none belong here. Badges render at ~11px
+// inside .b chips, where hand-drawn art turns to mud and the line-art SVG is
+// simply more legible — and chevrons/x/plus/check aren't beach metaphors at all.
+// Art earns its place only where it's big enough to read AND carries the app's
+// identity: the mascot on an empty state, the shells you rate with, and the
+// cabana you step into. Everything else stays SVG.
+//
+// Sprites are decorative (aria-hidden) with an SVG fallback behind them, so a
+// missing file degrades rather than breaks (FRONTEND-SPEC §10, hard rule).
+const SPRITES = {
+  crab: new URL('../assets/icons/crab.png', import.meta.url).href,
+  shell: new URL('../assets/icons/seashell.png', import.meta.url).href,
+  cabana: new URL('../assets/icons/cabana-hut.png', import.meta.url).href,
+};
+
 export default function Icon({ name, size, className, style }) {
+  const s = size ? { width: size, height: size } : undefined;
+
+  const sprite = SPRITES[name];
+  if (sprite) {
+    return (
+      <img
+        src={sprite}
+        alt=""
+        aria-hidden="true"
+        draggable="false"
+        className={`sprite ${className || ''}`.trim()}
+        style={{ ...s, ...style }}
+      />
+    );
+  }
+
   const body = PATHS[name];
   if (!body) return null;
-  const s = size ? { width: size, height: size } : undefined;
   return (
     <svg
       viewBox={VIEWBOX[name] || '0 0 24 24'}

@@ -443,6 +443,14 @@ body.sc-dragging { user-select: none; }
 .zonerow:hover { background: rgba(0,0,0,.30); border-color: var(--cab-accent); }
 .zonerow .zmeta { flex: 1; opacity: .72; font-size: 11.5px; font-family: var(--font-type);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Segmented sprite art. Sized like the SVG it replaces; never intercepts a
+   pointer. `.off` is the unfilled rating shell — one asset, not two (Appendix A). */
+.sprite { width: 17px; height: 17px; object-fit: contain; display: inline-block; vertical-align: middle;
+  pointer-events: none; user-select: none; }
+.shells .sprite { width: 20px; height: 20px; }
+.shells .sprite.off { opacity: .35; filter: grayscale(1); }
+.empty .sprite { width: 30px; height: 30px; }
+
 .cabtag { display: inline-flex; gap: 5px; align-items: center; }
 .chest { display: flex; gap: 8px; flex-wrap: wrap; }
 .btn2 { flex: 1; font-family: var(--font-body); font-weight: 800; font-size: 11.5px; color: #2c2016; background: var(--cab-accent); border: 2px solid #2c2016; border-radius: 9px; padding: 9px; cursor: pointer; display: flex; gap: 6px; justify-content: center; align-items: center; min-width: 100px; }
