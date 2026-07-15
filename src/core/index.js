@@ -26,7 +26,7 @@ export { autoSchedule, freeCapacityBefore } from './autoSchedule.js';
 export { expandRecurrence, addException, splitPeriod, temporaryChange, endRecurrence } from './recurrence.js';
 export { addProject, shrinkChunk, growChunk, deleteChunk, resizeChunk, finishProject, sliceChunks, redistribute } from './projects.js';
 export { getWeekLoad, getTagBreakdown, snapshot, snapshotDiff } from './queries.js';
-export { whatToDo } from './whatToDo.js';
+export { whatToDo, currentOpening, openingLabel } from './whatToDo.js';
 export {
   driftCheck,
   starvationCheck,
@@ -36,7 +36,7 @@ export {
   durationFitSuggestion,
 } from './detectors.js';
 export { score, normalizeWeights } from './scoring.js';
-export { findBestSlot, placeTask } from './placement.js';
+export { findBestSlot, placeTask, dayWindowBounds, intervalsOf } from './placement.js';
 export { resetIds } from './ids.js';
 
 /**

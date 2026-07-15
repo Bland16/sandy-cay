@@ -210,8 +210,8 @@ export class Schedule {
     return runTagBreakdown(this, weekStartOf(weekStartDate));
   }
 
-  whatToDo(now = new Date()) {
-    return runWhatToDo(this, now);
+  whatToDo(now = new Date(), options = {}) {
+    return runWhatToDo(this, now, options);
   }
 
   // ---- engine ------------------------------------------------------------

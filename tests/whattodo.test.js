@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { Schedule, resetIds } from '../src/core/index.js';
+import { Schedule, resetIds, currentOpening } from '../src/core/index.js';
 import { defaultConfig } from '../src/core/config.js';
 
 const MON = new Date(2026, 6, 13, 0, 0, 0, 0);
@@ -34,5 +34,52 @@ describe('§6 whatToDo (cold start)', () => {
     s.addFlexible({ title: 'Normal', priority: 3, startTime: D(0, 12), endTime: D(0, 13) });
     const picks = s.whatToDo(D(0, 9));
     expect(picks[0].task.id).toBe(warn.id);
+  });
+
+  it('the opening is clamped to the day window — 00:50 is not a 7-hour opening', () => {
+    // Window is Mon–Fri 08:00–18:00; nothing else scheduled.
+    const open = currentOpening(s, D(0, 0, 50));
+    expect(open).not.toBeNull();
+    // Starts at the window, not at 00:50, and is flagged as not-yet-open.
+    expect(open.start.getHours()).toBe(8);
+    expect(open.startsLater).toBe(true);
+    expect(open.minutes).toBe(600); // 08:00 → 18:00
+  });
+
+  it('no opening once the day window has closed', () => {
+    expect(currentOpening(s, D(0, 23, 30))).toBeNull();
+  });
+
+  it('the opening stops at the next task and steps past one in progress', () => {
+    s.addFixed({ title: 'Standup', startTime: D(0, 9), endTime: D(0, 9, 30) });
+    s.addFixed({ title: 'Later', startTime: D(0, 11), endTime: D(0, 12) });
+    // 09:15 is inside Standup → the opening starts when it ends, and runs to 11:00.
+    const open = currentOpening(s, D(0, 9, 15));
+    expect(open.start.getHours()).toBe(9);
+    expect(open.start.getMinutes()).toBe(30);
+    expect(open.minutes).toBe(90);
+    expect(open.nextTask.title).toBe('Later');
+  });
+
+  it('never suggests an anchor scheduled elsewhere (you cannot do Thursday\'s dentist now)', () => {
+    s.addFixed({ title: 'Dentist', startTime: D(3, 14), endTime: D(3, 15) });
+    s.addFlexible({ title: 'Movable', priority: 3, startTime: D(0, 15), endTime: D(0, 16) });
+    const titles = s.whatToDo(D(0, 13)).map((p) => p.task.title);
+    expect(titles).not.toContain('Dentist');
+    expect(titles).toContain('Movable');
+  });
+
+  it('an anchor happening right now IS a valid pick', () => {
+    s.addFixed({ title: 'On now', startTime: D(0, 13), endTime: D(0, 14) });
+    const picks = s.whatToDo(D(0, 13, 20));
+    expect(picks[0].task.title).toBe('On now');
+    expect(picks[0].reasons).toContain('happening now');
+  });
+
+  it('tags narrow the candidates ("what should I do in study mode?")', () => {
+    s.addFlexible({ title: 'Essay', tags: ['study'], priority: 3, startTime: D(0, 15), endTime: D(0, 16) });
+    s.addFlexible({ title: 'Nap', tags: ['rest'], priority: 3, startTime: D(0, 16), endTime: D(0, 17) });
+    const titles = s.whatToDo(D(0, 13), { tags: ['study'] }).map((p) => p.task.title);
+    expect(titles).toEqual(['Essay']);
   });
 });

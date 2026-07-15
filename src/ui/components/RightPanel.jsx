@@ -15,7 +15,7 @@ export default function RightPanel({ selection, resolvedTask, sched, mutate, wee
   } else if (selection === 'find') {
     body = <FindPanel sched={sched} weekStart={weekStart} onClose={onClose} showToast={showToast} />;
   } else if (selection === 'wtd') {
-    body = <WhatToDoPanel sched={sched} now={now} onOpenTask={onOpenTask} onClose={onClose} />;
+    body = <WhatToDoPanel sched={sched} now={now} mutate={mutate} onOpenTask={onOpenTask} onClose={onClose} showToast={showToast} />;
   } else if (resolvedTask) {
     body = (
       <TaskPanel
