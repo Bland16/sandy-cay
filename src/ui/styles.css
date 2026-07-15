@@ -5,19 +5,25 @@
    ------------------------------------------------------------------
    Z-INDEX SCALE (documented per the hard requirement — no ad-hoc layering)
      0   zone bands (behind cards)
+     1   early-finish remainder crosshatch (§3.9 — behind its own card)
      2   task cards
      5   top bar / day-view header (sticky chrome above the grid)
      6   cabana page chrome
      3   card resize strips (wave / sand — inside their own card only)
      4   card check control (sits above the sand strip's hit area)
      30  right panel (flex sibling; raised so its shadow sits over the grid)
-     40  dropdown menus (week menu, date-jump popover)
+     40  dropdown menus (week menu, date-jump popover, day-header ⋯)
      45  card context menu
-     50  conflict chooser (ripple/displace — anchored to a card, viewport-clamped)
+     48  Clear Day panel (OD-7 — anchored to a day header, viewport-clamped)
+     50  conflict chooser (ripple/displace) AND the 4C occurrence-drop menu —
+         both anchored to a card, mutually exclusive: a drop asks one question
      55  drag ghost (transient, follows the pointer, never hit-tested)
-     60  toast / status callouts
-   Only menus, the chooser, the ghost and toasts overlay, and each carries a
-   solid --paper background.
+     60  toast stack (plain toasts + the 3C/3D gap offer, one flex column so
+         they queue instead of stacking on each other)
+   Only menus, the Clear Day panel, the chooser, the occurrence menu, the ghost
+   and toasts overlay, and each carries a solid --paper background.
+   The §7.3 overpack notice is deliberately NOT on this scale: it sits in flow
+   above the grid, so it is non-modal by construction rather than by layering.
    The grid and panel are flex siblings; day view and Cabana REPLACE the main
    area (never stack on it). No absolute element escapes its positioned parent.
    ------------------------------------------------------------------ */
@@ -34,8 +40,9 @@
   --font-type: 'Special Elite', 'Courier New', monospace;
   --font-body: 'Nunito', system-ui, -apple-system, sans-serif;
 
-  --z-zone: 0; --z-card: 2; --z-strip: 3; --z-cardctl: 4; --z-chrome: 5;
-  --z-panel: 30; --z-menu: 40; --z-ctx: 45; --z-chooser: 50; --z-ghost: 55; --z-toast: 60;
+  --z-zone: 0; --z-remainder: 1; --z-card: 2; --z-strip: 3; --z-cardctl: 4; --z-chrome: 5;
+  --z-panel: 30; --z-menu: 40; --z-ctx: 45; --z-clearday: 48; --z-chooser: 50;
+  --z-ghost: 55; --z-toast: 60;
 }
 /* Keep the single light world regardless of the viewer's theme toggle. */
 :root[data-theme="dark"], :root[data-theme="light"] { color-scheme: light; }
@@ -164,14 +171,30 @@ body {
   background-image: repeating-linear-gradient(135deg, transparent 0 5px, rgba(42,38,32,.03) 5px 10px);
   pointer-events: none;
 }
-.dayhead { text-align: center; border-left: 1px solid var(--hair); cursor: pointer; transition: background .1s; background: none; font: inherit; }
+/* Two controls in one cell: the header opens the day, the ⋯ opens its menu
+   (3A / OD-7). A button inside a button is invalid HTML and unreachable by
+   keyboard, so the cell is a div and both children are real buttons. */
+/* NB: no `position` here — the rule above makes this sticky, and sticky is
+   already a positioned value, so it anchors .dhdots by itself. Adding
+   `position: relative` here would win on order and silently unstick the header. */
+.dayhead { text-align: center; border-left: 1px solid var(--hair); transition: background .1s; }
 .dayhead:hover { background: var(--paper-shade); }
+.dhopen { display: block; width: 100%; border: none; background: none; font: inherit; color: inherit; cursor: pointer; padding: 0; }
 .dayhead .dn { font-family: var(--font-display); font-size: 13.5px; line-height: 1; }
 .dayhead .dd { font-family: var(--font-type); font-size: 10.5px; color: var(--ink-soft); }
 .dayhead .open { font-family: var(--font-type); font-size: 8px; letter-spacing: .05em; color: var(--primary); text-transform: uppercase; opacity: 0; }
 .dayhead:hover .open { opacity: 1; }
 .dayhead.wknd { background: rgba(42,38,32,.045); }
 .dayhead.today .dn { color: var(--primary); }
+.dhdots {
+  position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; padding: 0;
+  border: none; background: none; border-radius: 5px; cursor: pointer; color: var(--ink-soft);
+  display: grid; place-items: center; opacity: 0; transition: opacity .1s, background .1s;
+}
+.dhdots svg { width: 13px; height: 13px; }
+.dayhead:hover .dhdots, .dhdots:focus-visible { opacity: 1; }
+.dhdots:hover { background: var(--paper); color: var(--ink); }
+.daymenu { position: fixed; width: 186px; }
 .axis .h { font-family: var(--font-type); font-size: 10px; color: var(--ink-soft); text-align: right; padding-right: 6px; }
 .axis .h span { display: block; transform: translateY(-6px); }
 .day {
@@ -300,9 +323,129 @@ body.sc-dragging { user-select: none; }
 .chooser .opt:disabled { opacity: .45; cursor: not-allowed; }
 .chooser .opt:not(:disabled):hover { background: var(--paper-shade); }
 .chooser .opt.pick:not(:disabled):hover { background: #efc667; }
-.chooser .chint {
+.chint {
   margin-top: 7px; font-family: var(--font-type); font-size: 8px; letter-spacing: .04em;
   color: var(--ink-soft); text-transform: uppercase;
+}
+
+/* ---------- D: Clear Day panel (SPEC §3.4 / OD-7) ----------
+   Anchored under the day's ⋯, viewport-clamped, solid paper. Scrolls its own
+   rows rather than growing past the viewport — a panel that can't be reached
+   is a panel that can't be cancelled. */
+.claripanel {
+  position: fixed; z-index: var(--z-clearday); width: 306px; max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px); overflow-y: auto; overflow-x: hidden;
+  background: var(--paper); border: 2px solid var(--ink); border-radius: 12px;
+  box-shadow: 0 14px 34px rgba(0,0,0,.34); padding: 10px;
+}
+.cdhead { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
+.cdt { flex: 1; font-family: var(--font-display); font-size: 16px; line-height: 1.15; overflow-wrap: anywhere; }
+.cdt small { display: block; font-family: var(--font-type); font-size: 9px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-soft); margin-top: 2px; }
+.cdscope { display: flex; gap: 6px; }
+.cdopt {
+  flex: 1 1 0; min-width: 0; font-family: var(--font-body); font-weight: 800; font-size: 11px;
+  color: var(--ink); background: var(--paper); border: 2px solid var(--ink); border-radius: 9px;
+  padding: 6px 7px; cursor: pointer; text-align: left; line-height: 1.15; overflow-wrap: anywhere;
+}
+.cdopt small { display: block; font-weight: 600; font-size: 8.5px; color: var(--ink-soft); line-height: 1.25; margin-top: 2px; }
+.cdopt.pick { background: var(--cta); }
+.cdopt.pick small { color: #4d3b0e; }
+.cdopt:not(.pick):hover { background: var(--paper-shade); }
+.cdnote {
+  margin: 7px 0 0; font-size: 10.5px; line-height: 1.45; color: var(--ink-soft); overflow-wrap: anywhere;
+}
+.cdrows { margin-top: 9px; }
+.cdrows .flabel { margin-bottom: 6px; }
+/* One row per pinned/fixed task, each with its own control — OD-7's rule made
+   structural. Nothing here is coloured like a problem: a pinned task on a day
+   you're clearing is a decision to make, not a fault (P-1). */
+.cdrow {
+  border: 1.5px solid var(--hair); border-radius: 9px; padding: 7px 8px; margin-bottom: 6px;
+  background: var(--paper-shade);
+}
+.cdrowhead { display: flex; align-items: center; gap: 6px; }
+.cdname { flex: 1; min-width: 0; font-weight: 700; font-size: 11.5px; overflow-wrap: anywhere; }
+.cdkind {
+  font-family: var(--font-type); font-size: 8px; letter-spacing: .05em; text-transform: uppercase;
+  border: 1.5px solid var(--ink); border-radius: 5px; padding: 1px 5px; flex: none; color: var(--ink);
+}
+.cdkind.pinned { background: var(--pinned); }
+.cdkind.fixed { background: rgba(95,184,176,.5); }
+.cdkind.protected { background: rgba(127,190,139,.5); }
+.cdwhen { font-family: var(--font-type); font-size: 9px; color: var(--ink-soft); margin: 3px 0 5px; }
+.cdrow .input { padding: 5px 8px; font-size: 11.5px; }
+.cdpreview { font-size: 10px; color: var(--ink-soft); margin-top: 4px; overflow-wrap: anywhere; }
+.cdblock { display: flex; align-items: flex-start; gap: 9px; margin: 10px 0 9px; }
+.cdblocktext { min-width: 0; }
+.cdblocktext b { display: block; font-size: 11.5px; }
+.cdblocktext small { display: block; font-size: 10px; color: var(--ink-soft); line-height: 1.4; margin-top: 2px; }
+.cdbtns { display: flex; gap: 7px; }
+.cdbtns .btn { width: auto; flex: 1; padding: 8px 10px; font-size: 11.5px; }
+
+/* ---------- E: the freed-gap offer (SPEC §3.8 / §3.9) ----------
+   Three options, equal weight, none of them a warning. A freed hour is not a
+   problem, so nothing here is coral (P-1). */
+.gaptoast {
+  background: var(--paper); border: 2px solid var(--ink); border-radius: 12px; padding: 9px 11px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.35); width: 340px; max-width: 92vw;
+}
+.gaptoast .gt { font-size: 12px; font-weight: 700; margin-bottom: 7px; overflow-wrap: anywhere; }
+.gopts { display: flex; gap: 6px; align-items: stretch; }
+.gopts .opt {
+  flex: 1 1 0; min-width: 0; font-family: var(--font-body); font-weight: 800; font-size: 10.5px;
+  color: var(--ink); background: var(--paper); border: 2px solid var(--ink); border-radius: 9px;
+  padding: 5px 6px; cursor: pointer; text-align: left; line-height: 1.15; overflow-wrap: anywhere;
+}
+.gopts .opt small { display: block; font-weight: 600; font-size: 8.5px; color: var(--ink-soft); line-height: 1.25; margin-top: 2px; overflow-wrap: anywhere; }
+.gopts .opt:not(:disabled):hover { background: var(--paper-shade); }
+.gopts .opt:disabled { opacity: .45; cursor: not-allowed; }
+
+/* ---------- F: occurrence-drop menu (4C) ----------
+   Stacked, not side-by-side: three full-width rows read as three answers to a
+   question, where a row of chips would read as one of them being the default.
+   Nothing is pre-highlighted — that is the point of 4C. */
+.occmenu {
+  position: fixed; z-index: var(--z-chooser); width: 232px; max-width: calc(100vw - 16px);
+  background: var(--paper); border: 2px solid var(--ink); border-radius: 12px;
+  box-shadow: 0 10px 26px rgba(0,0,0,.32); padding: 9px;
+}
+.occmenu .ct { font-weight: 800; font-size: 11px; line-height: 1.25; overflow-wrap: anywhere; }
+.occsub { margin: 3px 0 7px; font-size: 10px; color: var(--ink-soft); line-height: 1.4; }
+.occopts { display: flex; flex-direction: column; gap: 5px; }
+.occopts .opt {
+  font-family: var(--font-body); font-weight: 800; font-size: 11px; color: var(--ink);
+  background: var(--paper); border: 2px solid var(--ink); border-radius: 9px;
+  padding: 6px 8px; cursor: pointer; text-align: left; line-height: 1.15; overflow-wrap: anywhere;
+}
+.occopts .opt small { display: block; font-weight: 600; font-size: 8.5px; color: var(--ink-soft); line-height: 1.25; margin-top: 2px; }
+.occopts .opt:not(:disabled):hover { background: var(--paper-shade); }
+.occopts .opt:disabled { opacity: .45; cursor: not-allowed; }
+
+/* ---------- G: overpack notice (SPEC §7.3) ----------
+   The one grid-side notice, and it earns that by being physics. Sand, not
+   coral: this is the shape of the week, not a verdict on it. */
+.overpack {
+  display: flex; align-items: center; gap: 9px; padding: 7px 14px;
+  background: rgba(201,169,110,.22); border-bottom: 1px solid var(--hair);
+  font-size: 11.5px; color: var(--ink);
+}
+.overpack svg { width: 15px; height: 15px; color: var(--ink-soft); flex: none; }
+.overpack .grow { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.overpack .opl {
+  font-family: var(--font-body); font-weight: 800; font-size: 11px; color: var(--ink);
+  background: var(--paper); border: 2px solid var(--ink); border-radius: 8px;
+  padding: 4px 9px; cursor: pointer; flex: none; white-space: nowrap;
+}
+.overpack .opl:hover { background: var(--cta); }
+.overpack .px { width: 20px; height: 20px; border-width: 1.5px; }
+.overpack .px svg { width: 10px; height: 10px; }
+
+/* The remainder of a task finished early (§3.9). Hatched, not tinted: it reads
+   as "this was released", and it sits behind its own card in its own lane. */
+.remainder {
+  position: absolute; z-index: var(--z-remainder); pointer-events: none;
+  border: 1.5px dashed var(--hair); border-top: none; border-radius: 0 0 10px 10px;
+  background-image: repeating-linear-gradient(135deg, transparent 0 4px, rgba(42,38,32,.14) 4px 6px);
 }
 
 /* day view */
@@ -467,17 +610,28 @@ body.sc-dragging { user-select: none; }
 .statusdot .dot.session { background: var(--cta); }
 .footer { display: flex; align-items: center; gap: 12px; padding: 8px 15px; border-top: 2px solid var(--ink); background: linear-gradient(0deg, #ece2ce, #f1e9d8); font-size: 11px; color: var(--ink-soft); }
 .footer .grow { flex: 1; }
-.toast {
+/* One fixed column for everything that talks from the bottom of the screen.
+   A gap offer and a plain toast are both "bottom centre", so they share a
+   stack: two independently-fixed elements would land on top of each other. */
+.toastwrap {
   position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); z-index: var(--z-toast);
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  max-width: 92vw; pointer-events: none;
+}
+.toastwrap > * { pointer-events: auto; }
+.toast {
   background: var(--paper); border: 2px solid var(--ink); border-radius: 12px; padding: 10px 16px;
   box-shadow: 0 10px 30px rgba(0,0,0,.35); font-size: 12.5px; font-weight: 600; max-width: 90vw;
 }
 
 .note { max-width: 700px; margin: 16px auto 0; color: #9c927e; font-size: 11.5px; line-height: 1.55; text-align: center; }
 
-button:focus-visible, .dayhead:focus-visible, .card:focus-visible, .slot:focus-visible, .alt:focus-visible {
+button:focus-visible, .dhopen:focus-visible, .card:focus-visible, .slot:focus-visible, .alt:focus-visible {
   outline: 2.5px solid var(--primary); outline-offset: 2px;
 }
+/* Focus inside a viewport-clamped overlay must not be clipped by its own
+   scroll container, so the outline sits inside the element there. */
+.claripanel :focus-visible { outline-offset: -1px; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 
 @media (max-width: 720px) {

@@ -127,12 +127,21 @@ describe('A — drag to move', () => {
     expect(document.querySelector('.chooser')).toBeNull();
   });
 
-  it('rejects a drop onto a pinned recurring occurrence (§4.4) without moving it', () => {
+  it('asks rather than rejects on a recurring occurrence (§4C), and Cancel moves nothing', () => {
+    // M2.1 rejected this drop outright. §4C says that's too rigid: a recurring
+    // session is a question, not a wall — sometimes the appointment legitimately
+    // wins. Cancel is the path that still ends where the old rejection did.
     render(<App />);
     const standup = cardFor('Team standup'); // Mon 09:00
     dragBody(standup, xAt(0) + 3, yAt(8)); // onto Mon 08:00 "Morning gym"
 
-    expect(screen.getByRole('status').textContent).toMatch(/Morning gym/);
+    const menu = document.querySelector('.occmenu');
+    expect(menu).toBeTruthy();
+    expect(menu.textContent).toMatch(/Morning gym/);
+
+    fireEvent.click(within(menu).getByText(/Cancel/).closest('.opt'));
+
+    expect(document.querySelector('.occmenu')).toBeNull();
     expect(timeOf(cardFor('Team standup'))).toBe('09:00–09:30');
     expect(allCardsFor('Morning gym').length).toBe(2); // both occurrences intact
   });

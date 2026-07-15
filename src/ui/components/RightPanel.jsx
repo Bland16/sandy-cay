@@ -6,7 +6,7 @@ import AddProjectPanel from './panels/AddProjectPanel.jsx';
 import FindPanel from './panels/FindPanel.jsx';
 import WhatToDoPanel from './panels/WhatToDoPanel.jsx';
 
-export default function RightPanel({ selection, resolvedTask, sched, mutate, weekStart, now, onClose, onOpenTask, showToast }) {
+export default function RightPanel({ selection, resolvedTask, sched, mutate, weekStart, now, onClose, onOpenTask, showToast, onGapFreed }) {
   let body = null;
   if (selection === 'add-task') {
     body = <AddTaskPanel sched={sched} mutate={mutate} weekStart={weekStart} onClose={onClose} showToast={showToast} />;
@@ -26,6 +26,7 @@ export default function RightPanel({ selection, resolvedTask, sched, mutate, wee
         weekStart={weekStart}
         onClose={onClose}
         showToast={showToast}
+        onGapFreed={onGapFreed}
       />
     );
   } else {

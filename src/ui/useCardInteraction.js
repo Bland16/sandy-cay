@@ -23,10 +23,12 @@ import {
   commitRipple,
   findBlockers,
   isHardBlocker,
+  proposeOccurrenceSlot,
   restoreSpan,
   snapTo,
   snapshotSpan,
 } from './interaction.js';
+import { DAY_NAMES } from './format.js';
 
 const DRAG_THRESHOLD_PX = 4;
 const SNAP_MS = 150; // SPEC §10 motion: 150ms snap on drop
@@ -100,14 +102,18 @@ export function useCardInteraction({ sched, mutate, showToast, weekStart }) {
   const [ghost, setGhost] = useState(null); // { task, compact, mode, rect, phase }
   const [hiddenId, setHiddenId] = useState(null); // real card hidden while its ghost flies
   const [chooser, setChooser] = useState(null);
+  const [occMenu, setOccMenu] = useState(null); // 4C — drop onto a recurring session
   const [active, setActive] = useState(false);
 
   const session = useRef(null);
   const timer = useRef(null);
   const clickGuard = useRef(0);
-  // Mirror of `chooser` for the pointer-down guard, which must not re-bind.
+  // Mirrors for the pointer-down guard, which must not re-bind. Either an open
+  // chooser or an open occurrence menu is an unresolved drop.
   const chooserRef = useRef(null);
   chooserRef.current = chooser;
+  const occMenuRef = useRef(null);
+  occMenuRef.current = occMenu;
 
   const clearGhost = useCallback(() => {
     clearTimeout(timer.current);
@@ -186,17 +192,35 @@ export function useCardInteraction({ sched, mutate, showToast, weekStart }) {
       // 1) the engine move / resize — always first, always via the engine.
       mutate(() => op.applyToTask(task));
 
-      // 2) rejection (fixed / pinned / protected / recurring) — the engine's
-      //    verdict and its reason string. resolveDropConflicts returns before it
-      //    displaces anything on this path, so nothing else has moved.
+      // 2) rejection (fixed / pinned / protected) — the engine's verdict and its
+      //    reason string. resolveDropConflicts returns before it displaces
+      //    anything on this path, so nothing else has moved.
       if (hard || (op.cause === 'drop' && blockers.length === 0)) {
         const res = mutate((s) => s.resolveDropConflicts(task));
-        if (res.rejected || res.occurrenceMenu) {
+        // 2a) a recurring session is not a wall — it's a question (§4C). The
+        //     engine says so explicitly rather than rejecting, and the menu
+        //     asks it with no silent default.
+        if (res.occurrenceMenu) {
+          settleGhost(op.targetRect);
+          const slot = proposeOccurrenceSlot(sched, res.occurrence);
+          setOccMenu({
+            task,
+            snap,
+            occurrence: res.occurrence,
+            anchor: op.targetRect,
+            moveTo: slot
+              ? {
+                  start: slot.start,
+                  end: slot.end,
+                  label: `${DAY_NAMES[(slot.start.getDay() + 6) % 7]} ${formatHHMM(slot.start)}`,
+                }
+              : null,
+          });
+          return;
+        }
+        if (res.rejected) {
           mutate(() => restoreSpan(task, snap));
-          const reason =
-            res.reason ||
-            `Conflicts with recurring: ${res.occurrence ? res.occurrence.title : 'repeating task'}`;
-          showToast(reason);
+          showToast(res.reason);
           rejectGhost(op.origin);
           return;
         }
@@ -482,8 +506,9 @@ export function useCardInteraction({ sched, mutate, showToast, weekStart }) {
 
   const begin = useCallback((e, task, compact, mode) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
-    // An open chooser is an unresolved conflict — settle it (or Esc) first.
-    if (chooserRef.current) return;
+    // An open chooser or occurrence menu is an unresolved drop — settle it
+    // (or Esc) before starting another one.
+    if (chooserRef.current || occMenuRef.current) return;
     const rect = e.currentTarget.closest('.card').getBoundingClientRect();
     session.current = {
       mode,
@@ -542,6 +567,86 @@ export function useCardInteraction({ sched, mutate, showToast, weekStart }) {
     setChooser(null);
   }, [chooser, mutate, showToast]);
 
+  // ---- occurrence-drop menu actions (4C) ---------------------------------
+  /**
+   * Both answers write ONE exception against this date and leave the pattern
+   * alone, then hand the slot to the dropped task.
+   *
+   * The trailing resolveDropConflicts is an integrity pass, not a second
+   * strategy: the engine returns the occurrence menu at the FIRST occurrence it
+   * meets, so anything else the drop landed on is still unexamined. Once the
+   * session is out of the way we ask the engine to finish its own verdict —
+   * which may displace a flexible, or reject outright on a pinned task that was
+   * also under the drop. Either way it is the engine's call, not ours.
+   */
+  const settleOccurrence = useCallback(
+    (writeException, verb) => {
+      const { task, snap } = occMenuRef.current;
+      const res = mutate((s) => {
+        writeException(s);
+        return s.resolveDropConflicts(task);
+      });
+      setOccMenu(null);
+      if (res.rejected) {
+        mutate(() => restoreSpan(task, snap));
+        showToast(res.reason);
+        return;
+      }
+      const moved = res.displaced.length;
+      showToast(`${verb} — the pattern is unchanged${moved ? ` · ${moved} re-placed` : ''}`);
+    },
+    [mutate, showToast],
+  );
+
+  const chooseOccurrenceMove = useCallback(() => {
+    const menu = occMenuRef.current;
+    if (!menu || !menu.moveTo) return;
+    const { occurrence, moveTo } = menu;
+    const toDate = dateKey(moveTo.start);
+    settleOccurrence((s) => {
+      const parent = s.tasks.find((t) => t.id === occurrence.parentId);
+      if (!parent) return;
+      addException(parent, occurrence.occurrenceDate, 'move', {
+        start: formatHHMM(moveTo.start),
+        end: formatHHMM(moveTo.end),
+        // Keyed to the original date, so lived data follows the session (§4.4).
+        ...(toDate !== occurrence.occurrenceDate ? { toDate } : {}),
+      });
+    }, 'Moved this session');
+  }, [settleOccurrence]);
+
+  const chooseOccurrenceSkip = useCallback(() => {
+    const menu = occMenuRef.current;
+    if (!menu) return;
+    const { occurrence } = menu;
+    settleOccurrence((s) => {
+      const parent = s.tasks.find((t) => t.id === occurrence.parentId);
+      if (parent) addException(parent, occurrence.occurrenceDate, 'skip');
+    }, 'Skipped this session');
+  }, [settleOccurrence]);
+
+  const cancelOccurrenceMenu = useCallback(() => {
+    const menu = occMenuRef.current;
+    if (!menu) return;
+    mutate(() => restoreSpan(menu.task, menu.snap));
+    showToast('Snapped back');
+    setOccMenu(null);
+  }, [mutate, showToast]);
+
+  // Esc cancels the drop from anywhere while the menu is open. The menu holds
+  // focus but does not pre-select an answer, so Esc is the only key that acts.
+  useEffect(() => {
+    if (!occMenu) return undefined;
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopPropagation();
+      cancelOccurrenceMenu();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [occMenu, cancelOccurrenceMenu]);
+
   // Esc cancels the whole operation from anywhere while the chooser is open
   // (the chooser autofocuses its default, but focus can wander).
   useEffect(() => {
@@ -565,12 +670,16 @@ export function useCardInteraction({ sched, mutate, showToast, weekStart }) {
     hiddenId,
     chooser,
     chooserLabel,
-    busy: active || !!chooser,
+    occMenu,
+    busy: active || !!chooser || !!occMenu,
     onMoveStart,
     onResizeStart,
     chooseRipple,
     chooseDisplace,
     cancelChooser,
+    chooseOccurrenceMove,
+    chooseOccurrenceSkip,
+    cancelOccurrenceMenu,
     shouldSuppressClick: () => Date.now() - clickGuard.current < CLICK_SUPPRESS_MS,
   };
 }

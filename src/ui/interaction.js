@@ -65,8 +65,11 @@ export function findBlockers(sched, task, start, end) {
 }
 
 /** 7B: fixed / pinned / protected reject the drop. Occurrences are anchors too
- *  (§4.4) — and the engine answers them with the occurrence menu, which is not
- *  in M2.1's scope, so we treat them as a rejection here. */
+ *  (§4.4), so they belong on this side of the classification — but the engine
+ *  does NOT simply reject them: resolveDropConflicts answers an occurrence with
+ *  `{ occurrenceMenu: true }`, and the caller opens the 4C menu. What "hard"
+ *  buys us either way is that the chooser is skipped and the engine's verdict
+ *  is asked for before anything is displaced. */
 export function isHardBlocker(sched, t) {
   return t.isOccurrence === true || t.isAnchored(sched.config.protectedTags);
 }
@@ -202,6 +205,44 @@ export function commitRipple(sched, pivot, effEnd, deltaMin) {
 /** Displace — §3.1 nearest-slot eviction, straight from the engine. */
 export function commitDisplace(sched, pivot) {
   return sched.resolveDropConflicts(pivot);
+}
+
+/**
+ * Where a recurring session could go instead, when a one-off is dropped on it
+ * (§4C: "the occurrence relocates via scored placement, same-day preferred").
+ *
+ * Same-day preference is not a special case here — it falls out of the score's
+ * proximity term, measured from the session's own start. `dropped` is already
+ * sitting in the slot by the time this runs, so it is part of `occupied` and
+ * the session cannot be handed back the ground it just lost.
+ *
+ * @returns {{start: Date, end: Date}} | null — null means "nowhere to move it",
+ *          which the menu shows rather than inventing a slot.
+ */
+export function proposeOccurrenceSlot(sched, occ) {
+  const from = dayStart(occ.startTime);
+  const to = addDays(from, sched.config.maxPlacementLookahead);
+  const reals = intervalsOf(sched.tasks.filter((t) => !t.chunking && !t.recurrence));
+  const occs = [];
+  const seen = new Set();
+  // The lookahead can cross a week boundary; expand every week it touches.
+  for (let ws = weekStartOf(from); ws.getTime() <= to.getTime(); ws = addDays(ws, 7)) {
+    for (const t of sched.tasks) {
+      if (!t.recurrence) continue;
+      for (const o of expandRecurrence(t, ws)) {
+        if (o.id === occ.id || seen.has(o.id)) continue;
+        seen.add(o.id);
+        occs.push({ start: o.startTime, end: o.endTime, task: o });
+      }
+    }
+  }
+  const best = findBestSlot(sched, occ, {
+    from,
+    to,
+    occupied: reals.concat(occs),
+    origin: occ.startTime,
+  });
+  return best ? best.slot : null;
 }
 
 /** Snapshot / restore for snap-back (Esc, or a rejected drop). */

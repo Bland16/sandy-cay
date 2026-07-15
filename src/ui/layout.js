@@ -3,6 +3,44 @@
 // interval-graph colouring per day.
 import { gridHour } from './format.js';
 
+/**
+ * The crosshatched remainder of a task finished early (SPEC §3.9 / 3D).
+ *
+ * Marking `done` before the end truncates the block through the engine — the
+ * freed minutes are genuinely free, which is what makes the 3C offer mean
+ * anything. This draws where the block *used to* reach, so the time doesn't
+ * just silently vanish off the grid.
+ *
+ * `truncations` is session state (taskId → the original end Date), deliberately
+ * not persisted: it's a visual echo of something that just happened, not a fact
+ * about the schedule. The engine stays the source of truth for the span.
+ *
+ * Takes `laid` rather than raw tasks so the band inherits the card's own lane —
+ * a remainder must never spill across a neighbour sharing the column.
+ */
+export function layoutRemainders(laid, truncations, startHour, pxh) {
+  if (!truncations) return [];
+  const out = [];
+  for (const { task, style } of laid) {
+    const until = truncations[task.id];
+    if (!until) continue;
+    const s = gridHour(task.endTime);
+    const spanH = (until.getTime() - task.endTime.getTime()) / 3600000;
+    if (spanH <= 0) continue;
+    out.push({
+      key: task.id,
+      title: task.title,
+      style: {
+        left: style.left,
+        width: style.width,
+        top: `${(s - startHour) * pxh}px`,
+        height: `${spanH * pxh}px`,
+      },
+    });
+  }
+  return out;
+}
+
 export function layoutDay(tasks, startHour, pxh) {
   const items = [...tasks].sort(
     (a, b) => a.startTime - b.startTime || b.endTime - a.endTime,

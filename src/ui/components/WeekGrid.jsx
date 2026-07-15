@@ -3,8 +3,9 @@
 import { useRef, useEffect } from 'react';
 import { addDays, sameDay, hhmmToMinutes } from '../../core/index.js';
 import { DAY_NAMES, DAY_KEYS, hourLabel, gridBounds, windowForDay, gridDayOf } from '../format.js';
-import { layoutDay } from '../layout.js';
+import { layoutDay, layoutRemainders } from '../layout.js';
 import TaskCard from './TaskCard.jsx';
+import Icon from '../Icon.jsx';
 
 const PXH = 34;
 const WAKE_HOUR = 7; // the grid opens just before the working window, not at 5am
@@ -38,7 +39,8 @@ function zoneBands(zones, dayKey, startHour) {
 }
 
 export default function WeekGrid({
-  sched, weekStart, today, onOpenTask, onToggleComplete, onOpenDay, interaction,
+  sched, weekStart, today, onOpenTask, onToggleComplete, onOpenDay, onDayMenu,
+  interaction, truncations, notice,
 }) {
   const weekTasks = sched.getTasksForWeek(weekStart);
   const { start, end } = gridBounds();
@@ -54,22 +56,36 @@ export default function WeekGrid({
   }, [start]);
 
   return (
-    <div className="gridwrap" ref={wrapRef}>
+    <>
+      {/* §7.3's one grid-side notice. In flow, above the grid: non-modal by
+          construction rather than by z-index, so it cannot overlap anything. */}
+      {notice}
+      <div className="gridwrap" ref={wrapRef}>
       <div className="grid">
         <div className="axis-head" />
         {DAY_NAMES.map((dn, i) => {
           const date = addDays(weekStart, i);
           const isToday = today && sameDay(date, today);
           return (
-            <button
-              key={dn}
-              className={`dayhead${i >= 5 ? ' wknd' : ''}${isToday ? ' today' : ''}`}
-              onClick={() => onOpenDay(i)}
-            >
-              <div className="dn">{dn}</div>
-              <div className="dd">{date.getDate()}</div>
-              <div className="open">open ↓</div>
-            </button>
+            /* Two controls, so two buttons — a ⋯ nested inside the open-day
+               button would be invalid HTML and unreachable by keyboard. */
+            <div key={dn} className={`dayhead${i >= 5 ? ' wknd' : ''}${isToday ? ' today' : ''}`}>
+              <button className="dhopen" onClick={() => onOpenDay(i)}>
+                <div className="dn">{dn}</div>
+                <div className="dd">{date.getDate()}</div>
+                <div className="open">open ↓</div>
+              </button>
+              {onDayMenu && (
+                <button
+                  className="dhdots"
+                  title={`${dn} menu`}
+                  aria-label={`${dn} ${date.getDate()} menu`}
+                  onClick={(e) => onDayMenu(i, e.currentTarget.getBoundingClientRect())}
+                >
+                  <Icon name="dots" />
+                </button>
+              )}
+            </div>
           );
         })}
 
@@ -105,6 +121,15 @@ export default function WeekGrid({
                   <span className="tag">{b.label}</span>
                 </div>
               ))}
+              {layoutRemainders(laid, truncations, start, PXH).map((r) => (
+                <div
+                  className="remainder"
+                  key={r.key}
+                  style={r.style}
+                  aria-hidden="true"
+                  title={`${r.title} — finished early, this time is free`}
+                />
+              ))}
               {laid.map(({ task, style, compact }) => (
                 <TaskCard
                   key={task.id}
@@ -122,6 +147,7 @@ export default function WeekGrid({
           );
         })}
       </div>
-    </div>
+      </div>
+    </>
   );
 }

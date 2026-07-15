@@ -12,10 +12,17 @@ import Icon from '../Icon.jsx';
 
 const CLIENT_ID_KEY = 'sandy-cay:google-client-id';
 
+// An OAuth *Client ID* is a public identifier, not a secret — a static site has
+// nowhere to hide one, which is exactly why this uses the token flow. It's
+// origin-restricted (localhost:5173 + bland16.github.io), so it is only usable
+// from this app. Pre-filled for convenience; override it in the field to point
+// at your own Cloud project.
+const DEFAULT_CLIENT_ID = '128479595220-bssj6ecsf0mu3jcg359oe0qfki3jerfc.apps.googleusercontent.com';
+
 export default function CalendarCard({ sched, weekStart, mutate, showToast }) {
   const fileRef = useRef(null);
   const [clientId, setClientId] = useState(() => {
-    try { return window.localStorage.getItem(CLIENT_ID_KEY) || ''; } catch { return ''; }
+    try { return window.localStorage.getItem(CLIENT_ID_KEY) || DEFAULT_CLIENT_ID; } catch { return DEFAULT_CLIENT_ID; }
   });
   const [cals, setCals] = useState(null);
   const [picked, setPicked] = useState([]);

@@ -27,7 +27,7 @@ const facetGlyph = (v) => (v === 1 ? '↑' : v === -1 ? '↓' : '=');
 const facetWord = (f, v) => (v === 1 ? f.pos : v === -1 ? f.neg : f.zero);
 const cycleFacet = (v) => (!v ? 1 : v === 1 ? -1 : 0);
 
-export default function TaskPanel({ task, sched, mutate, weekStart, onClose, showToast }) {
+export default function TaskPanel({ task, sched, mutate, weekStart, onClose, showToast, onGapFreed }) {
   // Resolve the editable underlying task: an occurrence edits its parent.
   const editable = task.isOccurrence ? sched.tasks.find((t) => t.id === task.parentId) : task;
   const [recModel, setRecModel] = useState(() => modelFromTask(editable || task));
@@ -117,12 +117,27 @@ export default function TaskPanel({ task, sched, mutate, weekStart, onClose, sho
     showToast(`Extra session added ${DAY_NAMES[extraDay]} — the pattern is unchanged`);
   };
 
+  /** The span a removal/skip just handed back (§3.8 / 3C). Captured before the
+   *  mutation, because after it the task is gone. */
+  const freedGap = () => ({
+    start: new Date(task.startTime.getTime()),
+    end: new Date(task.endTime.getTime()),
+  });
+
+  /** Offer the gap. Whether it's big enough to be worth offering is App's
+   *  offerGap → worthOffering: §3.8's 45-minute threshold lives in one place. */
+  const offer = (gap, label) => {
+    if (onGapFreed) onGapFreed(gap, label);
+  };
+
   const skipOccurrence = () => {
+    const gap = freedGap();
     mutate((s) => {
       const parent = s.tasks.find((t) => t.id === editable.id);
       if (parent) addException(parent, task.occurrenceDate, 'skip');
     });
-    showToast('Skipped this occurrence');
+    showToast('Skipped this occurrence — the pattern is unchanged');
+    offer(gap, `${task.title} skipped`);
     onClose();
   };
 
@@ -142,6 +157,7 @@ export default function TaskPanel({ task, sched, mutate, weekStart, onClose, sho
   };
 
   const del = (mode) => {
+    const gap = freedGap();
     mutate((s) => {
       const parent = s.tasks.find((t) => t.id === editable.id);
       if (!parent) return;
@@ -151,6 +167,9 @@ export default function TaskPanel({ task, sched, mutate, weekStart, onClose, sho
       else s.removeTask(parent.id);
     });
     showToast('Deleted');
+    // 3C: the time this was holding is now free. Offer its three fates rather
+    // than leaving the hole to be noticed later — or filling it uninvited.
+    offer(gap, `${task.title} removed`);
     onClose();
   };
 

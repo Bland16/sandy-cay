@@ -2,14 +2,14 @@
 // (per the B+C layout: day view is a main-area mode, not the panel).
 import { addDays, sameDay, hhmmToMinutes } from '../../core/index.js';
 import { DAY_FULL, DAY_KEYS, MONTHS, hourLabel, gridBounds, gridDayOf } from '../format.js';
-import { layoutDay } from '../layout.js';
+import { layoutDay, layoutRemainders } from '../layout.js';
 import TaskCard from './TaskCard.jsx';
 import Icon from '../Icon.jsx';
 
 const PXH = 42;
 
 export default function DayView({
-  sched, weekStart, dayIndex, onBack, onOpenTask, onToggleComplete, interaction,
+  sched, weekStart, dayIndex, onBack, onOpenTask, onToggleComplete, interaction, truncations,
 }) {
   const date = addDays(weekStart, dayIndex);
   // The grid day runs 05:00 → 05:00, so this column owns the small hours of the
@@ -58,6 +58,15 @@ export default function DayView({
             <div className="zone" key={b.key} style={{ top: b.top, height: b.height }}><span className="tag">{b.label}</span></div>
           ))}
           {tasks.length === 0 && <div className="empty">Nothing scheduled. A clear shore.</div>}
+          {layoutRemainders(laid, truncations, start, PXH).map((r) => (
+            <div
+              className="remainder"
+              key={r.key}
+              style={r.style}
+              aria-hidden="true"
+              title={`${r.title} — finished early, this time is free`}
+            />
+          ))}
           {laid.map(({ task, style, compact }) => (
             <TaskCard
               key={task.id}
