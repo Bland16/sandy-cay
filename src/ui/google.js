@@ -169,3 +169,43 @@ export function insertEvent(token, calendarId, body) {
 export function createCalendar(token, summary) {
   return call(token, '/calendars', { method: 'POST', body: JSON.stringify({ summary }) });
 }
+
+export function deleteEvent(token, calendarId, eventId) {
+  return call(token, `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`, {
+    method: 'DELETE',
+  });
+}
+
+/**
+ * Raw (unexpanded) events overlapping a window — recurring series come back as
+ * ONE event, which is what you want to delete.
+ */
+export async function listRawEvents(token, calendarId, from, to) {
+  const q = new URLSearchParams({
+    timeMin: rfc3339(from),
+    timeMax: rfc3339(to),
+    singleEvents: 'false',
+    maxResults: '250',
+  });
+  const data = await call(token, `/calendars/${encodeURIComponent(calendarId)}/events?${q}`);
+  return (data.items || []).filter((e) => e.status !== 'cancelled');
+}
+
+/**
+ * Empty a window on OUR calendar before re-pushing it.
+ *
+ * A push is one-shot, not a sync: without this, pushing the same week twice
+ * gives you two of everything. Replacing the window makes a re-push idempotent.
+ * Only ever call this against a calendar dedicated to Sandy Cay — it deletes
+ * whatever it finds.
+ * @returns {Promise<number>} how many were removed
+ */
+export async function clearRange(token, calendarId, from, to) {
+  const events = await listRawEvents(token, calendarId, from, to);
+  let n = 0;
+  for (const ev of events) {
+    await deleteEvent(token, calendarId, ev.id);
+    n += 1;
+  }
+  return n;
+}

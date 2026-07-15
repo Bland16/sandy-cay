@@ -7,7 +7,7 @@
 // Neither is a sync engine: push sends, pull reads. Nothing reconciles.
 import { useRef, useState } from 'react';
 import { addDays, toICS, parseICS, importEvents, toRRULE } from '../../core/index.js';
-import { getAccessToken, listCalendars, fetchEvents, taskToGoogleEvent, insertEvent, createCalendar } from '../google.js';
+import { getAccessToken, listCalendars, fetchEvents, taskToGoogleEvent, insertEvent, clearRange } from '../google.js';
 import Icon from '../Icon.jsx';
 
 const CLIENT_ID_KEY = 'sandy-cay:google-client-id';
@@ -26,6 +26,7 @@ export default function CalendarCard({ sched, weekStart, mutate, showToast }) {
   });
   const [cals, setCals] = useState(null);
   const [picked, setPicked] = useState([]);
+  const [target, setTarget] = useState(''); // where Export → Google writes
   const [tagFilter, setTagFilter] = useState('');
   const [busy, setBusy] = useState('');
 
@@ -76,25 +77,36 @@ export default function CalendarCard({ sched, weekStart, mutate, showToast }) {
     setBusy('connect');
     try {
       const token = await getAccessToken(clientId.trim());
-      setCals(await listCalendars(token));
-      showToast('Connected to Google Calendar');
+      const list = await listCalendars(token);
+      setCals(list);
+      // Default the push target to a calendar that already looks like ours,
+      // rather than making a new one every time and spamming the sidebar.
+      const mine = list.find((c) => c.canWrite && /sandy\s*cay/i.test(c.name));
+      setTarget((t) => t || (mine ? mine.id : ''));
+      showToast(`Connected · ${list.length} calendars`);
     } catch (err) {
       showToast(err.message);
     } finally { setBusy(''); }
   };
 
   const pushToGoogle = async () => {
+    if (!target) { showToast('Pick a calendar to export into first'); return; }
     setBusy('push');
     try {
       const token = await getAccessToken(clientId.trim());
-      const cal = await createCalendar(token, `Sandy Cay — week of ${weekStart.toDateString()}`);
+      const from = weekStart;
+      const to = addDays(weekStart, 7);
+      // A push is one-shot, not a sync: replace the week rather than duplicate
+      // it. Safe because `target` is a calendar dedicated to Sandy Cay.
+      const removed = await clearRange(token, target, from, to);
       const tasks = sched.getTasksForWeek(weekStart).filter((t) => !t.isOccurrence);
       let n = 0;
       for (const t of tasks) {
-        await insertEvent(token, cal.id, taskToGoogleEvent(t, toRRULE(t)));
+        await insertEvent(token, target, taskToGoogleEvent(t, toRRULE(t)));
         n += 1;
       }
-      showToast(`Pushed ${n} events to a new "Sandy Cay" calendar`);
+      const name = (cals.find((c) => c.id === target) || {}).name || 'calendar';
+      showToast(`Exported ${n} events to "${name}"${removed ? ` · replaced ${removed}` : ''}`);
     } catch (err) {
       showToast(err.message);
     } finally { setBusy(''); }
@@ -180,15 +192,34 @@ export default function CalendarCard({ sched, weekStart, mutate, showToast }) {
 
       <div className="chest" style={{ marginTop: 8 }}>
         <button className="btn2 ghost" disabled={!ready || !!busy} onClick={connect}>
-          {busy === 'connect' ? 'Connecting…' : 'Connect'}
-        </button>
-        <button className="btn2" disabled={!ready || !!busy} onClick={pushToGoogle}>
-          {busy === 'push' ? 'Pushing…' : 'Export → Google'}
+          {busy === 'connect' ? 'Connecting…' : cals ? 'Reconnect' : 'Connect'}
         </button>
       </div>
 
       {cals && (
         <>
+          <p style={{ margin: '10px 0 4px' }}>Export this week into:</p>
+          <div className="zonewin">
+            <select
+              value={target}
+              onChange={(e) => setTarget(e.target.value)}
+              style={{ flex: 1 }}
+              aria-label="Export target calendar"
+            >
+              <option value="">— pick a calendar —</option>
+              {cals.filter((c) => c.canWrite).map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+            <button className="btn2" style={{ maxWidth: 110 }} disabled={!target || !!busy} onClick={pushToGoogle}>
+              {busy === 'push' ? 'Exporting…' : 'Export →'}
+            </button>
+          </div>
+          <p className="insight" style={{ opacity: 0.75 }}>
+            Replaces this week in that calendar, so exporting twice doesn&apos;t double it.
+            Point it at a calendar you keep <b style={{ color: 'var(--cab-accent)' }}>only</b> for Sandy Cay.
+          </p>
+
           <p style={{ margin: '10px 0 4px' }}>Pull this week from:</p>
           <div className="zonewin" style={{ gap: 6, flexWrap: 'wrap' }}>
             {cals.map((c) => (
