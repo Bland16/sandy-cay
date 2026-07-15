@@ -186,6 +186,44 @@ describe('B — resize via the themed borders (OD-1)', () => {
     expect(timeOf(cardFor('Read novel'))).toBe('08:00–08:15');
   });
 
+  it('a recurring session running long extends THIS occurrence only (§4.4)', () => {
+    // The gym is pinned + recurring (Mon/Wed/Fri 08:00–09:00, Wed skipped). It
+    // ran long today — that's one session, not a new routine — so it writes a
+    // per-occurrence exception and Friday's gym is untouched.
+    render(<App />);
+    const monBefore = allCardsFor('Morning gym').find((c) => columnOf(c) === 0);
+    expect(timeOf(monBefore)).toBe('08:00–09:00');
+
+    dragStrip(monBefore, 'end', yAt(9, 30));
+
+    const after = allCardsFor('Morning gym');
+    expect(timeOf(after.find((c) => columnOf(c) === 0))).toBe('08:00–09:30'); // today ran long
+    expect(timeOf(after.find((c) => columnOf(c) === 4))).toBe('08:00–09:00'); // routine intact
+  });
+
+  it('an occurrence can be dragged within its own day — this session only', () => {
+    render(<App />);
+    const mon = allCardsFor('Morning gym').find((c) => columnOf(c) === 0);
+    dragBody(mon, xAt(0), yAt(10)); // 08:00 → 10:00, same Monday
+
+    const after = allCardsFor('Morning gym');
+    const moved = after.find((c) => columnOf(c) === 0);
+    expect(timeOf(moved)).toBe('10:00–11:00'); // today shifted
+    expect(timeOf(after.find((c) => columnOf(c) === 4))).toBe('08:00–09:00'); // routine intact
+  });
+
+  it('refuses to drag an occurrence to a different day (the exception is date-keyed)', () => {
+    render(<App />);
+    const mon = allCardsFor('Morning gym').find((c) => columnOf(c) === 0);
+    const before = timeOf(mon);
+    dragBody(mon, xAt(3), yAt(14)); // Monday → Thursday
+
+    const still = allCardsFor('Morning gym').find((c) => columnOf(c) === 0);
+    expect(columnOf(still)).toBe(0); // stayed put
+    expect(timeOf(still)).toBe(before);
+    expect(allCardsFor('Morning gym').some((c) => columnOf(c) === 3)).toBe(false);
+  });
+
   it('body drag is move, never resize', () => {
     render(<App />);
     const novel = cardFor('Read novel');

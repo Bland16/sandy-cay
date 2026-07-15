@@ -12,7 +12,8 @@
 // autoSchedule is never called (SPEC §2.4).
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { addDays, addMinutes, minutesBetween } from '../core/index.js';
+import { addDays, addMinutes, minutesBetween, addException, formatHHMM, sameDay } from '../core/index.js';
+import { gridDayOf } from './format.js';
 import {
   MIN_DURATION_MIN,
   atMinutes,
@@ -126,6 +127,27 @@ export function useCardInteraction({ sched, mutate, showToast, weekStart }) {
       return undefined;
     },
     [clearGhost],
+  );
+
+  /**
+   * Resize of a recurring occurrence → a per-occurrence `move` exception (§4.4).
+   * The occurrence is virtual (regenerated on read), so mutating it would be
+   * thrown away; the span has to live on the parent's exception list. Today's
+   * session changes, the pattern does not.
+   */
+  const applyOccurrenceSpan = useCallback(
+    (task, newStart, newEnd) => {
+      mutate((s) => {
+        const parent = s.tasks.find((t) => t.id === task.parentId);
+        if (!parent) return;
+        addException(parent, task.occurrenceDate, 'move', {
+          start: formatHHMM(newStart),
+          end: formatHHMM(newEnd),
+        });
+      });
+      showToast('Just this session — the pattern is unchanged');
+    },
+    [mutate, showToast],
   );
 
   /**
@@ -245,6 +267,22 @@ export function useCardInteraction({ sched, mutate, showToast, weekStart }) {
           endSession();
           return;
         }
+        if (task.isOccurrence) {
+          // A `move` exception is keyed to its own date and carries only times,
+          // so "today's gym is at 10:00" is expressible and "today's gym happens
+          // Wednesday" is not. Refuse the cross-day move rather than silently
+          // rewriting the routine.
+          if (!sameDay(gridDayOf(task.startTime), gridDayOf(newStart))) {
+            showToast('Repeating sessions move within their own day — edit the pattern to change days');
+            rejectGhost(s.origin);
+            endSession();
+            return;
+          }
+          applyOccurrenceSpan(task, newStart, newEnd);
+          settleGhost(rectFor(col, startMin, dur));
+          endSession();
+          return;
+        }
         applyOperation({
           cause: 'drop',
           task,
@@ -278,7 +316,7 @@ export function useCardInteraction({ sched, mutate, showToast, weekStart }) {
 
       if (s.mode === 'resize-end') {
         // Sand strip: endTime moves, start anchored (OD-1).
-        const newEndMin = clamp(minutesAt(col, y), startMin + MIN_DURATION_MIN, 24 * 60);
+        const newEndMin = clamp(minutesAt(col, y), startMin + MIN_DURATION_MIN, col.endHour * 60);
         if (newEndMin === endMin) {
           settleGhost(s.origin);
           endSession();
@@ -288,6 +326,12 @@ export function useCardInteraction({ sched, mutate, showToast, weekStart }) {
         const newEnd = atMinutes(day, newEndMin);
         const oldEnd = new Date(task.endTime.getTime());
         const growth = newEndMin - endMin;
+        if (task.isOccurrence) {
+          applyOccurrenceSpan(task, task.startTime, newEnd);
+          settleGhost(rectFor(col, startMin, newEndMin - startMin));
+          endSession();
+          return;
+        }
         applyOperation({
           cause: 'resize',
           task,
@@ -310,7 +354,7 @@ export function useCardInteraction({ sched, mutate, showToast, weekStart }) {
       }
 
       // Wave strip: startTime moves, end anchored (OD-1).
-      const newStartMin = clamp(minutesAt(col, y), 0, endMin - MIN_DURATION_MIN);
+      const newStartMin = clamp(minutesAt(col, y), col.startHour * 60, endMin - MIN_DURATION_MIN);
       if (newStartMin === startMin) {
         settleGhost(s.origin);
         endSession();
@@ -319,6 +363,12 @@ export function useCardInteraction({ sched, mutate, showToast, weekStart }) {
       const day = addDays(weekStart, col.dayIndex);
       const newStart = atMinutes(day, newStartMin);
       const oldStart = new Date(task.startTime.getTime());
+      if (task.isOccurrence) {
+        applyOccurrenceSpan(task, newStart, task.endTime);
+        settleGhost(rectFor(col, newStartMin, endMin - newStartMin));
+        endSession();
+        return;
+      }
       applyOperation({
         cause: 'resize',
         task,
@@ -420,7 +470,6 @@ export function useCardInteraction({ sched, mutate, showToast, weekStart }) {
 
   const begin = useCallback((e, task, compact, mode) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
-    if (task.isOccurrence) return; // occurrences are edited via exceptions (§4.4)
     // An open chooser is an unresolved conflict — settle it (or Esc) first.
     if (chooserRef.current) return;
     const rect = e.currentTarget.closest('.card').getBoundingClientRect();

@@ -47,7 +47,11 @@ export default function TaskCard({
   const kind = cardKind(task);
   // Recurrence occurrences are virtual (§4.4): moving one writes an exception,
   // which is not part of M2.1, so they stay click-to-open only.
-  const interactive = !ghost && !task.isOccurrence && !!onMoveStart;
+  // Occurrences drag and resize like anything else — a session that ran long or
+  // shifted is one session, and writes a per-occurrence exception (§4.4). Only a
+  // cross-day move is refused (the exception is keyed to its own date).
+  const interactive = !ghost && !!onMoveStart;
+  const movable = interactive;
   const cls = [
     'card', kind,
     task.schedulingWarning ? 'warn' : '',
@@ -78,7 +82,7 @@ export default function TaskCard({
       /* compact cards hide the .tm line, so the span lives in the name */
       aria-label={`${task.title} · ${fmtRange(task)}`}
       aria-grabbed={dragging ? 'true' : undefined}
-      onPointerDown={interactive ? (e) => onMoveStart(e, task, compact) : undefined}
+      onPointerDown={movable ? (e) => onMoveStart(e, task, compact) : undefined}
       onClick={() => onOpen(task)}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(task); } }}
     >
