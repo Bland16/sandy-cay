@@ -198,12 +198,11 @@ export default function CalendarCard({ sched, weekStart, mutate, showToast }) {
 
       {cals && (
         <>
-          <p style={{ margin: '10px 0 4px' }}>Export this week into:</p>
-          <div className="zonewin">
+          <p style={{ margin: '12px 0 4px' }}>Export this week into:</p>
+          <div className="calexport">
             <select
               value={target}
               onChange={(e) => setTarget(e.target.value)}
-              style={{ flex: 1 }}
               aria-label="Export target calendar"
             >
               <option value="">— pick a calendar —</option>
@@ -211,32 +210,43 @@ export default function CalendarCard({ sched, weekStart, mutate, showToast }) {
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </select>
-            <button className="btn2" style={{ maxWidth: 110 }} disabled={!target || !!busy} onClick={pushToGoogle}>
+            <button className="btn2" disabled={!target || !!busy} onClick={pushToGoogle}>
               {busy === 'push' ? 'Exporting…' : 'Export →'}
             </button>
           </div>
-          <p className="insight" style={{ opacity: 0.75 }}>
-            Replaces this week in that calendar, so exporting twice doesn&apos;t double it.
-            Point it at a calendar you keep <b style={{ color: 'var(--cab-accent)' }}>only</b> for Sandy Cay.
+          <p className="insight" style={{ opacity: 0.7 }}>
+            Replaces this week in that calendar, so exporting twice doesn&apos;t double it —
+            point it at one you keep <b style={{ color: 'var(--cab-accent)' }}>only</b> for Sandy Cay.
           </p>
 
-          <p style={{ margin: '10px 0 4px' }}>Pull this week from:</p>
-          <div className="zonewin" style={{ gap: 6, flexWrap: 'wrap' }}>
-            {cals.map((c) => (
-              <button
-                key={c.id}
-                className="w cabtag"
-                aria-pressed={picked.includes(c.id)}
-                style={{ borderColor: picked.includes(c.id) ? 'var(--cab-accent)' : undefined, cursor: 'pointer' }}
-                onClick={() => setPicked((p) => (p.includes(c.id) ? p.filter((x) => x !== c.id) : [...p, c.id]))}
-              >
-                {c.name}
-              </button>
-            ))}
+          <p style={{ margin: '12px 0 4px' }}>Pull this week from:</p>
+          <div className="callist">
+            {cals.map((c) => {
+              const on = picked.includes(c.id);
+              return (
+                <label key={c.id} className={`calrow${on ? ' on' : ''}`}>
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    onChange={() => setPicked((p) => (on ? p.filter((x) => x !== c.id) : [...p, c.id]))}
+                  />
+                  <span className="calname" title={c.name}>{c.name}</span>
+                  {c.primary && <span className="calmeta">primary</span>}
+                </label>
+              );
+            })}
           </div>
-          <button className="btn2" style={{ marginTop: 8 }} disabled={!picked.length || !!busy} onClick={pullFromGoogle}>
-            {busy === 'pull' ? 'Importing…' : `Import ← Google (${picked.length})`}
+          <button className="btn2" disabled={!picked.length || !!busy} onClick={pullFromGoogle}>
+            {busy === 'pull'
+              ? 'Importing…'
+              : picked.length
+                ? `Import ← ${picked.length} calendar${picked.length === 1 ? '' : 's'}`
+                : 'Import ← pick a calendar'}
           </button>
+          <p className="insight" style={{ opacity: 0.7 }}>
+            Each calendar&apos;s name becomes a tag, so events from Class Schedule arrive
+            tagged <b style={{ color: 'var(--cab-accent)' }}>class schedule</b>.
+          </p>
         </>
       )}
     </div>

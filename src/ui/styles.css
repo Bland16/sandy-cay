@@ -594,6 +594,32 @@ body.sc-dragging { user-select: none; }
 .shells .sprite.off { opacity: .35; filter: grayscale(1); }
 .empty .sprite { width: 30px; height: 30px; }
 
+/* ---------- Cabana → Calendar ----------
+   A calendar picker is a list, not chips: real names are long ("Holidays in
+   United States", an email address), so chips wrap one-per-line and read as
+   ragged rubble. Rows truncate, and a ticked row is unmistakable. */
+.callist { display: flex; flex-direction: column; gap: 4px; margin: 0 0 9px; }
+.calrow {
+  display: flex; align-items: center; gap: 9px; padding: 7px 10px; cursor: pointer;
+  border: 1.5px solid var(--cab-trim); border-radius: 8px; background: rgba(0,0,0,.18);
+  color: var(--cab-text); font-size: 12.5px; transition: background .1s, border-color .1s;
+}
+.calrow:hover { background: rgba(0,0,0,.32); }
+.calrow.on { border-color: var(--cab-accent); background: rgba(255,209,102,.14); }
+.calrow input { accent-color: var(--cab-accent); width: 15px; height: 15px; flex: none; margin: 0; }
+/* Long names shorten rather than reflow the row. */
+.calrow .calname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.calrow .calmeta { font-family: var(--font-type); font-size: 9px; opacity: .55; flex: none; }
+.calrow:focus-within { outline: 2px solid var(--cab-accent); outline-offset: 1px; }
+
+.calexport { display: flex; gap: 6px; align-items: center; margin-bottom: 2px; }
+.calexport select {
+  flex: 1; min-width: 0; background: rgba(0,0,0,.28); border: 1.5px solid var(--cab-trim);
+  border-radius: 8px; padding: 7px 8px; color: var(--cab-text);
+  font-family: var(--font-body); font-size: 12.5px;
+}
+.calexport .btn2 { flex: none; width: auto; padding: 7px 12px; }
+
 .cabtag { display: inline-flex; gap: 5px; align-items: center; }
 .chest { display: flex; gap: 8px; flex-wrap: wrap; }
 .btn2 { flex: 1; font-family: var(--font-body); font-weight: 800; font-size: 11.5px; color: #2c2016; background: var(--cab-accent); border: 2px solid #2c2016; border-radius: 9px; padding: 9px; cursor: pointer; display: flex; gap: 6px; justify-content: center; align-items: center; min-width: 100px; }
