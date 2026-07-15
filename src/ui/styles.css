@@ -133,7 +133,10 @@ body {
 /* ---------- body ---------- */
 .body { display: flex; align-items: stretch; min-height: 360px; }
 .main { flex: 1 1 auto; min-width: 0; }
-.gridwrap { overflow-x: auto; }
+/* The grid is a full 24h day (SPEC §2.1) — it scrolls rather than clipping the
+   night away, and opens on the working hours. Day headers stay put while it
+   scrolls so the columns never lose their labels. */
+.gridwrap { overflow: auto; max-height: 64vh; overscroll-behavior: contain; }
 
 /* past-week carry banner */
 .banner {
@@ -149,7 +152,18 @@ body {
 
 /* week grid */
 .grid { display: grid; grid-template-columns: 46px repeat(7, minmax(92px, 1fr)); min-width: 720px; }
-.axis-head, .dayhead { border-bottom: 2px solid var(--ink); padding: 6px 3px; }
+.axis-head, .dayhead {
+  border-bottom: 2px solid var(--ink); padding: 6px 3px;
+  position: sticky; top: 0; z-index: var(--z-chrome); background: var(--paper);
+}
+/* Hours outside the day's auto-placement window: the scheduler won't place
+   here, but you may drag here. Shading, never a missing row. */
+.offwindow {
+  position: absolute; left: 0; right: 0; z-index: var(--z-zone);
+  background: rgba(42,38,32,.055);
+  background-image: repeating-linear-gradient(135deg, transparent 0 5px, rgba(42,38,32,.03) 5px 10px);
+  pointer-events: none;
+}
 .dayhead { text-align: center; border-left: 1px solid var(--hair); cursor: pointer; transition: background .1s; background: none; font: inherit; }
 .dayhead:hover { background: var(--paper-shade); }
 .dayhead .dn { font-family: var(--font-display); font-size: 13.5px; line-height: 1; }

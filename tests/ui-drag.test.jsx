@@ -15,12 +15,16 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, cleanup, screen, fireEvent, within } from '@testing-library/react';
 import App from '../src/App.jsx';
+import { gridBounds } from '../src/ui/format.js';
 
 const COL_LEFT0 = 60;
 const COL_W = 100;
 const COL_TOP = 200;
 const PXH = 34; // WeekGrid
-const START_HOUR = 8; // gridBounds over the seed week
+// Follow the grid's own contract rather than duplicating a magic number — the
+// day is 5am-anchored and 24h tall, and these tests should track it.
+const { start: START_HOUR, end: END_HOUR } = gridBounds();
+const COL_H = (END_HOUR - START_HOUR) * PXH;
 
 /** Screen y of a minute-of-day in the week grid. */
 const yAt = (h, m = 0) => COL_TOP + (h + m / 60 - START_HOUR) * PXH;
@@ -38,7 +42,7 @@ beforeEach(() => {
   origRect = Element.prototype.getBoundingClientRect;
   Element.prototype.getBoundingClientRect = function stub() {
     if (this.dataset && this.dataset.dropzone !== undefined) {
-      return rect(xAt(Number(this.dataset.dayIndex)), COL_TOP, COL_W, 14 * PXH);
+      return rect(xAt(Number(this.dataset.dayIndex)), COL_TOP, COL_W, COL_H);
     }
     if (this.classList && this.classList.contains('card')) {
       const col = this.closest('[data-dropzone]');

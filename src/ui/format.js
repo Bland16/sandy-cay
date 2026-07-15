@@ -19,9 +19,11 @@ export function fmtDur(mins) {
 }
 
 /** 12-hour clock label matching the mockup's time axis ("8a", "1p"). */
+/** Grid rows run past 24 (the 5am-anchored day), so 26 must read "2a", not "2p". */
 export function hourLabel(h) {
-  const disp = h % 12 === 0 ? 12 : h % 12;
-  return `${disp}${h >= 12 ? 'p' : 'a'}`;
+  const hh = ((h % 24) + 24) % 24;
+  const disp = hh % 12 === 0 ? 12 : hh % 12;
+  return `${disp}${hh >= 12 ? 'p' : 'a'}`;
 }
 
 export function fmtTime(date) {
@@ -57,17 +59,40 @@ export function decimalHour(date) {
   return date.getHours() + date.getMinutes() / 60;
 }
 
-/** Grid vertical bounds derived from a week's tasks (keeps cards on-grid; the
- *  requirement: short events still legible, nothing clipped off the top/bottom).
- *  Defaults to the 8–18 working window and widens to fit outliers. */
-export function gridBounds(tasks) {
-  let lo = 8;
-  let hi = 18;
-  for (const t of tasks) {
-    lo = Math.min(lo, Math.floor(decimalHour(t.startTime)));
-    hi = Math.max(hi, Math.ceil(decimalHour(t.endTime)));
-  }
-  return { start: Math.max(0, lo), end: Math.min(24, Math.max(hi, lo + 4)) };
+/** The grid is a full 24 hours (SPEC §2.1, §11: "the grid is 24h and users may
+ *  drag anywhere"). config.windows bound AUTOMATIC placement only, so hours
+ *  outside them still exist as drop targets — shaded, not missing (windowForDay).
+ *
+ *  The day is anchored at 05:00 rather than midnight: it runs 05:00 → 05:00, so
+ *  a 02:00 task belongs to the night it actually belongs to (the previous
+ *  column, row 26) instead of jumping to the next day. Rows therefore run
+ *  5 → 29, and hour 26 means 02:00 tomorrow. */
+export const DAY_START_HOUR = 5;
+export function gridBounds() {
+  return { start: DAY_START_HOUR, end: DAY_START_HOUR + 24 }; // 5 → 29
+}
+
+/** Decimal hour on the 5am-anchored grid: 02:00 → 26, 09:30 → 9.5. */
+export function gridHour(date) {
+  const h = decimalHour(date);
+  return h < DAY_START_HOUR ? h + 24 : h;
+}
+
+/** The calendar day whose 05:00→05:00 window contains `date`. A 02:00 Tuesday
+ *  task belongs to Monday's column. */
+export function gridDayOf(date) {
+  const d = new Date(date.getTime());
+  if (d.getHours() < DAY_START_HOUR) d.setDate(d.getDate() - 1);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+/** The auto-placement window for a day key (§2.1) — the hours outside it are
+ *  shaded: the scheduler won't place there, but you may drag there. */
+export function windowForDay(config, dayKey) {
+  if (dayKey === 'sat') return config.windows.sat;
+  if (dayKey === 'sun') return config.windows.sun;
+  return config.windows.monFri;
 }
 
 /** A recurring occurrence card carries id "parent@YYYY-MM-DD". */

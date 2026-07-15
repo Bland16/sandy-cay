@@ -1,7 +1,7 @@
 // DayView — single day, replaces the main area with its own ✕ back control
 // (per the B+C layout: day view is a main-area mode, not the panel).
-import { addDays, hhmmToMinutes } from '../../core/index.js';
-import { DAY_FULL, DAY_KEYS, MONTHS, hourLabel, gridBounds } from '../format.js';
+import { addDays, sameDay, hhmmToMinutes } from '../../core/index.js';
+import { DAY_FULL, DAY_KEYS, MONTHS, hourLabel, gridBounds, gridDayOf } from '../format.js';
 import { layoutDay } from '../layout.js';
 import TaskCard from './TaskCard.jsx';
 import Icon from '../Icon.jsx';
@@ -12,8 +12,11 @@ export default function DayView({
   sched, weekStart, dayIndex, onBack, onOpenTask, onToggleComplete, interaction,
 }) {
   const date = addDays(weekStart, dayIndex);
-  const tasks = sched.getTasksForDay(date);
-  const { start, end } = gridBounds(tasks);
+  // The grid day runs 05:00 → 05:00, so this column owns the small hours of the
+  // NEXT calendar day. Pull both and keep what this grid-day actually holds.
+  const tasks = [...sched.getTasksForDay(date), ...sched.getTasksForDay(addDays(date, 1))]
+    .filter((t) => sameDay(gridDayOf(t.startTime), date));
+  const { start, end } = gridBounds();
   const colHeight = (end - start) * PXH;
   const hours = [];
   for (let h = start; h < end; h += 1) hours.push(h);
