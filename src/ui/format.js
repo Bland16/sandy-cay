@@ -1,7 +1,7 @@
 // format.js — pure presentation helpers (no engine mutation). Time math for
 // display only; the engine remains the source of truth for scheduling.
 
-import { formatHHMM, weekStart, addDays } from '../core/index.js';
+import { formatHHMM, weekStart, addDays, isoWeek } from '../core/index.js';
 
 export const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 export const DAY_FULL = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -35,23 +35,21 @@ export function fmtRange(task) {
   return `${fmtTime(task.startTime)}–${fmtTime(task.endTime)}`;
 }
 
-/** "July 13 – 19" week-range sign, plus the "2026 · wk NN" sub-line. */
+/** "July 13 – 19" week-range sign, plus the "2026 · wk NN" sub-line.
+ *
+ *  Both the year and the week come from the engine's `isoWeek`, and they have to
+ *  come from the SAME place: pairing a calendar year with an ISO week number
+ *  mislabels the turn of the year (the week of 2026-12-28 is 2026-W53, so a
+ *  calendar year would sign it "2027 · wk 53"). The Wrap report's filename is
+ *  built from the same helper, so the sign and the PDF always agree. */
 export function weekSign(ws) {
   const start = weekStart(ws);
   const end = addDays(start, 6);
   const sameMonth = start.getMonth() === end.getMonth();
   const left = `${MONTHS[start.getMonth()]} ${start.getDate()}`;
   const right = sameMonth ? `${end.getDate()}` : `${MONTHS[end.getMonth()]} ${end.getDate()}`;
-  return { range: `${left} – ${right}`, sub: `${start.getFullYear()} · wk ${isoWeek(start)}` };
-}
-
-export function isoWeek(date) {
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  const dayNum = (d.getUTCDay() + 6) % 7;
-  d.setUTCDate(d.getUTCDate() - dayNum + 3);
-  const firstThursday = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
-  const diff = d - firstThursday;
-  return 1 + Math.round(diff / (7 * 24 * 3600 * 1000));
+  const { year, week } = isoWeek(start);
+  return { range: `${left} – ${right}`, sub: `${year} · wk ${week}` };
 }
 
 /** Hour in decimal (9:30 → 9.5) for grid positioning. */

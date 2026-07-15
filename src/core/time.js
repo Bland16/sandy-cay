@@ -112,6 +112,54 @@ export function atTime(day, hhmm) {
   return d;
 }
 
+/* ---- inclusive edges over a half-open core -------------------------------
+ * Internally every range is half-open: `effectiveFrom` is inclusive and
+ * `effectiveUntil` is EXCLUSIVE. That is not a whim — `splitPeriod` ends the old
+ * period exactly where the new one begins (`until === from`), so periods tile
+ * with no gap and no overlap. Make the core inclusive and every seam grows a
+ * ±1-day fudge.
+ *
+ * Humans and other calendars mean the opposite. "My summer job ends Friday the
+ * 24th" means the 24th is the last day worked, and RFC 5545's RRULE UNTIL is
+ * inclusive too. So the boundary converts, in exactly one place: these two.
+ * Every edge — the recurrence editor, the zone editor, .ics import/export —
+ * goes through them, so the app can never disagree with itself by a day.
+ */
+
+/** Half-open bound → the last day it actually runs. null means "runs forever". */
+export function lastRunDay(until) {
+  return until ? addDays(dayStart(until), -1) : null;
+}
+
+/** The last day it runs → the half-open bound the engine wants. */
+export function untilAfterLastRun(lastDay) {
+  return lastDay ? addDays(dayStart(lastDay), 1) : null;
+}
+
+/**
+ * ISO-8601 week number → { year, week }. The year is the ISO week-numbering
+ * year, which is NOT always the calendar year: 2027-01-01 is a Friday, so it
+ * belongs to 2026-W53, and 2026-12-28 is a Monday already in 2027-W01. The
+ * Wrap report's filename sorts chronologically only if we honour that.
+ *
+ * Method: the Thursday of a week always falls in that week's ISO year, so we
+ * count weeks from the Thursday of the target week back to Jan 1 of that
+ * Thursday's year.
+ */
+export function isoWeek(date) {
+  const thursday = addDays(weekStart(date), 3);
+  const year = thursday.getFullYear();
+  const jan1 = new Date(year, 0, 1, 0, 0, 0, 0);
+  const week = Math.floor(daysBetween(jan1, thursday) / 7) + 1;
+  return { year, week };
+}
+
+/** ISO week stamp 'YYYY-Www' — the Wrap report's filename stem (SPEC §7.1). */
+export function isoWeekKey(date) {
+  const { year, week } = isoWeek(date);
+  return `${year}-W${String(week).padStart(2, '0')}`;
+}
+
 /** Serialize a Date | null to an ISO-ish local marker for JSON round-trips. */
 export function dateToJSON(date) {
   return date ? date.getTime() : null;

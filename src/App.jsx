@@ -7,7 +7,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import './ui/styles.css';
 import {
   weekStart as weekStartOf, addDays, letThemGo, dateKey, addException, formatHHMM,
-  minutesBetween,
+  minutesBetween, checkRollover, commitRollover,
 } from './core/index.js';
 import { useEngine } from './ui/useEngine.js';
 import { useCardInteraction } from './ui/useCardInteraction.js';
@@ -25,6 +25,7 @@ import ClearDayPanel, { applyClearDay } from './ui/components/ClearDayPanel.jsx'
 import GapToast from './ui/components/GapToast.jsx';
 import OccurrenceMenu from './ui/components/OccurrenceMenu.jsx';
 import OverpackNotice from './ui/components/OverpackNotice.jsx';
+import WrapReport from './ui/components/WrapReport.jsx';
 import Icon from './ui/Icon.jsx';
 
 const GAP_OFFER_MS = 9000; // long enough to read three options and choose one
@@ -49,7 +50,9 @@ export default function App() {
   const { sched, version, mutate, replace, reset, persistence, saveState } = useEngine();
   const now = useRef(new Date()).current;
   const [weekStart, setWeekStart] = useState(() => weekStartOf(now));
-  const [view, setView] = useState('week'); // 'week' | 0..6 | 'cabana'
+  const [view, setView] = useState('week'); // 'week' | 0..6 | 'cabana' | 'report'
+  const [reportWeek, setReportWeek] = useState(null); // which week the report is OF
+  const [rollover, setRollover] = useState(null); // { closedWeek } — the R-7 offer
   const [selection, setSelection] = useState(null); // null | 'wtd'|'find'|'add-task'|'add-project' | {taskId}
   const [toast, setToast] = useState(null);
   const [dayMenu, setDayMenu] = useState(null); // { dayIndex, anchor } — the day-header ⋯
@@ -170,6 +173,45 @@ export default function App() {
     showToast(`${DAY_NAMES[clearDay.dayIndex]} cleared · ${bits.join(', ')}`);
   }, [clearDay, weekStart, mutate, showToast]);
 
+  // ---- R-7 — the week-closes moment --------------------------------------
+  /**
+   * Checked on mount and whenever the tab comes back to the foreground, because
+   * this app is one you leave open: a tab that sat through Sunday midnight has
+   * rolled over even though it never reloaded. No timer — the engine must never
+   * read a clock it wasn't handed (sharp edge #8), and a midnight setTimeout is
+   * exactly that with extra steps.
+   *
+   * Rollover retrains and OFFERS. It does not carry anything over: §3.6's
+   * banner already asks that question with a real "Let them go" beside it, and
+   * relocating a real person's week while they were away is the surprise P-1
+   * exists to prevent.
+   */
+  useEffect(() => {
+    const check = () => {
+      const at = new Date();
+      const r = checkRollover(sched, at);
+      if (r.firstRun) {
+        // Nothing closed — just remember where we came in. A wrap report on a
+        // week the user has never used is an empty page with a title.
+        mutate((s) => s.markWeekSeen(at));
+        return;
+      }
+      if (!r.rolled) return;
+      // Retrain BEFORE the report exists to be read (R-7's stated order), so
+      // its insights are this week's rather than last week's.
+      const done = mutate((s) => commitRollover(s, at));
+      setRollover({ closedWeek: done.closedWeek });
+    };
+    check();
+    const onVisible = () => { if (!document.hidden) check(); };
+    window.addEventListener('focus', check);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.removeEventListener('focus', check);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [sched, mutate]);
+
   // ---- §7.3 — overpack ---------------------------------------------------
   const weekKey = dateKey(weekStart);
   const showOverpack = overpack && overpack.weekKey === weekKey;
@@ -224,7 +266,14 @@ export default function App() {
     );
   };
   const wrapUp = () => { const r = mutate((s) => s.carryOver(weekStart, addDays(weekStart, 7))); showToast(`Wrapped · ${r.carried.length} carried, ${r.missedDeadline.length} missed`); };
-  const wrapReport = () => showToast('Wrap report (PDF) — coming in M2');
+  const openReport = useCallback((ws) => {
+    setReportWeek(ws);
+    setView('report');
+    setSelection(null);
+    setDayMenu(null);
+    setRollover(null);
+  }, []);
+  const wrapReport = () => openReport(weekStart);
   const blockDays = (from, to, label) => { const r = mutate((s) => s.blockRange(from, to, label)); showToast(`Blocked ${r.length || ''} day(s)`.trim()); };
 
   const carryForward = () => { const r = mutate((s) => s.carryOver(weekStart, weekStartOf(now))); showToast(`Carried ${r.carried.length} forward`); };
@@ -276,7 +325,7 @@ export default function App() {
       <div className="frame">
         <div className="filmstrip" aria-hidden="true" />
 
-        {view !== 'cabana' && (
+        {view !== 'cabana' && view !== 'report' && (
           <TopBar
             sched={sched}
             weekStart={weekStart}
@@ -294,7 +343,19 @@ export default function App() {
           />
         )}
 
-        {isPastWeek && hasCarryable && view !== 'cabana' && (
+        {/* R-7's offer. An offer, not an interruption: the week is right there
+            behind it, and "Not now" is a real answer that doesn't come back. */}
+        {rollover && view !== 'cabana' && view !== 'report' && (
+          <div className="banner">
+            <span className="grow">
+              Last week wrapped up. Want to read how it went?
+            </span>
+            <button className="cta" onClick={() => openReport(rollover.closedWeek)}>Read the wrap report</button>
+            <button onClick={() => setRollover(null)}>Not now</button>
+          </div>
+        )}
+
+        {isPastWeek && hasCarryable && view !== 'cabana' && view !== 'report' && (
           <div className="banner">
             <span className="grow">This week has passed. Carry unfinished tasks forward, or let them go?</span>
             <button className="cta" onClick={carryForward}>Carry forward</button>
@@ -302,7 +363,24 @@ export default function App() {
           </div>
         )}
 
-        {view === 'cabana' ? (
+        {view === 'report' ? (
+          <WrapReport
+            sched={sched}
+            weekStart={reportWeek || weekStart}
+            version={version}
+            mutate={mutate}
+            showToast={showToast}
+            onBack={() => setView('week')}
+            onOpenTask={(taskId) => {
+              // "Change the pattern" lives in the task's own editor, not in a
+              // report — so the report hands off rather than growing a second
+              // recurrence UI that could disagree with the first.
+              setWeekStart(weekStartOf(reportWeek || weekStart));
+              setView('week');
+              setSelection({ taskId });
+            }}
+          />
+        ) : view === 'cabana' ? (
           <Cabana
             sched={sched}
             mutate={mutate}

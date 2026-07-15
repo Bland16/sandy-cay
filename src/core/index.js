@@ -17,15 +17,20 @@ export * as time from './time.js';
 export {
   weekStart, addDays, atTime, dateKey, dateFromKey, sameDay,
   formatHHMM, hhmmToMinutes, dayStart, addMinutes, minutesBetween,
+  isoWeek, isoWeekKey, lastRunDay, untilAfterLastRun,
 } from './time.js';
 export { chooseConflictStrategy, strategyCosts, resolveDropConflicts } from './conflicts.js';
 export { rippleShift } from './ripple.js';
 export { evacuateDay, blockRange } from './evacuate.js';
 export { carryOver, letThemGo } from './carryOver.js';
+export { checkRollover, commitRollover, weekAfter, weekKeyOf } from './rollover.js';
 export { autoSchedule, freeCapacityBefore } from './autoSchedule.js';
 export { expandRecurrence, addException, splitPeriod, temporaryChange, endRecurrence } from './recurrence.js';
 export { addProject, shrinkChunk, growChunk, deleteChunk, resizeChunk, finishProject, sliceChunks, redistribute } from './projects.js';
-export { getWeekLoad, getTagBreakdown, snapshot, snapshotDiff } from './queries.js';
+export {
+  getWeekLoad, getTagBreakdown, snapshot, snapshotDiff,
+  dayGaps, getBreakCompression, getSatisfactionMatrix,
+} from './queries.js';
 export { whatToDo, currentOpening, openingLabel } from './whatToDo.js';
 export {
   toICS, parseICS, importEvents, eventToTask, deriveTags,

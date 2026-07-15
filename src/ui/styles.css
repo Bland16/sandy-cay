@@ -691,3 +691,179 @@ button:focus-visible, .dhopen:focus-visible, .card:focus-visible, .slot:focus-vi
   .panel { flex-basis: 100%; width: 100%; max-height: none; border-left: none; border-top: 2px solid var(--ink); }
   .body { flex-direction: column; }
 }
+
+/* ---------- Wrap report (§7.1 / R-7) ----------
+   A real document, not a data dump. The screen version is a full page (like the
+   Cabana), which matters for one hard reason: window.print() renders the whole
+   DOCUMENT, so the report must be able to hide the entire app around it. The
+   @media print block below is what turns this page into the PDF — there is no
+   PDF library (OD-15); the browser is the renderer.
+
+   P-1 in CSS terms: no red numbers, no bar racing a target, no button styled as
+   the answer the app is hoping for. Suggestion actions are all .btn2, never
+   .cta, and they share one chassis so neither option can outweigh the other. */
+.rp-page { flex: 1; min-height: 0; overflow: auto; background: var(--paper-shade); }
+.rp-chrome {
+  position: sticky; top: 0; z-index: var(--z-chrome); display: flex; align-items: center; gap: 10px;
+  padding: 9px 14px; background: var(--paper); border-bottom: 2px solid var(--ink);
+}
+.rp-chrome .grow { flex: 1; }
+.rp-chrome-hint { font-size: 11px; color: var(--ink-soft); }
+.rp-chrome-hint code { font-family: var(--font-type); font-size: 11px; }
+
+/* Sized in mm so the on-screen preview is honestly the printed page. */
+.rp-sheet {
+  width: 190mm; max-width: 100%; margin: 14px auto; padding: 14mm 13mm;
+  background: #fff; border: 1px solid var(--hair); box-shadow: 0 8px 26px rgba(0,0,0,.18);
+  color: var(--ink); font-size: 11.5px; line-height: 1.5;
+}
+
+.rp-title { text-align: center; margin-bottom: 14px; }
+.rp-title-rule { display: block; height: 2px; background: var(--ink); margin: 0 auto 9px; width: 62%; }
+.rp-title-rule:last-child { margin: 9px auto 0; }
+.rp-title h1 {
+  font-family: var(--font-display); font-weight: 400; font-size: 25px; margin: 0;
+  letter-spacing: .5px; text-transform: uppercase;
+}
+.rp-range { font-family: var(--font-type); font-size: 12px; margin: 5px 0 0; letter-spacing: .06em; }
+.rp-weekkey { font-family: var(--font-type); font-size: 9.5px; color: var(--ink-soft); margin: 2px 0 0; letter-spacing: .14em; }
+
+.rp-section { margin-top: 15px; }
+.rp-section h2 {
+  font-family: var(--font-display); font-weight: 400; font-size: 15px; margin: 0 0 8px;
+  padding-bottom: 4px; border-bottom: 2px solid var(--ink);
+}
+.rp-section h3 {
+  font-family: var(--font-body); font-weight: 800; font-size: 10.5px; margin: 0 0 5px;
+  text-transform: uppercase; letter-spacing: .07em; color: var(--ink-soft);
+}
+.rp-sub { margin-top: 11px; }
+.rp-cols { display: grid; grid-template-columns: 1.35fr 1fr; gap: 18px; margin-top: 11px; }
+.rp-line { margin: 0 0 4px; }
+.rp-dim { color: var(--ink-soft); }
+
+/* Stat wells (FRONTEND-SPEC sheet 1, cell 4,1 — the deep inset frame). */
+.rp-stats { display: flex; gap: 9px; margin-bottom: 11px; flex-wrap: wrap; }
+.rp-stat {
+  flex: 1; min-width: 78px; border: 2px solid var(--ink); border-radius: 7px;
+  padding: 7px 9px; background: var(--paper); display: flex; flex-direction: column; gap: 1px;
+}
+.rp-stat-val { font-family: var(--font-type); font-size: 17px; line-height: 1.15; }
+.rp-stat-label { font-size: 9.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-soft); }
+.rp-stat-hint { font-size: 9px; color: var(--ink-soft); }
+
+.rp-list { list-style: none; margin: 0; padding: 0; }
+.rp-list li {
+  display: flex; align-items: center; gap: 6px; padding: 3.5px 0;
+  border-bottom: 1px solid var(--hair);
+}
+.rp-list .grow { flex: 1; }
+.rp-check { color: var(--rest); display: inline-flex; }
+.rp-item-title { font-weight: 700; }
+.rp-tag {
+  font-size: 9px; padding: 1px 5px; border: 1px solid var(--hair); border-radius: 8px;
+  color: var(--ink-soft); background: var(--paper);
+}
+.rp-dur { font-family: var(--font-type); font-size: 10.5px; color: var(--ink-soft); }
+
+/* An unrated shell must read as EMPTY, not as a paler shell. --hair is a sand
+   tint at full opacity, and the glyph is a filled shape, so "off" still looked
+   like a shell — five shapes on the page, and a rating of 2 got read as 5. This
+   matches the app's own rating control (.shells svg.off): grey, well under half
+   opacity. The numeral beside it is what actually carries the value. */
+.rp-shells { display: inline-flex; gap: 1px; align-items: center; vertical-align: middle; }
+.rp-shells .on { color: var(--cta); }
+.rp-shells .off { color: var(--ink-soft); opacity: .28; }
+.rp-shells-num { font-family: var(--font-type); font-size: 10.5px; margin-left: 4px; }
+
+.rp-projects { margin-top: 9px; }
+.rp-project { display: flex; align-items: center; gap: 7px; padding: 4px 0; }
+.rp-project .grow { flex: 1; }
+.rp-progress {
+  width: 62px; height: 7px; border: 1.5px solid var(--ink); border-radius: 4px;
+  overflow: hidden; background: var(--paper);
+}
+.rp-progress i { display: block; height: 100%; background: var(--cta); }
+
+/* The quiet count (§7.1). Small and uncoloured on purpose: a fact in passing,
+   not a verdict — and never, ever an itemised list. */
+.rp-skipped { margin: 9px 0 0; font-size: 10.5px; color: var(--ink-soft); font-style: italic; }
+
+/* Sand-bar day-load chart. */
+.rp-chart { display: flex; gap: 5px; align-items: flex-end; height: 74px; margin: 4px 0 2px; }
+.rp-bar { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; height: 100%; }
+.rp-bar-track { flex: 1; width: 100%; display: flex; align-items: flex-end; border-bottom: 2px solid var(--ink); }
+.rp-bar-fill {
+  width: 100%; min-height: 2px; border: 2px solid var(--ink); border-bottom: none; border-radius: 4px 4px 0 0;
+  background: repeating-linear-gradient(180deg, rgba(232,185,77,.55) 0 3px, rgba(232,185,77,.32) 3px 6px);
+}
+.rp-bar-day { font-size: 9px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); }
+.rp-bar-val { font-family: var(--font-type); font-size: 8.5px; color: var(--ink-soft); }
+
+.rp-table { width: 100%; border-collapse: collapse; font-size: 10.5px; }
+.rp-table th {
+  text-align: left; font-size: 9px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--ink-soft); border-bottom: 1.5px solid var(--ink); padding: 2px 4px 3px; font-weight: 800;
+}
+.rp-table td { padding: 3px 4px; border-bottom: 1px solid var(--hair); }
+.rp-matrix td, .rp-matrix th { text-align: center; }
+.rp-matrix td:first-child, .rp-matrix th:first-child { text-align: left; }
+.rp-plain { margin: 0; padding-left: 16px; }
+.rp-plain li { padding: 1px 0; }
+
+.rp-sugg {
+  border: 2px solid var(--ink); border-radius: 9px; padding: 9px 11px; margin-top: 8px;
+  background: var(--paper);
+}
+.rp-sugg-head { font-weight: 800; font-size: 12px; }
+.rp-sugg-detail { margin: 3px 0 0; color: var(--ink-soft); }
+.rp-sugg-actions { display: flex; gap: 7px; margin-top: 8px; }
+.rp-sugg-actions .btn2 { flex: 0 1 auto; max-width: none; }
+
+.rp-empty { text-align: center; padding: 40px 16px; color: var(--ink-soft); }
+.rp-empty p { margin: 7px 0 0; }
+.rp-empty p:first-of-type { font-size: 13px; color: var(--ink); }
+
+.rp-foot {
+  display: flex; margin-top: 16px; padding-top: 7px; border-top: 1px solid var(--hair);
+  font-family: var(--font-type); font-size: 8.5px; color: var(--ink-soft);
+}
+.rp-foot .grow { flex: 1; }
+
+@media (max-width: 720px) { .rp-cols { grid-template-columns: 1fr; } }
+
+/* ---------- print: the report IS the page (OD-15) ---------- */
+@page { size: A4 portrait; margin: 12mm; }
+
+@media print {
+  /* Everything that is app rather than document. The report is a full page
+     precisely so this list can be short and total. */
+  .masthead, .filmstrip, .topbar, .footer, .banner, .toastwrap,
+  .rp-chrome, .dropdown, .daymenu { display: none !important; }
+
+  html, body { background: #fff !important; }
+  body { font-size: 10.5pt; }
+  .stage { padding: 0; min-height: 0; display: block; }
+  .frame { border: none; box-shadow: none; border-radius: 0; background: #fff; display: block; min-height: 0; }
+  .rp-page { overflow: visible; background: #fff; display: block; }
+  .rp-sheet {
+    width: auto; max-width: none; margin: 0; padding: 0;
+    border: none; box-shadow: none; background: #fff;
+  }
+
+  /* Controls do not exist on paper. A "Let it go" button printed into a PDF is
+     a button that lies about being pressable. */
+  .rp-sugg-actions { display: none !important; }
+
+  /* Let sections flow across the break, but never tear a row, a card, or a
+     heading away from what it introduces. No hard page budget: a busy week is
+     allowed to be a busy week (§7.1, relaxed from 2 to ~5) — the report never
+     drops rows to save paper. */
+  .rp-sugg, .rp-list li, .rp-project, .rp-stat, .rp-chart, .rp-table tr, .rp-sub { break-inside: avoid; }
+  .rp-title { break-after: avoid; }
+  .rp-section h2, .rp-section h3 { break-after: avoid; }
+
+  /* Tint is meaning here (shells, sand bars), so it survives the print dialog's
+     default of dropping backgrounds. */
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
