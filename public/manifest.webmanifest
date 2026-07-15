@@ -1,0 +1,13 @@
+{
+  "name": "Sandy Cay",
+  "short_name": "Sandy Cay",
+  "description": "A scheduling app that never guilts.",
+  "start_url": "/sandy-cay/",
+  "scope": "/sandy-cay/",
+  "display": "standalone",
+  "background_color": "#F1E9D8",
+  "theme_color": "#2E8C99",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

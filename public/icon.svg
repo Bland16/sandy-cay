@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Sandy Cay">
+  <!-- Tide pool from above (asset prompt #6): alice-blue field, ring of golden
+       sand, teal water holding a starfish and a shell. Flat, reads at 48px. -->
+  <rect width="512" height="512" rx="112" fill="#F0F8FF"/>
+  <circle cx="256" cy="256" r="176" fill="#E8B94D"/>
+  <circle cx="256" cy="256" r="140" fill="#2E8C99"/>
+  <circle cx="256" cy="256" r="140" fill="#4ECDC4" opacity="0.35"/>
+  <!-- starfish -->
+  <g fill="#F4A259" transform="translate(212 214) scale(0.9)">
+    <path d="M40 0 L52 30 L84 30 L58 50 L68 82 L40 62 L12 82 L22 50 L-4 30 L28 30 Z"/>
+  </g>
+  <!-- shell -->
+  <g transform="translate(292 300)">
+    <path d="M0 34 A34 34 0 0 1 68 34 Z" fill="#F5E9D9"/>
+    <path d="M34 34 L20 2 M34 34 L34 -2 M34 34 L48 2" stroke="#8B6F52" stroke-width="4" fill="none" stroke-linecap="round"/>
+  </g>
+</svg>
