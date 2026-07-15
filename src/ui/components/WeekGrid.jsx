@@ -21,9 +21,20 @@ function offWindowBands(config, dayKey, startHour, endHour) {
   return bands;
 }
 
-function zoneBands(zones, dayKey, startHour) {
+/**
+ * Zone bands for one day column.
+ *
+ * `date` is not optional bookkeeping: a zone can be bounded (a summer job, a
+ * term) via effectiveFrom/effectiveUntil, and this used to take no date at all —
+ * so it painted every zone into every week, past and future, however narrow the
+ * zone's actual run. The engine has always honoured the bounds when PLACING
+ * (placement.js checks `activeOn`), which made it worse than cosmetic: the grid
+ * showed reserved time in weeks where the scheduler correctly saw none.
+ */
+function zoneBands(zones, dayKey, startHour, date) {
   const bands = [];
   for (const z of zones) {
+    if (date && !z.activeOn(date)) continue;
     for (const w of z.windowsForDay(dayKey)) {
       const s = hhmmToMinutes(w.start) / 60;
       const e = hhmmToMinutes(w.end) / 60;
@@ -99,7 +110,7 @@ export default function WeekGrid({
           const date = addDays(weekStart, i);
           // Grid-day, not calendar-day: a 02:00 task belongs to the night before.
           const dayTasks = weekTasks.filter((t) => sameDay(gridDayOf(t.startTime), date));
-          const bands = zoneBands(sched.zones, DAY_KEYS[i], start);
+          const bands = zoneBands(sched.zones, DAY_KEYS[i], start, date);
           const laid = layoutDay(dayTasks, start, PXH);
           return (
             <div

@@ -3,7 +3,7 @@
 // Tag roles (protected tags), Footlocker (export/import), Insights
 // (getTagBreakdown + learned weights read), Retrain.
 import { useRef, useState } from 'react';
-import { exportState, summarizeImport, dateKey, dateFromKey } from '../../core/index.js';
+import { exportState, summarizeImport, dateKey, dateFromKey, lastRunDay, untilAfterLastRun } from '../../core/index.js';
 import { DAY_NAMES, DAY_KEYS, fmtDur } from '../format.js';
 import Icon from '../Icon.jsx';
 import CalendarCard from './CalendarCard.jsx';
@@ -207,16 +207,18 @@ export default function Cabana({ sched, mutate, weekStart, onBack, onReplace, on
                     aria-label="Zone start date"
                   />
                   →
+                  {/* Shown and read as the LAST DAY IT RUNS. The engine stores a
+                      half-open bound, so the edge converts — see time.js. */}
                   <input
                     type="date"
-                    value={z.effectiveUntil ? dateKey(z.effectiveUntil) : ''}
-                    onChange={(e) => mutate((s) => s.updateZone(z.id, { effectiveUntil: e.target.value ? dateFromKey(e.target.value) : null }))}
+                    value={z.effectiveUntil ? dateKey(lastRunDay(z.effectiveUntil)) : ''}
+                    onChange={(e) => mutate((s) => s.updateZone(z.id, { effectiveUntil: e.target.value ? untilAfterLastRun(dateFromKey(e.target.value)) : null }))}
                     aria-label="Zone end date"
                   />
                 </div>
                 <p className="insight" style={{ opacity: 0.7 }}>
-                  Leave blank for always. The end date is the last day it stops <i>after</i> —
-                  a summer job ending Fri the 24th runs until the 25th.
+                  Leave blank for always. Both dates are days it runs — a summer job
+                  ending Fri the 24th ends on the 24th.
                 </p>
                 <button className="btn2 ghost" style={{ marginTop: 8, padding: '5px 9px' }} onClick={() => { removeZone(z.id); setEditingId(null); }}>remove zone</button>
               </>

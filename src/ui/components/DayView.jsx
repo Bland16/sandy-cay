@@ -24,6 +24,9 @@ export default function DayView({
 
   const bands = [];
   for (const z of sched.zones) {
+    // A bounded zone (a summer job, a term) is not in force outside its run —
+    // same rule the week grid and the placement engine apply.
+    if (!z.activeOn(date)) continue;
     for (const w of z.windowsForDay(DAY_KEYS[dayIndex])) {
       const s = hhmmToMinutes(w.start) / 60;
       const e = hhmmToMinutes(w.end) / 60;
