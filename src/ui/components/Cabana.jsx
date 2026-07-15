@@ -6,6 +6,7 @@ import { useRef, useState } from 'react';
 import { exportState, summarizeImport } from '../../core/index.js';
 import { DAY_NAMES, DAY_KEYS, fmtDur } from '../format.js';
 import Icon from '../Icon.jsx';
+import CalendarCard from './CalendarCard.jsx';
 
 const WEIGHT_KEYS = [['proximity', 'Proximity'], ['balance', 'Balance'], ['stability', 'Stability'], ['preference', 'Preference (learned)']];
 
@@ -201,6 +202,8 @@ export default function Cabana({ sched, mutate, weekStart, onBack, onReplace, sh
             <button className="btn2" style={{ maxWidth: 90 }} onClick={addProtected}>＋ tag</button>
           </div>
         </div>
+
+        <CalendarCard sched={sched} weekStart={weekStart} mutate={mutate} showToast={showToast} />
 
         {/* Footlocker */}
         <div className="cabcard">

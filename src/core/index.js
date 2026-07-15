@@ -28,6 +28,10 @@ export { addProject, shrinkChunk, growChunk, deleteChunk, resizeChunk, finishPro
 export { getWeekLoad, getTagBreakdown, snapshot, snapshotDiff } from './queries.js';
 export { whatToDo, currentOpening, openingLabel } from './whatToDo.js';
 export {
+  toICS, parseICS, importEvents, eventToTask, deriveTags,
+  toRRULE, fromRRULE, toICSDate, fromICSDate,
+} from './ical.js';
+export {
   driftCheck,
   starvationCheck,
   skipStreakCheck,
