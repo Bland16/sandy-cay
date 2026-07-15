@@ -9,11 +9,14 @@ import {
   weekStart as weekStartOf, addDays, letThemGo,
 } from './core/index.js';
 import { useEngine } from './ui/useEngine.js';
+import { useCardInteraction } from './ui/useCardInteraction.js';
 import TopBar from './ui/components/TopBar.jsx';
 import WeekGrid from './ui/components/WeekGrid.jsx';
 import DayView from './ui/components/DayView.jsx';
 import RightPanel from './ui/components/RightPanel.jsx';
 import Cabana from './ui/components/Cabana.jsx';
+import TaskCard from './ui/components/TaskCard.jsx';
+import ConflictChooser from './ui/components/ConflictChooser.jsx';
 
 export default function App() {
   const { sched, version, mutate, replace, persistence, saveState } = useEngine();
@@ -33,23 +36,32 @@ export default function App() {
 
   const closePanel = useCallback(() => setSelection(null), []);
 
-  // Esc: close the panel first, else leave day view / Cabana back to the week.
+  // Drag / resize / conflict-chooser physics (M2.1 — A, B, C).
+  const interaction = useCardInteraction({ sched, mutate, showToast, weekStart });
+
+  // Esc: a live drag or an open chooser owns Escape first (they cancel their own
+  // operation); otherwise close the panel, else leave day view / Cabana.
   useEffect(() => {
     const onKey = (e) => {
       if (e.key !== 'Escape') return;
+      if (interaction.busy) return;
       if (selection) setSelection(null);
       else if (view !== 'week') setView('week');
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selection, view]);
+  }, [selection, view, interaction.busy]);
 
   const onSelect = useCallback((mode) => {
     if (mode === 'cabana') { setView('cabana'); setSelection(null); return; }
     setSelection((prev) => (prev === mode ? null : mode));
   }, []);
 
-  const openTask = useCallback((task) => setSelection({ taskId: task.id }), []);
+  // A drag ends with a click event on the card; that must not also open the panel.
+  const openTask = useCallback((task) => {
+    if (interaction.shouldSuppressClick()) return;
+    setSelection({ taskId: task.id });
+  }, [interaction]);
 
   const toggleComplete = useCallback((task) => {
     const wasDone = task.completion === 'done';
@@ -148,6 +160,7 @@ export default function App() {
                   onBack={() => setView('week')}
                   onOpenTask={openTask}
                   onToggleComplete={toggleComplete}
+                  interaction={interaction}
                 />
               ) : (
                 <WeekGrid
@@ -157,6 +170,7 @@ export default function App() {
                   onOpenTask={openTask}
                   onToggleComplete={toggleComplete}
                   onOpenDay={(i) => { setView(i); setSelection(null); }}
+                  interaction={interaction}
                 />
               )}
             </div>
@@ -186,6 +200,38 @@ export default function App() {
           <span>{weekTasks.length} items this week</span>
         </div>
       </div>
+
+      {/* Drag ghost — fixed to the viewport, above the grid, solid card face. */}
+      {interaction.ghost && (
+        <TaskCard
+          ghost
+          task={interaction.ghost.task}
+          compact={interaction.ghost.compact}
+          style={{
+            position: 'fixed',
+            left: `${interaction.ghost.rect.left}px`,
+            top: `${interaction.ghost.rect.top}px`,
+            width: `${interaction.ghost.rect.width}px`,
+            height: `${interaction.ghost.rect.height}px`,
+          }}
+          phase={interaction.ghost.phase}
+        />
+      )}
+
+      {/* Ripple ⟺ Displace chooser (OD-8) — anchored to the card that landed. */}
+      {interaction.chooser && (
+        <ConflictChooser
+          anchor={interaction.chooser.anchor}
+          def={interaction.chooser.def}
+          rippleEnabled={interaction.chooser.rippleEnabled}
+          label={interaction.chooserLabel}
+          deltaMin={interaction.chooser.rippleDelta}
+          downstreamCount={interaction.chooser.dayState.downstreamCount}
+          onRipple={interaction.chooseRipple}
+          onDisplace={interaction.chooseDisplace}
+          onCancel={interaction.cancelChooser}
+        />
+      )}
 
       {toast && <div className="toast" role="status">{toast}</div>}
     </div>

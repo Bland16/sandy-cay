@@ -33,17 +33,41 @@ function Badges({ task }) {
   return <div className="badges">{b}</div>;
 }
 
-export default function TaskCard({ task, style, compact, onOpen, onToggleComplete }) {
+/**
+ * A placed task.
+ *
+ * Drag modes (OD-1): the body is always *move*; the wave strip (top) and sand
+ * strip (bottom) are the only resize handles. `ghost` renders the drag preview —
+ * same visual, no handles, no hit testing.
+ */
+export default function TaskCard({
+  task, style, compact, onOpen, onToggleComplete,
+  ghost = false, dragging = false, phase, onMoveStart, onResizeStart,
+}) {
   const kind = cardKind(task);
+  // Recurrence occurrences are virtual (§4.4): moving one writes an exception,
+  // which is not part of M2.1, so they stay click-to-open only.
+  const interactive = !ghost && !task.isOccurrence && !!onMoveStart;
   const cls = [
     'card', kind,
     task.schedulingWarning ? 'warn' : '',
     task.completion === 'done' ? 'done' : '',
     task.completion === 'skipped' ? 'skipped' : '',
     compact ? 'compact' : '',
+    ghost ? 'ghost' : '',
+    ghost && phase ? `ghost-${phase}` : '',
+    !ghost && dragging ? 'dragging' : '',
   ].filter(Boolean).join(' ');
 
   const deadlineChip = task.deadline && !task.isOccurrence;
+
+  if (ghost) {
+    return (
+      <div className={cls} style={style} aria-hidden="true">
+        <CardFace task={task} compact={compact} deadlineChip={deadlineChip} />
+      </div>
+    );
+  }
 
   return (
     <div
@@ -51,9 +75,46 @@ export default function TaskCard({ task, style, compact, onOpen, onToggleComplet
       style={style}
       role="button"
       tabIndex={0}
+      /* compact cards hide the .tm line, so the span lives in the name */
+      aria-label={`${task.title} · ${fmtRange(task)}`}
+      aria-grabbed={dragging ? 'true' : undefined}
+      onPointerDown={interactive ? (e) => onMoveStart(e, task, compact) : undefined}
       onClick={() => onOpen(task)}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(task); } }}
     >
+      {interactive && (
+        <>
+          <div
+            className="wave"
+            title="Drag to change the start time"
+            onPointerDown={(e) => onResizeStart(e, task, compact, 'start')}
+          />
+          <div
+            className="sand"
+            title="Drag to change the end time"
+            onPointerDown={(e) => onResizeStart(e, task, compact, 'end')}
+          />
+        </>
+      )}
+      <CardFace task={task} compact={compact} deadlineChip={deadlineChip} />
+      <button
+        type="button"
+        className="checkctl"
+        title="Mark done"
+        aria-label={`Mark "${task.title}" done`}
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => { e.stopPropagation(); onToggleComplete(task); }}
+      >
+        {task.completion === 'done' && <Icon name="check" />}
+      </button>
+    </div>
+  );
+}
+
+/** The card's contents — shared by the real card and its drag ghost. */
+function CardFace({ task, compact, deadlineChip }) {
+  return (
+    <>
       <Badges task={task} />
       <div className="t">{task.title}</div>
       {!compact && <div className="tm">{fmtRange(task)}</div>}
@@ -62,16 +123,7 @@ export default function TaskCard({ task, style, compact, onOpen, onToggleComplet
       {!compact && deadlineChip && (
         <span className="chip info"><Icon name="pennant" style={{ width: 8, height: 8 }} /> due {shortDay(task.deadline)}</span>
       )}
-      <button
-        type="button"
-        className="checkctl"
-        title="Mark done"
-        aria-label={`Mark "${task.title}" done`}
-        onClick={(e) => { e.stopPropagation(); onToggleComplete(task); }}
-      >
-        {task.completion === 'done' && <Icon name="check" />}
-      </button>
-    </div>
+    </>
   );
 }
 

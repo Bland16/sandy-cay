@@ -24,7 +24,9 @@ function zoneBands(zones, dayKey, startHour) {
   return bands;
 }
 
-export default function WeekGrid({ sched, weekStart, today, onOpenTask, onToggleComplete, onOpenDay }) {
+export default function WeekGrid({
+  sched, weekStart, today, onOpenTask, onToggleComplete, onOpenDay, interaction,
+}) {
   const weekTasks = sched.getTasksForWeek(weekStart);
   const { start, end } = gridBounds(weekTasks);
   const colHeight = (end - start) * PXH;
@@ -63,7 +65,17 @@ export default function WeekGrid({ sched, weekStart, today, onOpenTask, onToggle
           const bands = zoneBands(sched.zones, DAY_KEYS[i], start);
           const laid = layoutDay(dayTasks, start, PXH);
           return (
-            <div className={`day${i >= 5 ? ' wknd' : ''}`} key={dn} style={{ height: colHeight }}>
+            <div
+              className={`day${i >= 5 ? ' wknd' : ''}`}
+              key={dn}
+              style={{ height: colHeight }}
+              /* drop-geometry contract — see useCardInteraction.js */
+              data-dropzone=""
+              data-day-index={i}
+              data-start-hour={start}
+              data-end-hour={end}
+              data-pxh={PXH}
+            >
               {bands.map((b) => (
                 <div className="zone" key={b.key} style={{ top: b.top, height: b.height }}>
                   <span className="tag">{b.label}</span>
@@ -77,6 +89,9 @@ export default function WeekGrid({ sched, weekStart, today, onOpenTask, onToggle
                   compact={compact}
                   onOpen={onOpenTask}
                   onToggleComplete={onToggleComplete}
+                  dragging={interaction ? interaction.hiddenId === task.id : false}
+                  onMoveStart={interaction ? interaction.onMoveStart : undefined}
+                  onResizeStart={interaction ? interaction.onResizeStart : undefined}
                 />
               ))}
             </div>

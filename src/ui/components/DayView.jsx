@@ -8,7 +8,9 @@ import Icon from '../Icon.jsx';
 
 const PXH = 42;
 
-export default function DayView({ sched, weekStart, dayIndex, onBack, onOpenTask, onToggleComplete }) {
+export default function DayView({
+  sched, weekStart, dayIndex, onBack, onOpenTask, onToggleComplete, interaction,
+}) {
   const date = addDays(weekStart, dayIndex);
   const tasks = sched.getTasksForDay(date);
   const { start, end } = gridBounds(tasks);
@@ -39,13 +41,32 @@ export default function DayView({ sched, weekStart, dayIndex, onBack, onOpenTask
         <div className="axis" style={{ position: 'relative' }}>
           {hours.map((h) => <div className="h" key={h} style={{ height: PXH }}><span>{hourLabel(h)}</span></div>)}
         </div>
-        <div className="dvcol" style={{ height: colHeight }}>
+        <div
+          className="dvcol"
+          style={{ height: colHeight }}
+          /* drop-geometry contract — see useCardInteraction.js */
+          data-dropzone=""
+          data-day-index={dayIndex}
+          data-start-hour={start}
+          data-end-hour={end}
+          data-pxh={PXH}
+        >
           {bands.map((b) => (
             <div className="zone" key={b.key} style={{ top: b.top, height: b.height }}><span className="tag">{b.label}</span></div>
           ))}
           {tasks.length === 0 && <div className="empty">Nothing scheduled. A clear shore.</div>}
           {laid.map(({ task, style, compact }) => (
-            <TaskCard key={task.id} task={task} style={style} compact={compact} onOpen={onOpenTask} onToggleComplete={onToggleComplete} />
+            <TaskCard
+              key={task.id}
+              task={task}
+              style={style}
+              compact={compact}
+              onOpen={onOpenTask}
+              onToggleComplete={onToggleComplete}
+              dragging={interaction ? interaction.hiddenId === task.id : false}
+              onMoveStart={interaction ? interaction.onMoveStart : undefined}
+              onResizeStart={interaction ? interaction.onResizeStart : undefined}
+            />
           ))}
         </div>
       </div>

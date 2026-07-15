@@ -1,0 +1,255 @@
+// @vitest-environment jsdom
+// M2.1 interaction tests — drag-to-move (A), border resize (B) and the
+// ripple/displace chooser (C), driven through the real <App/> and the real
+// engine. jsdom has no layout, so Element.getBoundingClientRect is stubbed from
+// the same geometry contract the app publishes on its columns
+// (data-dropzone / data-day-index / data-start-hour / data-pxh).
+//
+// Seed week (deterministic, see src/core/index.js seed()):
+//   Mon  08:00 Morning gym (pinned recurrence occurrence) · 09:00 Team standup
+//        10:00 + 12:30 Thesis chunks
+//   Tue  08:00 Thesis · 12:00 Lunch with Priya · 18:00 Study for midterm
+//   Wed  08:00 Read novel (flexible, unpinned)
+//   Thu  14:00 Dentist (fixed)
+//   Fri  08:00 Morning gym · 16:00 Weekly review (pinned) · 20:00 Movie night (rest)
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { render, cleanup, screen, fireEvent, within } from '@testing-library/react';
+import App from '../src/App.jsx';
+
+const COL_LEFT0 = 60;
+const COL_W = 100;
+const COL_TOP = 200;
+const PXH = 34; // WeekGrid
+const START_HOUR = 8; // gridBounds over the seed week
+
+/** Screen y of a minute-of-day in the week grid. */
+const yAt = (h, m = 0) => COL_TOP + (h + m / 60 - START_HOUR) * PXH;
+/** Screen x of the left edge of day column i (Mon = 0). */
+const xAt = (dayIndex) => COL_LEFT0 + dayIndex * COL_W;
+
+const rect = (left, top, width, height) => ({
+  left, top, width, height, right: left + width, bottom: top + height, x: left, y: top,
+  toJSON() {},
+});
+
+let origRect;
+beforeEach(() => {
+  window.localStorage.clear();
+  origRect = Element.prototype.getBoundingClientRect;
+  Element.prototype.getBoundingClientRect = function stub() {
+    if (this.dataset && this.dataset.dropzone !== undefined) {
+      return rect(xAt(Number(this.dataset.dayIndex)), COL_TOP, COL_W, 14 * PXH);
+    }
+    if (this.classList && this.classList.contains('card')) {
+      const col = this.closest('[data-dropzone]');
+      if (!col) return rect(0, 0, 0, 0);
+      const cr = col.getBoundingClientRect();
+      return rect(
+        cr.left + 3,
+        cr.top + (parseFloat(this.style.top) || 0),
+        cr.width - 6,
+        parseFloat(this.style.height) || 30,
+      );
+    }
+    return rect(0, 0, 0, 0);
+  };
+});
+afterEach(() => {
+  Element.prototype.getBoundingClientRect = origRect;
+  cleanup();
+});
+
+function pointer(type, clientX, clientY) {
+  const e = new MouseEvent(type, { bubbles: true, cancelable: true, clientX, clientY });
+  Object.defineProperty(e, 'pointerId', { value: 1 });
+  Object.defineProperty(e, 'pointerType', { value: 'mouse' });
+  return e;
+}
+
+/** Scoped to the grid: the drag ghost renders a second copy of the same card. */
+const grid = () => document.querySelector('.grid') || document.querySelector('.dvgrid');
+const cardFor = (title) => within(grid()).getByText(title).closest('.card');
+const allCardsFor = (title) => within(grid()).getAllByText(title).map((n) => n.closest('.card'));
+const columnOf = (el) => Number(el.closest('[data-dropzone]').dataset.dayIndex);
+/** Cards under 44px are compact and hide .tm, so read the span off aria-label. */
+const timeOf = (el) => el.getAttribute('aria-label').split(' · ')[1];
+
+/** Drag a card's body so its top-left lands on (toX, toY). */
+function dragBody(card, toX, toY) {
+  const r = card.getBoundingClientRect();
+  const gx = 20;
+  const gy = 6;
+  fireEvent(card, pointer('pointerdown', r.left + gx, r.top + gy));
+  fireEvent(window, pointer('pointermove', r.left + gx + 20, r.top + gy + 20));
+  fireEvent(window, pointer('pointermove', toX + gx, toY + gy));
+  fireEvent(window, pointer('pointerup', toX + gx, toY + gy));
+}
+
+/** Drag a card's wave (start) or sand (end) strip to screen y `toY`. */
+function dragStrip(card, edge, toY) {
+  const strip = card.querySelector(edge === 'start' ? '.wave' : '.sand');
+  const r = card.getBoundingClientRect();
+  const y0 = edge === 'start' ? r.top + 2 : r.top + r.height - 2;
+  fireEvent(strip, pointer('pointerdown', r.left + 30, y0));
+  fireEvent(window, pointer('pointermove', r.left + 30, y0 + 20));
+  fireEvent(window, pointer('pointermove', r.left + 30, toY));
+  fireEvent(window, pointer('pointerup', r.left + 30, toY));
+}
+
+describe('A — drag to move', () => {
+  it('drops onto empty time: 15-min snap + target day column, engine-applied', () => {
+    render(<App />);
+    const novel = cardFor('Read novel'); // Wed 08:00–09:00
+    expect(columnOf(novel)).toBe(2);
+    expect(timeOf(novel)).toBe('08:00–09:00');
+
+    // Saturday (col 5), 10:08 → snaps up to 10:15.
+    dragBody(novel, xAt(5) + 3, yAt(10, 8));
+
+    const moved = cardFor('Read novel');
+    expect(columnOf(moved)).toBe(5);
+    expect(timeOf(moved)).toBe('10:15–11:15');
+  });
+
+  it('rejects a drop onto a pinned task: snap-back + §3.1 toast, nothing moved', () => {
+    render(<App />);
+    const dentist = cardFor('Dentist'); // Thu 14:00–15:00, fixed
+    dragBody(dentist, xAt(4) + 3, yAt(16)); // onto Fri 16:00 "Weekly review" (pinned)
+
+    expect(screen.getByRole('status').textContent).toBe('Conflicts with pinned: Weekly review');
+    const after = cardFor('Dentist');
+    expect(columnOf(after)).toBe(3); // still Thursday
+    expect(timeOf(after)).toBe('14:00–15:00');
+    expect(document.querySelector('.chooser')).toBeNull();
+  });
+
+  it('rejects a drop onto a pinned recurring occurrence (§4.4) without moving it', () => {
+    render(<App />);
+    const standup = cardFor('Team standup'); // Mon 09:00
+    dragBody(standup, xAt(0) + 3, yAt(8)); // onto Mon 08:00 "Morning gym"
+
+    expect(screen.getByRole('status').textContent).toMatch(/Morning gym/);
+    expect(timeOf(cardFor('Team standup'))).toBe('09:00–09:30');
+    expect(allCardsFor('Morning gym').length).toBe(2); // both occurrences intact
+  });
+
+  it('works in the day view too (same geometry contract, PXH 42)', () => {
+    render(<App />);
+    fireEvent.click(screen.getAllByText('Wed')[0]); // day view is a main-area mode
+    expect(screen.getByText(/Wednesday/)).toBeTruthy();
+
+    const col = document.querySelector('.dvcol[data-dropzone]');
+    expect(col.dataset.dayIndex).toBe('2');
+    const dvPxh = Number(col.dataset.pxh);
+    const dvY = (h) => COL_TOP + (h - Number(col.dataset.startHour)) * dvPxh;
+
+    const novel = cardFor('Read novel');
+    dragBody(novel, xAt(2) + 3, dvY(11));
+    expect(timeOf(cardFor('Read novel'))).toBe('11:00–12:00');
+  });
+
+  it('Esc during the drag cancels it', () => {
+    render(<App />);
+    const novel = cardFor('Read novel');
+    const r = novel.getBoundingClientRect();
+    fireEvent(novel, pointer('pointerdown', r.left + 20, r.top + 6));
+    fireEvent(window, pointer('pointermove', r.left + 60, r.top + 90));
+    fireEvent.keyDown(window, { key: 'Escape' });
+    fireEvent(window, pointer('pointerup', r.left + 60, r.top + 90));
+
+    const after = cardFor('Read novel');
+    expect(columnOf(after)).toBe(2);
+    expect(timeOf(after)).toBe('08:00–09:00');
+  });
+});
+
+describe('B — resize via the themed borders (OD-1)', () => {
+  it('sand strip moves endTime, start anchored, snapped to 15', () => {
+    render(<App />);
+    dragStrip(cardFor('Read novel'), 'end', yAt(10, 8)); // → 10:15
+    expect(timeOf(cardFor('Read novel'))).toBe('08:00–10:15');
+  });
+
+  it('wave strip moves startTime, end anchored', () => {
+    render(<App />);
+    dragStrip(cardFor('Dentist'), 'start', yAt(13, 22)); // snaps down to 13:15
+    expect(timeOf(cardFor('Dentist'))).toBe('13:15–15:00');
+  });
+
+  it('holds the 15-min minimum duration — the borders cannot cross', () => {
+    render(<App />);
+    dragStrip(cardFor('Read novel'), 'end', yAt(6)); // far above the start
+    expect(timeOf(cardFor('Read novel'))).toBe('08:00–08:15');
+  });
+
+  it('body drag is move, never resize', () => {
+    render(<App />);
+    const novel = cardFor('Read novel');
+    dragBody(novel, xAt(2) + 3, yAt(13));
+    // Duration preserved (a move), not stretched (a resize).
+    expect(timeOf(cardFor('Read novel'))).toBe('13:00–14:00');
+  });
+});
+
+describe('C — ripple ⟺ displace chooser (OD-8)', () => {
+  it('a drop onto a flexible task opens the chooser with both options', () => {
+    render(<App />);
+    dragBody(cardFor('Dentist'), xAt(2) + 3, yAt(8)); // onto Wed 08:00 "Read novel"
+
+    const chooser = document.querySelector('.chooser');
+    expect(chooser).toBeTruthy();
+    const opts = [...chooser.querySelectorAll('.opt')].map((b) => b.textContent);
+    expect(opts[0]).toMatch(/Ripple day/);
+    expect(opts[1]).toMatch(/Displace/);
+    // Exactly one pre-highlighted default, and it holds focus so Enter commits it.
+    const picked = chooser.querySelectorAll('.opt.pick');
+    expect(picked.length).toBe(1);
+    expect(document.activeElement).toBe(picked[0]);
+  });
+
+  it('Displace evicts the collided task via the engine — no overlap left', () => {
+    render(<App />);
+    dragBody(cardFor('Dentist'), xAt(2) + 3, yAt(8));
+    fireEvent.click(screen.getByText(/Displace/).closest('.opt'));
+
+    expect(document.querySelector('.chooser')).toBeNull();
+    expect(timeOf(cardFor('Dentist'))).toBe('08:00–09:00');
+    expect(columnOf(cardFor('Dentist'))).toBe(2);
+    // Read novel was re-placed somewhere else — it no longer starts at 08:00.
+    expect(timeOf(cardFor('Read novel'))).not.toBe('08:00–09:00');
+    expect(screen.getByRole('status').textContent).toMatch(/Displaced/);
+  });
+
+  it('Esc cancels the whole operation and snaps the card back', () => {
+    render(<App />);
+    dragBody(cardFor('Dentist'), xAt(2) + 3, yAt(8));
+    expect(document.querySelector('.chooser')).toBeTruthy();
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+
+    expect(document.querySelector('.chooser')).toBeNull();
+    expect(columnOf(cardFor('Dentist'))).toBe(3); // back on Thursday
+    expect(timeOf(cardFor('Dentist'))).toBe('14:00–15:00');
+    expect(timeOf(cardFor('Read novel'))).toBe('08:00–09:00'); // untouched
+  });
+
+  it('a resize into a downstream task opens the chooser, and Ripple shifts the day', () => {
+    render(<App />);
+    // Team standup Mon 09:00–09:30 → drag the sand strip to 10:30, over the
+    // 10:00 Thesis chunk.
+    dragStrip(cardFor('Team standup'), 'end', yAt(10, 30));
+    const chooser = document.querySelector('.chooser');
+    expect(chooser).toBeTruthy();
+
+    const ripple = screen.getByText(/Ripple day/).closest('.opt');
+    expect(ripple.disabled).toBe(false);
+    fireEvent.click(ripple);
+
+    expect(document.querySelector('.chooser')).toBeNull();
+    expect(timeOf(cardFor('Team standup'))).toBe('09:00–10:30');
+    // The 10:00 Thesis chunk is no longer where it was.
+    const thesis = allCardsFor('Thesis');
+    const monday = thesis.filter((c) => columnOf(c) === 0).map(timeOf);
+    expect(monday).not.toContain('10:00–12:00');
+  });
+});

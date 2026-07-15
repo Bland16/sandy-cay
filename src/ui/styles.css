@@ -8,11 +8,16 @@
      2   task cards
      5   top bar / day-view header (sticky chrome above the grid)
      6   cabana page chrome
+     3   card resize strips (wave / sand — inside their own card only)
+     4   card check control (sits above the sand strip's hit area)
      30  right panel (flex sibling; raised so its shadow sits over the grid)
      40  dropdown menus (week menu, date-jump popover)
      45  card context menu
+     50  conflict chooser (ripple/displace — anchored to a card, viewport-clamped)
+     55  drag ghost (transient, follows the pointer, never hit-tested)
      60  toast / status callouts
-   Only menus and toasts overlay, and each carries a solid --paper background.
+   Only menus, the chooser, the ghost and toasts overlay, and each carries a
+   solid --paper background.
    The grid and panel are flex siblings; day view and Cabana REPLACE the main
    area (never stack on it). No absolute element escapes its positioned parent.
    ------------------------------------------------------------------ */
@@ -29,7 +34,8 @@
   --font-type: 'Special Elite', 'Courier New', monospace;
   --font-body: 'Nunito', system-ui, -apple-system, sans-serif;
 
-  --z-zone: 0; --z-card: 2; --z-chrome: 5; --z-panel: 30; --z-menu: 40; --z-ctx: 45; --z-toast: 60;
+  --z-zone: 0; --z-card: 2; --z-strip: 3; --z-cardctl: 4; --z-chrome: 5;
+  --z-panel: 30; --z-menu: 40; --z-ctx: 45; --z-chooser: 50; --z-ghost: 55; --z-toast: 60;
 }
 /* Keep the single light world regardless of the viewer's theme toggle. */
 :root[data-theme="dark"], :root[data-theme="light"] { color-scheme: light; }
@@ -175,6 +181,8 @@ body {
   padding: 4px 6px 5px; min-height: 30px; background: var(--paper); overflow: hidden;
   box-shadow: 1.5px 2px 0 rgba(42,38,32,.13); cursor: pointer; transition: transform .1s, box-shadow .1s;
   display: flex; flex-direction: column;
+  /* the body is the move handle (OD-1): no text selection, no touch scrolling */
+  user-select: none; touch-action: none;
 }
 .card:hover { transform: translateY(-1px); box-shadow: 2.5px 4px 0 rgba(42,38,32,.18); }
 .card .t { font-weight: 700; font-size: 11px; line-height: 1.12; overflow-wrap: anywhere; padding-right: 20px; }
@@ -188,10 +196,35 @@ body {
 .card.done { opacity: .55; }
 .card.done .t { text-decoration: line-through; }
 .card.skipped { opacity: .4; }
-.card.compact { padding: 2px 6px; }
+.card.compact { padding: 4px 6px 3px; }
 .card.compact .t { font-size: 10px; padding-right: 16px; }
 
-.badges { position: absolute; top: 3px; right: 3px; display: flex; gap: 2px; z-index: 1; }
+/* ---------- OD-1: themed resize borders ----------
+   ~8px hit strips pinned to the card's own edges. The *visible* wave/sand band
+   is confined to the first/last few pixels (the border zone), so it never sits
+   on top of the title — the rest of the strip is a transparent hit area. The
+   card body underneath stays the move handle. */
+.wave, .sand {
+  position: absolute; left: 0; right: 0; height: 8px; z-index: var(--z-strip);
+  cursor: ns-resize; touch-action: none;
+}
+.wave { top: 0; }
+.sand { bottom: 0; }
+.card.compact .wave, .card.compact .sand { height: 6px; }
+.wave::after, .sand::after { content: ""; position: absolute; left: 0; right: 0; transition: opacity .12s, filter .12s; }
+.wave::after {
+  top: 0; height: 4px; opacity: .8;
+  background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='4' viewBox='0 0 12 4'><path d='M0 3.2 Q3 0.3 6 3.2 T12 3.2' fill='none' stroke='%232E8C99' stroke-width='1.3'/></svg>") repeat-x left top / 12px 4px;
+}
+.sand::after {
+  bottom: 0; height: 3px; opacity: .85;
+  background: linear-gradient(180deg, rgba(232,185,77,.25), var(--cta) 60%, var(--pinned));
+}
+.wave:hover::after, .sand:hover::after { opacity: 1; filter: brightness(1.15) saturate(1.2); }
+
+/* top: 5px clears the 4px wave band. The strips sit above the badges on the
+   z-scale, so they still win the hit test inside their own 8px band. */
+.badges { position: absolute; top: 5px; right: 3px; display: flex; gap: 2px; z-index: 1; }
 .b { width: 16px; height: 16px; display: grid; place-items: center; border-radius: 5px; background: var(--paper); border: 1.5px solid var(--ink); }
 .b svg { width: 10px; height: 10px; }
 .b.pin { border-color: var(--pinned); background: var(--pinned); color: #3a2f16; }
@@ -207,10 +240,56 @@ body {
 /* the tiny circular completion check bottom-left */
 .checkctl {
   position: absolute; left: 3px; bottom: 3px; width: 15px; height: 15px; border-radius: 50%;
-  border: 1.5px solid var(--ink); background: var(--paper); display: grid; place-items: center; cursor: pointer; z-index: 1; padding: 0;
+  border: 1.5px solid var(--ink); background: var(--paper); display: grid; place-items: center; cursor: pointer;
+  z-index: var(--z-cardctl); padding: 0;
 }
 .checkctl svg { width: 9px; height: 9px; }
 .checkctl:hover { background: var(--rest); }
+
+/* ---------- A: drag ghost + snap-back (SPEC §10 motion) ---------- */
+.card.dragging { opacity: .18; pointer-events: none; }
+.card.ghost {
+  position: fixed; z-index: var(--z-ghost); opacity: .85; transform: scale(1.03);
+  pointer-events: none; cursor: grabbing; box-shadow: 3px 7px 16px rgba(0,0,0,.32);
+}
+.card.ghost.ghost-settle,
+.card.ghost.ghost-reject { transition: left .15s ease-out, top .15s ease-out, width .15s ease-out, height .15s ease-out; }
+.card.ghost.ghost-reject { animation: sc-shake .3s ease; }
+@keyframes sc-shake {
+  0%, 100% { transform: translateX(0) scale(1.03); }
+  20% { transform: translateX(-4px) scale(1.03); }
+  40% { transform: translateX(4px) scale(1.03); }
+  60% { transform: translateX(-3px) scale(1.03); }
+  80% { transform: translateX(3px) scale(1.03); }
+}
+body.sc-dragging { user-select: none; }
+
+/* ---------- C: inline ripple/displace chooser (OD-8) ---------- */
+.chooser {
+  position: fixed; z-index: var(--z-chooser); width: 208px; max-width: calc(100vw - 16px);
+  background: var(--paper); border: 2px solid var(--ink); border-radius: 12px;
+  box-shadow: 0 10px 26px rgba(0,0,0,.32); padding: 8px;
+}
+.chooser .ct {
+  font-weight: 800; font-size: 10.5px; line-height: 1.25; margin-bottom: 6px;
+  overflow-wrap: anywhere; text-transform: capitalize;
+}
+.chooser .copt { display: flex; gap: 6px; align-items: stretch; }
+.chooser .opt {
+  flex: 1 1 0; min-width: 0; font-family: var(--font-body); font-weight: 800; font-size: 10.5px;
+  color: var(--ink); background: var(--paper); border: 2px solid var(--ink); border-radius: 9px;
+  padding: 5px 6px; cursor: pointer; text-align: left; line-height: 1.15; overflow-wrap: anywhere;
+}
+.chooser .opt small { display: block; font-weight: 600; font-size: 8.5px; color: var(--ink-soft); line-height: 1.2; margin-top: 2px; }
+.chooser .opt.pick { background: var(--cta); }
+.chooser .opt.pick small { color: #4d3b0e; }
+.chooser .opt:disabled { opacity: .45; cursor: not-allowed; }
+.chooser .opt:not(:disabled):hover { background: var(--paper-shade); }
+.chooser .opt.pick:not(:disabled):hover { background: #efc667; }
+.chooser .chint {
+  margin-top: 7px; font-family: var(--font-type); font-size: 8px; letter-spacing: .04em;
+  color: var(--ink-soft); text-transform: uppercase;
+}
 
 /* day view */
 .dvhead { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 2px solid var(--ink); background: linear-gradient(180deg, #ece2ce, #f1e9d8); position: relative; z-index: var(--z-chrome); }
