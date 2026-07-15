@@ -5,6 +5,9 @@ dist-ssr/
 .vite/
 coverage/
 
+# Design mockups embed base64 fonts (~320KB each) — local-only comps, not code
+design/*.html
+
 # Editor / OS
 .DS_Store
 Thumbs.db
