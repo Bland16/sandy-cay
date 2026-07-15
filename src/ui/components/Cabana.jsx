@@ -11,7 +11,7 @@ const WEIGHT_KEYS = [['proximity', 'Proximity'], ['balance', 'Balance'], ['stabi
 
 export default function Cabana({ sched, mutate, weekStart, onBack, onReplace, showToast }) {
   const fileRef = useRef(null);
-  const [newZone, setNewZone] = useState('');
+  const [editingId, setEditingId] = useState(null);
   const [newTag, setNewTag] = useState('');
   const [, force] = useState(0);
   const bump = () => force((n) => n + 1);
@@ -20,11 +20,10 @@ export default function Cabana({ sched, mutate, weekStart, onBack, onReplace, sh
   const setUrgency = (v) => { mutate((s) => { s.config.urgencyFactor = v; }); };
   const reoptimize = () => { const r = mutate((s) => s.autoSchedule({ weekStart })); showToast(`Re-optimized · ${r.placed.length} placed`); };
 
-  const addZone = () => {
-    const label = newZone.trim();
-    if (!label) return;
-    mutate((s) => s.addZone({ label, matchTags: [], windows: [{ day: 'tue', start: '18:00', end: '21:00' }], exclusive: true }));
-    setNewZone('');
+  const handleAddZone = () => {
+    mutate((s) => s.addZone({ label: 'New zone', matchTags: [], windows: [{ day: 'tue', start: '18:00', end: '21:00' }], exclusive: true }));
+    const z = sched.zones[sched.zones.length - 1];
+    if (z) setEditingId(z.id);
   };
   const addZoneWindow = (id) => mutate((s) => { const z = s.zones.find((x) => x.id === id); z.windows = [...z.windows, { day: 'mon', start: '18:00', end: '20:00' }]; });
   const patchWindow = (id, i, delta) => mutate((s) => { const z = s.zones.find((x) => x.id === id); z.windows = z.windows.map((w, idx) => (idx === i ? { ...w, ...delta } : w)); });
@@ -94,36 +93,62 @@ export default function Cabana({ sched, mutate, weekStart, onBack, onReplace, sh
           <button className="btn2" style={{ marginTop: 8 }} onClick={reoptimize}><Icon name="refresh" /> Re-optimize week</button>
         </div>
 
-        {/* Zones */}
+        {/* Zones — list; click a zone (or Add) to open its options */}
         <div className="cabcard">
           <div className="cabsign">Zones</div>
-          {sched.zones.length === 0 && <p>No zones yet. Route tagged work into set windows.</p>}
-          {sched.zones.map((z) => (
-            <div key={z.id} style={{ marginBottom: 12 }}>
-              <p style={{ margin: '0 0 4px' }}><b style={{ color: 'var(--cab-accent)' }}>{z.label}</b></p>
-              <div className="zonewin">
-                <span>tags:</span>
-                <input defaultValue={z.matchTags.join(', ')} onBlur={(e) => setZoneTags(z.id, e.target.value)} style={{ width: 120 }} aria-label="Zone tags" />
-              </div>
-              {z.windows.map((w, i) => (
-                <div className="zonewin" key={i}>
-                  <select value={w.day} onChange={(e) => patchWindow(z.id, i, { day: e.target.value })} aria-label="Zone day">
-                    {DAY_KEYS.map((k, idx) => <option key={k} value={k}>{DAY_NAMES[idx]}</option>)}
-                  </select>
-                  <input type="time" value={w.start} onChange={(e) => patchWindow(z.id, i, { start: e.target.value })} aria-label="Zone start" />
-                  →
-                  <input type="time" value={w.end} onChange={(e) => patchWindow(z.id, i, { end: e.target.value })} aria-label="Zone end" />
-                  <button className="rm" onClick={() => removeWindow(z.id, i)} aria-label="Remove window">×</button>
-                </div>
+          {editingId == null ? (
+            <>
+              <p>Route tagged work into set windows.</p>
+              {sched.zones.length === 0 && <p className="insight">No zones yet.</p>}
+              {sched.zones.map((z) => (
+                <button
+                  key={z.id}
+                  className="zonerow"
+                  onClick={() => setEditingId(z.id)}
+                >
+                  <b style={{ color: 'var(--cab-accent)' }}>{z.label}</b>
+                  <span className="zmeta">{z.matchTags.join(', ') || 'no tags'} · {z.windows.length} window{z.windows.length === 1 ? '' : 's'}</span>
+                  <span aria-hidden="true">edit ›</span>
+                </button>
               ))}
-              <button className="btn2 ghost" style={{ marginTop: 4, padding: '5px 8px' }} onClick={() => addZoneWindow(z.id)}>＋ window</button>
-              <button className="btn2 ghost" style={{ marginTop: 4, padding: '5px 8px' }} onClick={() => removeZone(z.id)}>remove zone</button>
-            </div>
-          ))}
-          <div className="zonewin">
-            <input value={newZone} placeholder="New zone name…" onChange={(e) => setNewZone(e.target.value)} style={{ flex: 1 }} aria-label="New zone name" />
-            <button className="btn2" style={{ maxWidth: 90 }} onClick={addZone}>＋ zone</button>
-          </div>
+              <button className="btn2" style={{ marginTop: 8 }} onClick={handleAddZone}>＋ Add zone</button>
+            </>
+          ) : (() => {
+            const z = sched.zones.find((x) => x.id === editingId);
+            if (!z) return null;
+            return (
+              <>
+                <button className="btn2 ghost" style={{ marginBottom: 10, padding: '5px 9px' }} onClick={() => setEditingId(null)}>
+                  <Icon name="back" /> All zones
+                </button>
+                <div className="zonewin">
+                  <span>name:</span>
+                  <input defaultValue={z.label} onBlur={(e) => mutate((s) => s.updateZone(z.id, { label: e.target.value.trim() || z.label }))} style={{ flex: 1 }} aria-label="Zone name" />
+                </div>
+                <div className="zonewin">
+                  <span>tags:</span>
+                  <input defaultValue={z.matchTags.join(', ')} onBlur={(e) => setZoneTags(z.id, e.target.value)} style={{ flex: 1 }} aria-label="Zone tags" />
+                </div>
+                {z.windows.map((w, i) => (
+                  <div className="zonewin" key={i}>
+                    <select value={w.day} onChange={(e) => patchWindow(z.id, i, { day: e.target.value })} aria-label="Zone day">
+                      {DAY_KEYS.map((k, idx) => <option key={k} value={k}>{DAY_NAMES[idx]}</option>)}
+                    </select>
+                    <input type="time" value={w.start} onChange={(e) => patchWindow(z.id, i, { start: e.target.value })} aria-label="Zone start" />
+                    →
+                    <input type="time" value={w.end} onChange={(e) => patchWindow(z.id, i, { end: e.target.value })} aria-label="Zone end" />
+                    <button className="rm" onClick={() => removeWindow(z.id, i)} aria-label="Remove window">×</button>
+                  </div>
+                ))}
+                <button className="btn2 ghost" style={{ marginTop: 4, padding: '5px 8px' }} onClick={() => addZoneWindow(z.id)}>＋ window</button>
+                <label className="zonewin" style={{ gap: 8, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={z.exclusive} onChange={(e) => mutate((s) => s.updateZone(z.id, { exclusive: e.target.checked }))} />
+                  exclusive · reserve this time
+                </label>
+                <button className="btn2 ghost" style={{ marginTop: 8, padding: '5px 9px' }} onClick={() => { removeZone(z.id); setEditingId(null); }}>remove zone</button>
+              </>
+            );
+          })()}
         </div>
 
         {/* Tag roles */}

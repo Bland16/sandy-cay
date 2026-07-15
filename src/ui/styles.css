@@ -343,6 +343,13 @@ body {
 .zonewin .w { background: rgba(0,0,0,.28); border: 1.5px solid var(--cab-trim); border-radius: 6px; padding: 3px 8px; }
 .zonewin select, .zonewin input { background: rgba(0,0,0,.28); border: 1.5px solid var(--cab-trim); border-radius: 6px; padding: 3px 6px; color: var(--cab-text); font-family: var(--font-type); font-size: 11px; }
 .cabinput { background: rgba(0,0,0,.28); border: 1.5px solid var(--cab-trim); border-radius: 7px; padding: 6px 9px; color: var(--cab-text); font-family: var(--font-body); font-size: 12px; width: 100%; margin-bottom: 6px; }
+.zonerow { display: flex; width: 100%; align-items: center; gap: 8px; text-align: left; cursor: pointer;
+  background: rgba(0,0,0,.18); border: 1.5px solid var(--cab-trim); border-radius: 8px;
+  padding: 8px 10px; margin: 0 0 6px; color: var(--cab-text); font-family: var(--font-body); font-size: 13px;
+  transition: background .12s, border-color .12s; }
+.zonerow:hover { background: rgba(0,0,0,.30); border-color: var(--cab-accent); }
+.zonerow .zmeta { flex: 1; opacity: .72; font-size: 11.5px; font-family: var(--font-type);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cabtag { display: inline-flex; gap: 5px; align-items: center; }
 .chest { display: flex; gap: 8px; flex-wrap: wrap; }
 .btn2 { flex: 1; font-family: var(--font-body); font-weight: 800; font-size: 11.5px; color: #2c2016; background: var(--cab-accent); border: 2px solid #2c2016; border-radius: 9px; padding: 9px; cursor: pointer; display: flex; gap: 6px; justify-content: center; align-items: center; min-width: 100px; }
