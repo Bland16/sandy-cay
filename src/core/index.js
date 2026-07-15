@@ -13,6 +13,11 @@ export { LearningModule } from './learning.js';
 export { StorageAdapter, exportState, summarizeImport, pickBackend } from './storage.js';
 export { defaultConfig, makeConfig } from './config.js';
 export * as time from './time.js';
+// Named time helpers for UI call sites (the `time` namespace stays available too).
+export {
+  weekStart, addDays, atTime, dateKey, dateFromKey, sameDay,
+  formatHHMM, hhmmToMinutes, dayStart, addMinutes, minutesBetween,
+} from './time.js';
 export { chooseConflictStrategy, strategyCosts, resolveDropConflicts } from './conflicts.js';
 export { rippleShift } from './ripple.js';
 export { evacuateDay, blockRange } from './evacuate.js';

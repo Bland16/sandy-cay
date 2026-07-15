@@ -1,5 +1,6 @@
 import js from '@eslint/js';
 import globals from 'globals';
+import reactPlugin from 'eslint-plugin-react';
 
 export default [
   { ignores: ['dist/**', 'node_modules/**', 'coverage/**'] },
@@ -35,9 +36,11 @@ export default [
     },
   },
 
-  // UI + tests
+  // UI + tests. The react plugin's jsx-uses-vars rule teaches no-unused-vars to
+  // count JSX references, so imported components aren't flagged as unused.
   {
-    files: ['src/**/*.{js,jsx}', 'tests/**/*.js'],
+    files: ['src/**/*.{js,jsx}', 'tests/**/*.{js,jsx}'],
+    plugins: { react: reactPlugin },
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'module',
@@ -45,6 +48,8 @@ export default [
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
     rules: {
+      'react/jsx-uses-vars': 'error',
+      'react/jsx-uses-react': 'error',
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
     },
   },

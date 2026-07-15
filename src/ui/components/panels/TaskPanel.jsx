@@ -1,0 +1,228 @@
+// TaskPanel — full inline detail-edit for a selected task (SPEC §11 / B+C).
+// Handles regular tasks and recurring occurrences (edits route to the parent
+// pattern; per-occurrence "skip" writes an exception). All edits call the engine
+// then the app re-reads.
+import { useState } from 'react';
+import {
+  addMinutes, atTime, addDays, dateKey, formatHHMM,
+  addException, splitPeriod, temporaryChange, endRecurrence, dayStart,
+} from '../../../core/index.js';
+import { DAY_NAMES, fmtRange } from '../../format.js';
+import { modelFromTask, buildRecurrence } from '../../recurrenceModel.js';
+import PanelHeader from '../PanelHeader.jsx';
+import DurationControl from '../DurationControl.jsx';
+import TagEditor from '../TagEditor.jsx';
+import RecurrenceEditor from '../RecurrenceEditor.jsx';
+import Icon from '../../Icon.jsx';
+
+export default function TaskPanel({ task, sched, mutate, weekStart, onClose, showToast }) {
+  // Resolve the editable underlying task: an occurrence edits its parent.
+  const editable = task.isOccurrence ? sched.tasks.find((t) => t.id === task.parentId) : task;
+  const [recModel, setRecModel] = useState(() => modelFromTask(editable || task));
+  const [slots, setSlots] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  if (!editable) {
+    return (<><PanelHeader title={task.title} sub="occurrence" onClose={onClose} /><p className="empty">This occurrence's task is gone.</p></>);
+  }
+
+  const isOcc = !!task.isOccurrence;
+  const durMin = task.getDuration();
+  const dayIdx = ((task.startTime.getDay() + 6) % 7);
+  const sat = editable.satisfaction || {};
+
+  const upd = (changes) => mutate((s) => s.updateTask(editable.id, changes));
+
+  const setDuration = (mins) => {
+    if (isOcc) return; // occurrence duration is governed by the pattern window
+    upd({ endTime: addMinutes(task.startTime, mins) });
+  };
+  const setDay = (idx) => {
+    const start = atTime(addDays(weekStart, idx), formatHHMM(task.startTime));
+    upd({ startTime: start, endTime: addMinutes(start, durMin) });
+  };
+  const setStart = (hhmm) => {
+    const start = atTime(dayStart(task.startTime), hhmm);
+    upd({ startTime: start, endTime: addMinutes(start, durMin) });
+  };
+  const setShells = (n) => upd({ satisfaction: { ...sat, overall: n } });
+  const toggleFacet = (key) => upd({ satisfaction: { ...sat, [key]: sat[key] ? 0 : (key === 'energy' ? -1 : 1) } });
+
+  const applyPattern = () => {
+    mutate((s) => {
+      const parent = s.tasks.find((t) => t.id === editable.id);
+      if (!parent) return;
+      const windows = recModel.windows.map((w) => ({ ...w }));
+      if (!recModel.enabled) { parent.recurrence = null; return; }
+      if (!parent.recurrence) { parent.recurrence = buildRecurrence(recModel, weekStart); return; }
+      if (recModel.temporary && recModel.temporary.from && recModel.temporary.until) {
+        temporaryChange(parent, new Date(recModel.temporary.from), new Date(recModel.temporary.until), windows, { interval: recModel.interval });
+      } else if (recModel.scope === 'future') {
+        splitPeriod(parent, new Date(), windows, { interval: recModel.interval });
+      } else {
+        const active = parent.recurrence.periods.find((p) => !p.effectiveUntil) || parent.recurrence.periods[0];
+        active.windows = windows;
+        active.interval = Number(recModel.interval) || 1;
+      }
+    });
+    showToast('Pattern updated');
+  };
+
+  const skipOccurrence = () => {
+    mutate((s) => {
+      const parent = s.tasks.find((t) => t.id === editable.id);
+      if (parent) addException(parent, task.occurrenceDate, 'skip');
+    });
+    showToast('Skipped this occurrence');
+    onClose();
+  };
+
+  const doFind = () => {
+    const found = sched.findFreeSlots({ from: weekStart, to: addDays(weekStart, 6), durationMin: durMin });
+    setSlots(found.slice(0, 6));
+  };
+  const placeAt = (slot) => {
+    upd({ startTime: slot.start, endTime: slot.end });
+    setSlots(null);
+    showToast('Moved to a new slot');
+  };
+
+  const duplicate = () => {
+    mutate((s) => { const copy = editable.duplicate(); s.tasks.push(copy); });
+    showToast('Duplicated (lived data reset)');
+  };
+
+  const del = (mode) => {
+    mutate((s) => {
+      const parent = s.tasks.find((t) => t.id === editable.id);
+      if (!parent) return;
+      if (!parent.recurrence) { s.removeTask(parent.id); return; }
+      if (mode === 'occurrence') addException(parent, task.occurrenceDate || dateKey(task.startTime), 'skip');
+      else if (mode === 'future') endRecurrence(parent, task.startTime);
+      else s.removeTask(parent.id);
+    });
+    showToast('Deleted');
+    onClose();
+  };
+
+  return (
+    <>
+      <PanelHeader
+        title={editable.title}
+        sub={[editable.type, editable.recurrence ? 'recurring' : null, editable.deadline ? 'has deadline' : null].filter(Boolean).join(' · ')}
+        onClose={onClose}
+      />
+
+      <div className="fieldrow">
+        <div className="flabel">Title</div>
+        <input className="input" value={editable.title} onChange={(e) => upd({ title: e.target.value || editable.title })} />
+      </div>
+
+      {!isOcc && (
+        <div className="fieldrow split">
+          <div style={{ flex: 1 }}>
+            <div className="flabel">Day</div>
+            <select className="input" value={dayIdx} onChange={(e) => setDay(Number(e.target.value))}>
+              {DAY_NAMES.map((d, i) => <option key={d} value={i}>{d}</option>)}
+            </select>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div className="flabel">Start</div>
+            <input className="timein" style={{ width: '100%' }} type="time" value={formatHHMM(task.startTime)} onChange={(e) => setStart(e.target.value)} />
+          </div>
+        </div>
+      )}
+
+      <div className="fieldrow">
+        <div className="flabel">{fmtRange(task)} · duration</div>
+        {isOcc ? <p className="psub-note">Occurrence length follows the pattern below.</p> : <DurationControl minutes={durMin} onChange={setDuration} />}
+      </div>
+
+      <div className="fieldrow">
+        <div className="flabel">Tags</div>
+        <TagEditor tags={editable.tags} onChange={(tags) => upd({ tags })} />
+      </div>
+
+      <div className="fieldrow split">
+        <div>
+          <div className="flabel">Priority</div>
+          <select className="input" value={editable.priority} onChange={(e) => upd({ priority: Number(e.target.value) })}>
+            {[1, 2, 3, 4, 5].map((p) => <option key={p} value={p}>P{p}</option>)}
+          </select>
+        </div>
+        <div>
+          <div className="flabel">Pinned</div>
+          <button type="button" className={`tw${editable.pinned ? ' on' : ''}`} role="switch" aria-checked={editable.pinned} aria-label="Pinned" onClick={() => upd({ pinned: !editable.pinned })}><span className="knob" /></button>
+        </div>
+        <div>
+          <div className="flabel">Deadline</div>
+          <input className="timein" style={{ width: 140 }} type="date" value={editable.deadline ? dateKey(editable.deadline) : ''} onChange={(e) => upd({ deadline: e.target.value ? new Date(e.target.value) : null })} />
+        </div>
+      </div>
+
+      <div className="divide" />
+      <div className="fieldrow">
+        <div className="flabel">Recurrence</div>
+        <RecurrenceEditor model={recModel} onChange={setRecModel} allowScope={!!editable.recurrence} />
+        <button type="button" className="btn" style={{ marginTop: 8 }} onClick={applyPattern}>
+          <Icon name="loop" /> {editable.recurrence ? 'Update pattern' : 'Make repeating'}
+        </button>
+        {isOcc && <button type="button" className="linkish soft" onClick={skipOccurrence}>Skip this occurrence</button>}
+      </div>
+
+      <div className="divide" />
+      <div className="fieldrow">
+        <div className="flabel">How did it fit?</div>
+        <div className="shells">
+          {[1, 2, 3, 4, 5].map((n) => (
+            <button key={n} type="button" className="sh" aria-label={`${n} shells`} onClick={() => setShells(n)}>
+              <Icon name="shell" className={sat.overall >= n ? '' : 'off'} />
+            </button>
+          ))}
+        </div>
+        <div className="facets">
+          {[['timingFit', 'timing'], ['durationFit', 'duration'], ['energy', 'energy']].map(([k, label]) => (
+            <button key={k} type="button" className={`facet${sat[k] ? ' on' : ''}`} onClick={() => toggleFacet(k)}>{label}{sat[k] ? ' ✓' : ''}</button>
+          ))}
+        </div>
+      </div>
+
+      <div className="fieldrow">
+        <button type="button" className="btn" onClick={doFind}><Icon name="spyglass" /> Find another time</button>
+        {slots && (
+          <div className="slotlist" style={{ marginTop: 8 }}>
+            {slots.length === 0 && <div className="empty">No openings this week.</div>}
+            {slots.map((sl, i) => (
+              <button key={i} className="slot" onClick={() => placeAt(sl)}>
+                <span>{DAY_NAMES[(sl.start.getDay() + 6) % 7]}</span>
+                <span>{formatHHMM(sl.start)}–{formatHHMM(sl.end)}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="rowbtns">
+        <button type="button" className="btn" onClick={duplicate}>Duplicate</button>
+        <button type="button" className="btn danger" onClick={() => setConfirmDelete(true)}>Delete</button>
+      </div>
+
+      {confirmDelete && (
+        <div className="fieldrow" style={{ marginTop: 8 }}>
+          {editable.recurrence ? (
+            <>
+              <div className="flabel">Delete a recurring task</div>
+              <button type="button" className="btn" onClick={() => del('occurrence')}>This occurrence</button>
+              <div style={{ height: 6 }} />
+              <button type="button" className="btn" onClick={() => del('future')}>This &amp; future</button>
+              <div style={{ height: 6 }} />
+              <button type="button" className="btn danger" onClick={() => { if (window.confirm('Delete every occurrence, forever?')) del('all'); }}>Everything</button>
+            </>
+          ) : (
+            <button type="button" className="btn danger" onClick={() => del('all')}>Confirm delete</button>
+          )}
+        </div>
+      )}
+    </>
+  );
+}

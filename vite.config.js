@@ -8,9 +8,11 @@ export default defineConfig({
   plugins: [react()],
   test: {
     // src/core is pure JS with zero DOM imports (SPEC §12), so the engine
-    // suite runs headless in the node environment.
+    // suite runs headless in the node environment by default. UI smoke tests
+    // opt into jsdom per-file via a `// @vitest-environment jsdom` docblock so
+    // the node-env engine tests stay untouched.
     environment: 'node',
     globals: true,
-    include: ['tests/**/*.test.js'],
+    include: ['tests/**/*.test.{js,jsx}'],
   },
 });

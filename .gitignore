@@ -8,6 +8,10 @@ coverage/
 # Design mockups embed base64 fonts (~320KB each) — local-only comps, not code
 design/*.html
 
+# Python (segmentation tooling)
+__pycache__/
+*.pyc
+
 # Editor / OS
 .DS_Store
 Thumbs.db
