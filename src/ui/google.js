@@ -15,7 +15,17 @@
 // filtering and Task construction are the tested code path, not a second one.
 
 const GIS_SRC = 'https://accounts.google.com/gsi/client';
-const SCOPE = 'https://www.googleapis.com/auth/calendar.events';
+
+// Two scopes, because they cover different things and `calendar.events` alone
+// does NOT let you list calendars:
+//   calendar.readonly — read the calendarList ("which calendars do I have?")
+//   calendar.events   — read AND write events on them
+// Deliberately NOT the blanket `auth/calendar`: we never create or delete a
+// calendar, only events on one you picked, so we don't ask for that power.
+const SCOPE = [
+  'https://www.googleapis.com/auth/calendar.readonly',
+  'https://www.googleapis.com/auth/calendar.events',
+].join(' ');
 const API = 'https://www.googleapis.com/calendar/v3';
 
 let gisPromise = null;
@@ -57,6 +67,29 @@ export async function getAccessToken(clientId, { prompt = '' } = {}) {
   });
 }
 
+/**
+ * Google's errors are JSON blobs; a toast is one line. Say what happened and
+ * what to do, and keep the raw reason for anything we haven't met yet.
+ */
+function explainGoogleError(status, body) {
+  let reason = '';
+  try {
+    reason = (JSON.parse(body).error || {}).message || '';
+  } catch {
+    reason = String(body || '').slice(0, 120);
+  }
+  if (status === 401) return 'Google sign-in expired — hit Connect again.';
+  if (status === 403 && /insufficient authentication scopes/i.test(reason)) {
+    return 'Google needs re-consent for calendar access — hit Connect and accept both boxes.';
+  }
+  if (status === 403 && /calendarUsageLimits|rateLimit|quota/i.test(reason)) {
+    return 'Google is rate-limiting this account — wait a minute and retry.';
+  }
+  if (status === 403) return `Google refused: ${reason || 'access denied'}`;
+  if (status === 404) return "That calendar isn't there any more — hit Connect to refresh the list.";
+  return `Google said ${status}: ${reason || 'unknown error'}`;
+}
+
 async function call(token, path, opts = {}) {
   const res = await fetch(`${API}${path}`, {
     ...opts,
@@ -64,7 +97,7 @@ async function call(token, path, opts = {}) {
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    throw new Error(`Google said ${res.status}: ${body.slice(0, 140)}`);
+    throw new Error(explainGoogleError(res.status, body));
   }
   return res.status === 204 ? null : res.json();
 }
@@ -165,10 +198,10 @@ export function insertEvent(token, calendarId, body) {
   });
 }
 
-/** Create a calendar (so a push doesn't pollute the user's primary one). */
-export function createCalendar(token, summary) {
-  return call(token, '/calendars', { method: 'POST', body: JSON.stringify({ summary }) });
-}
+// NB: no createCalendar. We write events into a calendar you already made and
+// picked, which needs only calendar.events — creating one would need the
+// blanket `auth/calendar` scope, and that's a lot of power to hold for a
+// convenience. Make the calendar in Google; point us at it.
 
 export function deleteEvent(token, calendarId, eventId) {
   return call(token, `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`, {
