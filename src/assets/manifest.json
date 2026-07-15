@@ -1,877 +1,360 @@
 {
  "schemaVersion": 1,
- "segmenter": "sprite_tools_new (connected-components, tol=70)",
+ "segmenter": "green-key (chroma-key sheet, despill + 1px erode) + sprite_tools_new CC",
  "chromeChassisFill": "#F1E9D8",
  "sprites": [
-  {
-   "name": "frame-scroll",
-   "file": "chrome/frame-scroll.png",
-   "sheet": "chrome",
-   "cell": [
-    1,
-    1
-   ],
-   "box": [
-    38,
-    28,
-    287,
-    193
-   ]
-  },
-  {
-   "name": "sign-wood-post",
-   "file": "chrome/sign-wood-post.png",
-   "sheet": "chrome",
-   "cell": [
-    1,
-    2
-   ],
-   "box": [
-    326,
-    26,
-    549,
-    186
-   ]
-  },
-  {
-   "name": "frame-scalloped",
-   "file": "chrome/frame-scalloped.png",
-   "sheet": "chrome",
-   "cell": [
-    1,
-    3
-   ],
-   "box": [
-    591,
-    43,
-    845,
-    173
-   ]
-  },
-  {
-   "name": "shield-priority",
-   "file": "chrome/shield-priority.png",
-   "sheet": "chrome",
-   "cell": [
-    1,
-    4
-   ],
-   "box": [
-    887,
-    15,
-    1042,
-    194
-   ]
-  },
-  {
-   "name": "sign-hanging",
-   "file": "chrome/sign-hanging.png",
-   "sheet": "chrome",
-   "cell": [
-    1,
-    5
-   ],
-   "box": [
-    1092,
-    15,
-    1266,
-    191
-   ]
-  },
-  {
-   "name": "btn-circle",
-   "file": "chrome/btn-circle.png",
-   "sheet": "chrome",
-   "cell": [
-    2,
-    1
-   ],
-   "box": [
-    34,
-    223,
-    150,
-    339
-   ]
-  },
-  {
-   "name": "btn-rounded-square",
-   "file": "chrome/btn-rounded-square.png",
-   "sheet": "chrome",
-   "cell": [
-    2,
-    2
-   ],
-   "box": [
-    176,
-    224,
-    290,
-    338
-   ]
-  },
-  {
-   "name": "btn-oval",
-   "file": "chrome/btn-oval.png",
-   "sheet": "chrome",
-   "cell": [
-    2,
-    3
-   ],
-   "box": [
-    317,
-    229,
-    482,
-    334
-   ]
-  },
-  {
-   "name": "btn-inset-pressed",
-   "file": "chrome/btn-inset-pressed.png",
-   "sheet": "chrome",
-   "cell": [
-    2,
-    4
-   ],
-   "box": [
-    512,
-    224,
-    636,
-    338
-   ]
-  },
-  {
-   "name": "toggle-pill",
-   "file": "chrome/toggle-pill.png",
-   "sheet": "chrome",
-   "cell": [
-    2,
-    5
-   ],
-   "box": [
-    669,
-    235,
-    847,
-    328
-   ]
-  },
-  {
-   "name": "btn-pill",
-   "file": "chrome/btn-pill.png",
-   "sheet": "chrome",
-   "cell": [
-    2,
-    6
-   ],
-   "box": [
-    877,
-    245,
-    1072,
-    321
-   ]
-  },
-  {
-   "name": "btn-pill-wide",
-   "file": "chrome/btn-pill-wide.png",
-   "sheet": "chrome",
-   "cell": [
-    2,
-    7
-   ],
-   "box": [
-    1096,
-    248,
-    1267,
-    316
-   ]
-  },
-  {
-   "name": "frame-square",
-   "file": "chrome/frame-square.png",
-   "sheet": "chrome",
-   "cell": [
-    3,
-    1
-   ],
-   "box": [
-    36,
-    369,
-    148,
-    482
-   ]
-  },
-  {
-   "name": "frame-arched",
-   "file": "chrome/frame-arched.png",
-   "sheet": "chrome",
-   "cell": [
-    3,
-    2
-   ],
-   "box": [
-    181,
-    365,
-    286,
-    485
-   ]
-  },
-  {
-   "name": "input-rounded",
-   "file": "chrome/input-rounded.png",
-   "sheet": "chrome",
-   "cell": [
-    3,
-    3
-   ],
-   "box": [
-    317,
-    386,
-    483,
-    464
-   ]
-  },
-  {
-   "name": "input-search-pill",
-   "file": "chrome/input-search-pill.png",
-   "sheet": "chrome",
-   "cell": [
-    3,
-    4
-   ],
-   "box": [
-    508,
-    386,
-    849,
-    463
-   ]
-  },
-  {
-   "name": "input-rounded-2",
-   "file": "chrome/input-rounded-2.png",
-   "sheet": "chrome",
-   "cell": [
-    3,
-    5
-   ],
-   "box": [
-    877,
-    389,
-    1072,
-    464
-   ]
-  },
-  {
-   "name": "input-rounded-3",
-   "file": "chrome/input-rounded-3.png",
-   "sheet": "chrome",
-   "cell": [
-    3,
-    6
-   ],
-   "box": [
-    1095,
-    387,
-    1267,
-    465
-   ]
-  },
-  {
-   "name": "frame-deep-inset",
-   "file": "chrome/frame-deep-inset.png",
-   "sheet": "chrome",
-   "cell": [
-    4,
-    1
-   ],
-   "box": [
-    34,
-    510,
-    148,
-    618
-   ]
-  },
   {
    "name": "badge-padlock",
    "file": "chrome/badge-padlock.png",
    "sheet": "chrome",
-   "cell": [
-    4,
-    2
-   ],
-   "box": [
-    178,
-    508,
-    294,
-    618
-   ]
-  },
-  {
-   "name": "plaque-toast",
-   "file": "chrome/plaque-toast.png",
-   "sheet": "chrome",
-   "cell": [
-    4,
-    3
-   ],
-   "box": [
-    316,
-    512,
-    483,
-    617
-   ]
-  },
-  {
-   "name": "chip-pennant-deadline",
-   "file": "chrome/chip-pennant-deadline.png",
-   "sheet": "chrome",
-   "cell": [
-    4,
-    4
-   ],
-   "box": [
-    508,
-    525,
-    580,
-    607
-   ]
-  },
-  {
-   "name": "flag-warning",
-   "file": "chrome/flag-warning.png",
-   "sheet": "chrome",
-   "cell": [
-    4,
-    5
-   ],
-   "box": [
-    612,
-    510,
-    705,
-    618
-   ]
+   "source": "green-key"
   },
   {
    "name": "btn-calendar",
    "file": "chrome/btn-calendar.png",
    "sheet": "chrome",
-   "cell": [
-    4,
-    6
-   ],
-   "box": [
-    739,
-    510,
-    846,
-    618
-   ]
+   "source": "green-key"
+  },
+  {
+   "name": "btn-circle",
+   "file": "chrome/btn-circle.png",
+   "sheet": "chrome",
+   "source": "green-key"
+  },
+  {
+   "name": "btn-inset-pressed",
+   "file": "chrome/btn-inset-pressed.png",
+   "sheet": "chrome",
+   "source": "green-key"
+  },
+  {
+   "name": "btn-oval",
+   "file": "chrome/btn-oval.png",
+   "sheet": "chrome",
+   "source": "green-key"
+  },
+  {
+   "name": "btn-pill-wide",
+   "file": "chrome/btn-pill-wide.png",
+   "sheet": "chrome",
+   "source": "green-key"
+  },
+  {
+   "name": "btn-pill",
+   "file": "chrome/btn-pill.png",
+   "sheet": "chrome",
+   "source": "green-key"
+  },
+  {
+   "name": "btn-rounded-square",
+   "file": "chrome/btn-rounded-square.png",
+   "sheet": "chrome",
+   "source": "green-key"
   },
   {
    "name": "cameo",
    "file": "chrome/cameo.png",
    "sheet": "chrome",
-   "cell": [
-    4,
-    7
-   ],
-   "box": [
-    877,
-    511,
-    988,
-    618
-   ]
+   "source": "green-key"
+  },
+  {
+   "name": "chip-pennant-deadline",
+   "file": "chrome/chip-pennant-deadline.png",
+   "sheet": "chrome",
+   "source": "green-key"
+  },
+  {
+   "name": "flag-warning",
+   "file": "chrome/flag-warning.png",
+   "sheet": "chrome",
+   "source": "green-key"
+  },
+  {
+   "name": "frame-arched",
+   "file": "chrome/frame-arched.png",
+   "sheet": "chrome",
+   "source": "green-key"
+  },
+  {
+   "name": "frame-deep-inset",
+   "file": "chrome/frame-deep-inset.png",
+   "sheet": "chrome",
+   "source": "green-key"
+  },
+  {
+   "name": "frame-scalloped",
+   "file": "chrome/frame-scalloped.png",
+   "sheet": "chrome",
+   "source": "green-key"
+  },
+  {
+   "name": "frame-scroll",
+   "file": "chrome/frame-scroll.png",
+   "sheet": "chrome",
+   "source": "green-key"
+  },
+  {
+   "name": "frame-square",
+   "file": "chrome/frame-square.png",
+   "sheet": "chrome",
+   "source": "sheet-1/2"
+  },
+  {
+   "name": "input-rounded-2",
+   "file": "chrome/input-rounded-2.png",
+   "sheet": "chrome",
+   "source": "sheet-1/2"
+  },
+  {
+   "name": "input-rounded-3",
+   "file": "chrome/input-rounded-3.png",
+   "sheet": "chrome",
+   "source": "sheet-1/2"
+  },
+  {
+   "name": "input-rounded",
+   "file": "chrome/input-rounded.png",
+   "sheet": "chrome",
+   "source": "green-key"
+  },
+  {
+   "name": "input-search-pill",
+   "file": "chrome/input-search-pill.png",
+   "sheet": "chrome",
+   "source": "green-key"
   },
   {
    "name": "keypad-grid",
    "file": "chrome/keypad-grid.png",
    "sheet": "chrome",
-   "cell": [
-    4,
-    8
-   ],
-   "box": [
-    1016,
-    515,
-    1267,
-    615
-   ]
+   "source": "green-key"
   },
   {
-   "name": "crab",
-   "file": "icons/crab.png",
-   "sheet": "icons",
-   "cell": [
-    1,
-    1
-   ],
-   "box": [
-    35,
-    33,
-    247,
-    167
-   ]
+   "name": "plaque-toast",
+   "file": "chrome/plaque-toast.png",
+   "sheet": "chrome",
+   "source": "green-key"
   },
   {
-   "name": "palm",
-   "file": "icons/palm.png",
-   "sheet": "icons",
-   "cell": [
-    1,
-    2
-   ],
-   "box": [
-    309,
-    0,
-    483,
-    196
-   ]
+   "name": "shield-priority",
+   "file": "chrome/shield-priority.png",
+   "sheet": "chrome",
+   "source": "green-key"
   },
   {
-   "name": "cabana-hut",
-   "file": "icons/cabana-hut.png",
-   "sheet": "icons",
-   "cell": [
-    1,
-    3
-   ],
-   "box": [
-    550,
-    6,
-    747,
-    199
-   ]
+   "name": "sign-hanging",
+   "file": "chrome/sign-hanging.png",
+   "sheet": "chrome",
+   "source": "green-key"
   },
   {
-   "name": "surfboard",
-   "file": "icons/surfboard.png",
-   "sheet": "icons",
-   "cell": [
-    1,
-    4
-   ],
-   "box": [
-    841,
-    0,
-    949,
-    194
-   ]
+   "name": "sign-wood-post",
+   "file": "chrome/sign-wood-post.png",
+   "sheet": "chrome",
+   "source": "green-key"
   },
   {
-   "name": "umbrella",
-   "file": "icons/umbrella.png",
-   "sheet": "icons",
-   "cell": [
-    1,
-    5
-   ],
-   "box": [
-    1070,
-    11,
-    1265,
-    184
-   ]
-  },
-  {
-   "name": "sandcastle",
-   "file": "icons/sandcastle.png",
-   "sheet": "icons",
-   "cell": [
-    2,
-    1
-   ],
-   "box": [
-    31,
-    219,
-    149,
-    330
-   ]
-  },
-  {
-   "name": "beach-ball",
-   "file": "icons/beach-ball.png",
-   "sheet": "icons",
-   "cell": [
-    2,
-    2
-   ],
-   "box": [
-    174,
-    223,
-    290,
-    340
-   ]
-  },
-  {
-   "name": "life-ring",
-   "file": "icons/life-ring.png",
-   "sheet": "icons",
-   "cell": [
-    2,
-    3
-   ],
-   "box": [
-    317,
-    222,
-    436,
-    344
-   ]
-  },
-  {
-   "name": "trunks",
-   "file": "icons/trunks.png",
-   "sheet": "icons",
-   "cell": [
-    2,
-    4
-   ],
-   "box": [
-    472,
-    233,
-    608,
-    335
-   ]
-  },
-  {
-   "name": "visor",
-   "file": "icons/visor.png",
-   "sheet": "icons",
-   "cell": [
-    2,
-    5
-   ],
-   "box": [
-    701,
-    255,
-    841,
-    312
-   ]
-  },
-  {
-   "name": "seagull",
-   "file": "icons/seagull.png",
-   "sheet": "icons",
-   "cell": [
-    2,
-    6
-   ],
-   "box": [
-    886,
-    217,
-    989,
-    346
-   ]
-  },
-  {
-   "name": "starfish",
-   "file": "icons/starfish.png",
-   "sheet": "icons",
-   "cell": [
-    2,
-    7
-   ],
-   "box": [
-    1013,
-    226,
-    1131,
-    340
-   ]
-  },
-  {
-   "name": "seashell",
-   "file": "icons/seashell.png",
-   "sheet": "icons",
-   "cell": [
-    2,
-    8
-   ],
-   "box": [
-    1156,
-    232,
-    1271,
-    334
-   ]
-  },
-  {
-   "name": "treasure-chest",
-   "file": "icons/treasure-chest.png",
-   "sheet": "icons",
-   "cell": [
-    3,
-    1
-   ],
-   "box": [
-    29,
-    371,
-    151,
-    483
-   ]
-  },
-  {
-   "name": "key",
-   "file": "icons/key.png",
-   "sheet": "icons",
-   "cell": [
-    3,
-    2
-   ],
-   "box": [
-    192,
-    377,
-    284,
-    478
-   ]
+   "name": "toggle-pill",
+   "file": "chrome/toggle-pill.png",
+   "sheet": "chrome",
+   "source": "green-key"
   },
   {
    "name": "anchor",
    "file": "icons/anchor.png",
    "sheet": "icons",
-   "cell": [
-    3,
-    3
-   ],
-   "box": [
-    320,
-    368,
-    419,
-    486
-   ]
+   "source": "green-key"
   },
   {
-   "name": "message-bottle",
-   "file": "icons/message-bottle.png",
+   "name": "beach-ball",
+   "file": "icons/beach-ball.png",
    "sheet": "icons",
-   "cell": [
-    3,
-    4
-   ],
-   "box": [
-    473,
-    364,
-    551,
-    490
-   ]
-  },
-  {
-   "name": "bucket-spade",
-   "file": "icons/bucket-spade.png",
-   "sheet": "icons",
-   "cell": [
-    3,
-    5
-   ],
-   "box": [
-    605,
-    365,
-    698,
-    486
-   ]
-  },
-  {
-   "name": "flip-flops",
-   "file": "icons/flip-flops.png",
-   "sheet": "icons",
-   "cell": [
-    3,
-    6
-   ],
-   "box": [
-    741,
-    368,
-    839,
-    487
-   ]
-  },
-  {
-   "name": "ring",
-   "file": "icons/ring.png",
-   "sheet": "icons",
-   "cell": [
-    3,
-    7
-   ],
-   "box": [
-    876,
-    368,
-    986,
-    478
-   ]
+   "source": "green-key"
   },
   {
    "name": "blank-rect",
    "file": "icons/blank-rect.png",
    "sheet": "icons",
-   "cell": [
-    3,
-    8
-   ],
-   "box": [
-    1010,
-    383,
-    1133,
-    455
-   ]
+   "source": "green-key"
   },
   {
-   "name": "sun-face",
-   "file": "icons/sun-face.png",
+   "name": "bucket-spade",
+   "file": "icons/bucket-spade.png",
    "sheet": "icons",
-   "cell": [
-    3,
-    9
-   ],
-   "box": [
-    1153,
-    366,
-    1275,
-    489
-   ]
+   "source": "green-key"
+  },
+  {
+   "name": "cabana-hut",
+   "file": "icons/cabana-hut.png",
+   "sheet": "icons",
+   "source": "green-key"
   },
   {
    "name": "compass",
    "file": "icons/compass.png",
    "sheet": "icons",
-   "cell": [
-    4,
-    1
-   ],
-   "box": [
-    40,
-    504,
-    140,
-    619
-   ]
+   "source": "green-key"
   },
   {
-   "name": "lighthouse",
-   "file": "icons/lighthouse.png",
+   "name": "crab",
+   "file": "icons/crab.png",
    "sheet": "icons",
-   "cell": [
-    4,
-    2
-   ],
-   "box": [
-    187,
-    510,
-    280,
-    619
-   ]
-  },
-  {
-   "name": "radio",
-   "file": "icons/radio.png",
-   "sheet": "icons",
-   "cell": [
-    4,
-    3
-   ],
-   "box": [
-    313,
-    516,
-    437,
-    618
-   ]
-  },
-  {
-   "name": "spyglass",
-   "file": "icons/spyglass.png",
-   "sheet": "icons",
-   "cell": [
-    4,
-    4
-   ],
-   "box": [
-    454,
-    521,
-    576,
-    603
-   ]
+   "source": "green-key"
   },
   {
    "name": "flip-flop",
    "file": "icons/flip-flop.png",
    "sheet": "icons",
-   "cell": [
-    4,
-    5
-   ],
-   "box": [
-    598,
-    512,
-    645,
-    619
-   ]
+   "source": "green-key"
+  },
+  {
+   "name": "flip-flops",
+   "file": "icons/flip-flops.png",
+   "sheet": "icons",
+   "source": "green-key"
   },
   {
    "name": "hammock",
    "file": "icons/hammock.png",
    "sheet": "icons",
-   "cell": [
-    4,
-    6
-   ],
-   "box": [
-    659,
-    509,
-    847,
-    619
-   ]
+   "source": "sheet-1/2"
+  },
+  {
+   "name": "key",
+   "file": "icons/key.png",
+   "sheet": "icons",
+   "source": "sheet-1/2"
+  },
+  {
+   "name": "life-ring",
+   "file": "icons/life-ring.png",
+   "sheet": "icons",
+   "source": "green-key"
   },
   {
    "name": "life-vest",
    "file": "icons/life-vest.png",
    "sheet": "icons",
-   "cell": [
-    4,
-    7
-   ],
-   "box": [
-    880,
-    509,
-    982,
-    619
-   ]
+   "source": "green-key"
   },
   {
-   "name": "whistle",
-   "file": "icons/whistle.png",
+   "name": "lighthouse",
+   "file": "icons/lighthouse.png",
    "sheet": "icons",
-   "cell": [
-    4,
-    8
-   ],
-   "box": [
-    1020,
-    532,
-    1126,
-    599
-   ]
+   "source": "green-key"
+  },
+  {
+   "name": "message-bottle",
+   "file": "icons/message-bottle.png",
+   "sheet": "icons",
+   "source": "green-key"
+  },
+  {
+   "name": "palm",
+   "file": "icons/palm.png",
+   "sheet": "icons",
+   "source": "green-key"
+  },
+  {
+   "name": "radio",
+   "file": "icons/radio.png",
+   "sheet": "icons",
+   "source": "green-key"
+  },
+  {
+   "name": "ring",
+   "file": "icons/ring.png",
+   "sheet": "icons",
+   "source": "sheet-1/2"
+  },
+  {
+   "name": "sandcastle",
+   "file": "icons/sandcastle.png",
+   "sheet": "icons",
+   "source": "green-key"
+  },
+  {
+   "name": "seagull",
+   "file": "icons/seagull.png",
+   "sheet": "icons",
+   "source": "green-key"
+  },
+  {
+   "name": "seashell",
+   "file": "icons/seashell.png",
+   "sheet": "icons",
+   "source": "green-key"
+  },
+  {
+   "name": "spyglass",
+   "file": "icons/spyglass.png",
+   "sheet": "icons",
+   "source": "green-key"
+  },
+  {
+   "name": "starfish",
+   "file": "icons/starfish.png",
+   "sheet": "icons",
+   "source": "green-key"
+  },
+  {
+   "name": "sun-face",
+   "file": "icons/sun-face.png",
+   "sheet": "icons",
+   "source": "sheet-1/2"
+  },
+  {
+   "name": "surfboard",
+   "file": "icons/surfboard.png",
+   "sheet": "icons",
+   "source": "green-key"
+  },
+  {
+   "name": "treasure-chest",
+   "file": "icons/treasure-chest.png",
+   "sheet": "icons",
+   "source": "green-key"
+  },
+  {
+   "name": "trunks",
+   "file": "icons/trunks.png",
+   "sheet": "icons",
+   "source": "green-key"
+  },
+  {
+   "name": "umbrella",
+   "file": "icons/umbrella.png",
+   "sheet": "icons",
+   "source": "green-key"
+  },
+  {
+   "name": "visor",
+   "file": "icons/visor.png",
+   "sheet": "icons",
+   "source": "green-key"
   },
   {
    "name": "wave",
    "file": "icons/wave.png",
    "sheet": "icons",
-   "cell": [
-    4,
-    9
-   ],
-   "box": [
-    1154,
-    515,
-    1271,
-    603
-   ]
+   "source": "green-key"
+  },
+  {
+   "name": "whistle",
+   "file": "icons/whistle.png",
+   "sheet": "icons",
+   "source": "sheet-1/2"
   },
   {
    "name": "beach-scene",
    "file": "scenes/beach-scene.png",
    "sheet": "scenes",
-   "cell": null,
-   "box": null,
    "note": "raw \u2014 film-border crop + watermark inpaint pending"
   },
   {
    "name": "cabana-interior",
    "file": "scenes/cabana-interior.png",
    "sheet": "scenes",
-   "cell": null,
-   "box": null,
    "note": "raw \u2014 film-border crop + watermark inpaint pending"
   }
  ]
