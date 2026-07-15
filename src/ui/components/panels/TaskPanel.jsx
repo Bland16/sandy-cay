@@ -11,7 +11,7 @@ import { DAY_NAMES, fmtRange } from '../../format.js';
 import { modelFromTask, buildRecurrence } from '../../recurrenceModel.js';
 import PanelHeader from '../PanelHeader.jsx';
 import DurationControl from '../DurationControl.jsx';
-import TagEditor from '../TagEditor.jsx';
+import TagEditor, { tagsInUse } from '../TagEditor.jsx';
 import RecurrenceEditor from '../RecurrenceEditor.jsx';
 import Icon from '../../Icon.jsx';
 
@@ -152,7 +152,7 @@ export default function TaskPanel({ task, sched, mutate, weekStart, onClose, sho
 
       <div className="fieldrow">
         <div className="flabel">Tags</div>
-        <TagEditor tags={editable.tags} onChange={(tags) => upd({ tags })} />
+        <TagEditor tags={editable.tags} onChange={(tags) => upd({ tags })} suggestions={tagsInUse(sched)} />
       </div>
 
       <div className="fieldrow split">

@@ -6,7 +6,7 @@ import { addDays } from '../../../core/index.js';
 import { buildRecurrence, emptyRecurrence } from '../../recurrenceModel.js';
 import PanelHeader from '../PanelHeader.jsx';
 import DurationControl from '../DurationControl.jsx';
-import TagEditor from '../TagEditor.jsx';
+import TagEditor, { tagsInUse } from '../TagEditor.jsx';
 import RecurrenceEditor from '../RecurrenceEditor.jsx';
 
 export default function AddTaskPanel({ sched, mutate, weekStart, onClose, showToast }) {
@@ -61,7 +61,7 @@ export default function AddTaskPanel({ sched, mutate, weekStart, onClose, showTo
       </div>
       <div className="fieldrow">
         <div className="flabel">Tags</div>
-        <TagEditor tags={tags} onChange={setTags} />
+        <TagEditor tags={tags} onChange={setTags} suggestions={tagsInUse(sched)} />
       </div>
       <div className="fieldrow split">
         <div>
