@@ -8,7 +8,7 @@
 ```bash
 npm install
 npm run dev      # http://localhost:5173/sandy-cay/
-npm run test:run # 122 tests, all green
+npm run test:run # 152 tests, all green
 npm run build    # verified passing
 npx eslint src   # clean
 ```
@@ -118,6 +118,50 @@ Everything marked **M2** in `design/UI-CONTROL-MAP.md` §6 that isn't drag/resiz
 - **Rating facets are tri-state** (`-1|0|1`) and cycle `=` → `↑` → `↓` with their
   meaning spelled out. Do not regress this to a checkbox — it silently threw away
   half the model's training signal.
+
+## Calendar interchange (`src/core/ical.js`, `src/ui/google.js`)
+- **`.ics` works now**, no setup: Cabana → Calendar. Recurrence maps properly —
+  periods → `RRULE`, skips → `EXDATE`, `move`/`add` → `RECURRENCE-ID` overrides.
+- **Google push/pull is written but UNTESTED** — it needs a Client ID the user
+  creates (free; Cloud Console → Calendar API → OAuth consent in Testing → Web
+  client ID). GIS token flow, no secret (Pages is static), ~hourly re-auth.
+  A Google event is normalized into the same record shape `parseICS` emits, so
+  the tested mapping path is reused. **Neither path syncs** — push sends, pull
+  reads, nothing reconciles.
+- **Tags:** calendars have none. A tag is a `#hashtag` in the title, a
+  `CATEGORIES` entry, or the name of the calendar it came from.
+- **Lossy by nature:** an event has no pinned/type/priority/deadline/tags/
+  chunking. Ours ride in `X-SANDYCAY-*` / `extendedProperties` (our re-import
+  keeps them; **Google drops them**). Anything else arrives `fixed` +
+  `placedBy:'user'` so re-optimize won't wander someone's lecture.
+
+## Audit passes — what they were worth
+Three passes, and the lesson is clear: **grounding the auditor in the real code
+beat reasoning from the spec.**
+
+| Pass | Method | Hit rate |
+|---|---|---|
+| Blind round 1 (`design/USE-CASES-BLIND.md`) | spec only, 40 cases | 3 of 5 top bets real |
+| Blind round 2 (`design/USE-CASES-BLIND-2.md`) | spec only, 40 more | B44 real (mild), B41 false |
+| **Code audit** | read the implementation, wrote probes | **6 of 6 real, 5 proven by execution** |
+
+Fixed from the code audit (all with regression tests):
+- **Displacement double-booked** — the occupied set was built once outside the
+  loop; `intervalsOf` snapshots Date *objects* and `placeTask` assigns fresh
+  ones, so every later evictee landed blind on the previous one.
+- **Post-midnight resize made a 22-hour task** — `begin()` read calendar minutes
+  while the column speaks 5am-anchored grid minutes.
+- **Work was placed straight through a pinned gym** — four functions filtered the
+  recurring parent out of their occupied sets but never added its occurrences
+  back. Use `placement.recurrenceIntervals()` if you build another one.
+- **Deadlines landed a day early** — `new Date('2026-07-20')` is UTC midnight.
+  Use the engine's `dateFromKey()` for any `<input type="date">`.
+- **Ratings wrote to the pattern** — Friday's gym overwrote Monday's, and
+  `retrain()` saw one sample however many sessions were rated.
+- **`autoSchedule` erased `placedBy:'user'`**, permanently disabling the
+  stability weight after the first run.
+- **`whatToDo` couldn't see the session you're in**; **`autoSchedule` placed into
+  the past** when re-optimizing mid-week.
 
 ## Blind QA pass — status of its top bets
 `design/USE-CASES-BLIND.md` holds 40 use cases written by an agent that never saw
