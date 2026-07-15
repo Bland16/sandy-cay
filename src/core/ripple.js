@@ -32,25 +32,33 @@ export function rippleShift(schedule, pivotTask, deltaMin) {
   const dayEnd = dayWindowBounds(config, pivotTask.startTime).end;
   const limit = wall ? new Date(Math.min(wall.startTime.getTime(), dayEnd.getTime())) : dayEnd;
 
-  // Stage 1: compressible break slack before the wall.
-  let compressible = 0;
-  let prevEnd = pivotEnd;
-  for (const t of affected) {
-    const gap = minutesBetween(prevEnd, t.startTime);
-    compressible += Math.max(0, gap - config.breaks.minimum);
-    prevEnd = t.endTime;
-  }
-  const absorbedByBreaks = Math.min(deltaMin, compressible);
-  const residual = deltaMin - absorbedByBreaks;
-
-  // Stages 2 & 3.
+  // Stages 1–3, cascaded. Each gap absorbs what it can, in order.
+  //
+  // Slack lives BETWEEN tasks: the first task can only borrow from the first
+  // gap. Pooling the whole chain's slack and shifting everyone by one residual
+  // under-shifts the head of the chain and leaves it overlapping the pivot —
+  // a silent overlap, which §0 forbids. 3B's "60-min delay with 45 min spare
+  // shifts tasks by 15" describes the END of the chain: each gap gives up its
+  // 15, so t1 +45, t2 +30, t3 +15, and 45 total is absorbed.
+  const minGap = config.breaks.minimum;
+  let cursor = addMinutes(pivotEnd, deltaMin); // where the pivot really ends now
+  let prevOriginalEnd = pivotEnd;
+  let absorbedByBreaks = 0;
   const shifted = [];
   const evacuated = [];
+
   for (const t of affected) {
-    const newStart = addMinutes(t.startTime, residual);
+    const originalGap = Math.max(0, minutesBetween(prevOriginalEnd, t.startTime));
+    const keepGap = Math.min(originalGap, minGap); // never invent a break that wasn't there
+    const earliest = addMinutes(cursor, keepGap);
+    // Ripple only ever pushes later — a task already clear of the chain stays put.
+    const newStart = t.startTime.getTime() >= earliest.getTime() ? t.startTime : earliest;
+    const shift = minutesBetween(t.startTime, newStart);
     const newEnd = addMinutes(newStart, t.getDuration());
-    if (residual > 0 && newEnd.getTime() > limit.getTime()) {
-      // Overflow → evacuate forward via scored placement.
+    prevOriginalEnd = t.endTime;
+
+    if (shift > 0 && newEnd.getTime() > limit.getTime()) {
+      // Overflow (past the wall or the day window) → evacuate forward.
       const occupied = intervalsOf(
         schedule.tasks.filter((o) => o !== t && !o.chunking && !o.recurrence),
       );
@@ -60,11 +68,16 @@ export function rippleShift(schedule, pivotTask, deltaMin) {
       placeTask(schedule, t, { from, to, occupied, origin: t.startTime });
       t.placedBy = 'auto';
       evacuated.push(t);
-    } else if (residual > 0) {
+      continue; // it left the chain — the cursor doesn't advance
+    }
+
+    absorbedByBreaks += Math.max(0, originalGap - minutesBetween(cursor, newStart));
+    if (shift > 0) {
       t.placeAt(newStart);
       t.history.rippleCount += 1;
       shifted.push(t);
     }
+    cursor = newEnd;
   }
 
   return { shifted, evacuated, absorbedByBreaks };

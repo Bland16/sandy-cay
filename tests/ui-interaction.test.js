@@ -134,10 +134,11 @@ describe('commit paths never leave a silent overlap', () => {
     expect(pivot.endTime.getTime()).toBe(T(10, 30).getTime()); // pivot's end restored
   });
 
-  it('commitRipple falls back to eviction when the engine over-absorbs', () => {
-    // Two downstream gaps make spareBreakMin (30) exceed the delta (30), so
-    // rippleShift's aggregate absorption shifts nobody — and t1 would still sit
-    // under the resized pivot. The integrity pass must resolve that.
+  it('commitRipple cascades the chain clear of the resized pivot — no eviction needed', () => {
+    // Two downstream gaps. The engine used to pool their slack and shift nobody,
+    // leaving t1 sitting under the resized pivot for the integrity pass to
+    // evict. With cascaded absorption t1 simply moves, the first gap gives up
+    // what it can, and the cleanup pass finds nothing left to resolve.
     const pivot = s.addFixed({ title: 'Meeting', startTime: T(9), endTime: T(10) });
     const t1 = s.addFlexible({ title: 't1', startTime: T(10, 20), endTime: T(10, 50) });
     s.addFlexible({ title: 't2', startTime: T(11, 10), endTime: T(11, 40) });
@@ -146,8 +147,9 @@ describe('commit paths never leave a silent overlap', () => {
     s.updateTask(pivot.id, { endTime: T(10, 30) });
     const res = commitRipple(s, pivot, oldEnd, 30);
 
-    expect(res.shifted.length).toBe(0); // absorbed on paper…
-    expect(res.cleanup.displaced.map((t) => t.id)).toContain(t1.id); // …resolved for real
+    expect(res.shifted.map((t) => t.id)).toContain(t1.id);
+    expect(t1.startTime.getTime()).toBeGreaterThanOrEqual(pivot.endTime.getTime());
+    expect(res.cleanup.displaced.length).toBe(0); // the engine no longer leaves a mess
     expect(overlapsOnDay()).toEqual([]);
   });
 

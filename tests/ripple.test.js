@@ -27,12 +27,34 @@ describe('3B — rippleShift three-stage absorption', () => {
     expect(res.absorbedByBreaks).toBe(45);
     expect(res.shifted.map((t) => t.id).sort()).toEqual([t1, t2, t3].map((t) => t.id).sort());
     expect(res.evacuated.length).toBe(0);
-    // Residual 15 → each shifts +15 min.
-    expect(t1.startTime.getHours()).toBe(10);
-    expect(t1.startTime.getMinutes()).toBe(35);
-    expect(t2.startTime.getMinutes()).toBe(25);
+    // Absorption cascades: each 20-min gap gives up 15 and keeps the 5-min
+    // minimum, so the chain's END shifts by the 15-min residual — but the head
+    // has to move the full 45 to clear the pivot's new 11:00 end.
+    expect(t1.startTime.getHours()).toBe(11);
+    expect(t1.startTime.getMinutes()).toBe(5); // +45
+    expect(t2.startTime.getHours()).toBe(11);
+    expect(t2.startTime.getMinutes()).toBe(40); // +30
     expect(t3.startTime.getHours()).toBe(12);
-    expect(t3.startTime.getMinutes()).toBe(15);
+    expect(t3.startTime.getMinutes()).toBe(15); // +15 — 3B's headline
+    // Every gap sits at the 5-min minimum and nothing overlaps.
+    expect(t1.startTime.getTime()).toBeGreaterThanOrEqual(T(11).getTime());
+    expect(t1.overlaps(t2)).toBe(false);
+    expect(t2.overlaps(t3)).toBe(false);
+  });
+
+  it('the head of the chain clears the grown pivot — no silent overlap (multi-gap)', () => {
+    // Regression: slack used to be pooled across the whole chain and applied as
+    // one uniform shift, which left the first task sitting under the pivot.
+    const pivot = s.addFlexible({ title: 'Pivot', startTime: T(9), endTime: T(10) });
+    const t1 = s.addFlexible({ title: 't1', startTime: T(10, 30), endTime: T(11, 30) });
+    const t2 = s.addFlexible({ title: 't2', startTime: T(12), endTime: T(13) });
+
+    s.rippleShift(pivot, 60);
+    pivot.endTime = T(11); // the caller applies the pivot's real new end
+
+    expect(t1.startTime.getTime()).toBeGreaterThanOrEqual(pivot.endTime.getTime());
+    expect(t1.overlaps(pivot)).toBe(false);
+    expect(t1.overlaps(t2)).toBe(false);
   });
 
   it('a downstream pinned task is a wall — it and everything after stay put', () => {
