@@ -16,6 +16,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, cleanup, screen, fireEvent, within } from '@testing-library/react';
 import App from '../src/App.jsx';
 import { gridBounds } from '../src/ui/format.js';
+import { seed } from '../src/core/index.js';
+import { STORAGE_KEY } from '../src/ui/useEngine.js';
 
 const COL_LEFT0 = 60;
 const COL_W = 100;
@@ -38,7 +40,11 @@ const rect = (left, top, width, height) => ({
 
 let origRect;
 beforeEach(() => {
+  // The app no longer ships demo data — it starts empty. These tests want the
+  // seed week, so they hand it to the app the way a returning user would: via
+  // persisted state.
   window.localStorage.clear();
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(seed(new Date()).toJSON()));
   origRect = Element.prototype.getBoundingClientRect;
   Element.prototype.getBoundingClientRect = function stub() {
     if (this.dataset && this.dataset.dropzone !== undefined) {

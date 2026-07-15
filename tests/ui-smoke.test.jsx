@@ -1,15 +1,27 @@
 // @vitest-environment jsdom
-// UI smoke test — mounts the real <App/> (engine-backed, seed data) and asserts
-// the week grid chrome and a seed task title render. jsdom is scoped to this
-// file only via the docblock above; the node-env engine suite is untouched.
-import { describe, it, expect, afterEach } from 'vitest';
+// UI smoke test — mounts the real <App/> against the real engine. jsdom is
+// scoped to this file only via the docblock above; the node-env engine suite is
+// untouched.
+//
+// The app ships EMPTY: it's for your schedule, not a showroom. So the first-run
+// case is an empty week, and a test wanting content hands it over the way a
+// returning user would — persisted state.
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, cleanup, screen, within, fireEvent } from '@testing-library/react';
 import App from '../src/App.jsx';
+import { seed } from '../src/core/index.js';
+import { STORAGE_KEY } from '../src/ui/useEngine.js';
 
+beforeEach(() => window.localStorage.clear());
 afterEach(cleanup);
 
+/** Boot with the demo week already persisted, as a returning user would have. */
+const withSavedWeek = () => {
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(seed(new Date()).toJSON()));
+};
+
 describe('App smoke render', () => {
-  it('renders the masthead, the week grid day headers, and a seed task', () => {
+  it('first run is an EMPTY week — chrome renders, no demo data invented', () => {
     render(<App />);
 
     // Masthead present (the title uses a non-breaking space).
@@ -20,7 +32,15 @@ describe('App smoke render', () => {
       expect(screen.getAllByText(day).length).toBeGreaterThan(0);
     }
 
-    // A seed task from the engine is on the grid (Team standup, fixed, Monday).
+    // Nothing from the old seed week is conjured up for a new user.
+    expect(screen.queryByText('Team standup')).toBeNull();
+    expect(screen.queryByText('Morning gym')).toBeNull();
+    expect(document.querySelectorAll('.card').length).toBe(0);
+  });
+
+  it('a saved week is hydrated from storage', () => {
+    withSavedWeek();
+    render(<App />);
     expect(screen.getByText('Team standup')).toBeTruthy();
   });
 
@@ -33,6 +53,7 @@ describe('App smoke render', () => {
   });
 
   it('reaches the major views without crashing', () => {
+    withSavedWeek();
     render(<App />);
 
     // Task detail-edit panel opens from a card.
@@ -56,5 +77,13 @@ describe('App smoke render', () => {
     fireEvent.click(screen.getByLabelText('Cabana settings'));
     expect(screen.getByText('The Cabana')).toBeTruthy();
     expect(screen.getByText('Tuning')).toBeTruthy();
+  });
+
+  it('the empty app still reaches every view (no crash on zero tasks)', () => {
+    render(<App />);
+    fireEvent.click(screen.getByLabelText('What to do now'));
+    expect(screen.getByText(/what to do/i)).toBeTruthy();
+    fireEvent.click(screen.getByLabelText('Cabana settings'));
+    expect(screen.getByText('The Cabana')).toBeTruthy();
   });
 });

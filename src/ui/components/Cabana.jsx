@@ -46,7 +46,7 @@ function ZoneTags({ tags, onAdd, onRemove }) {
   );
 }
 
-export default function Cabana({ sched, mutate, weekStart, onBack, onReplace, showToast }) {
+export default function Cabana({ sched, mutate, weekStart, onBack, onReplace, onReset, showToast }) {
   const fileRef = useRef(null);
   const [editingId, setEditingId] = useState(null);
   const [newTag, setNewTag] = useState('');
@@ -250,6 +250,22 @@ export default function Cabana({ sched, mutate, weekStart, onBack, onReplace, sh
             <button className="btn2 ghost" onClick={() => fileRef.current && fileRef.current.click()}><Icon name="key" /> Import</button>
             <input ref={fileRef} type="file" accept="application/json" style={{ display: 'none' }} onChange={doImport} />
           </div>
+          <p className="insight" style={{ opacity: 0.75, marginTop: 10 }}>
+            Starting fresh erases every task, zone and rating on this device. Export first
+            if you want it back.
+          </p>
+          <button
+            className="btn2 ghost"
+            style={{ marginTop: 6 }}
+            onClick={() => {
+              if (window.confirm('Erase every task, zone and rating on this device? Export first if you want them back.')) {
+                onReset();
+                showToast('Cleared — an empty week');
+              }
+            }}
+          >
+            Start fresh
+          </button>
         </div>
 
         {/* Insights */}

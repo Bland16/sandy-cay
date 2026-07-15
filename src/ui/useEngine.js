@@ -4,9 +4,13 @@
 // re-render, and debounce-saves through StorageAdapter (SPEC §9).
 
 import { useRef, useState, useCallback, useEffect } from 'react';
-import { Schedule, seed, StorageAdapter } from '../core/index.js';
+import { Schedule, StorageAdapter, defaultConfig } from '../core/index.js';
 
-const STORAGE_KEY = 'sandy-cay:schedule:v1';
+export const STORAGE_KEY = 'sandy-cay:schedule:v1';
+
+/** A real, empty week. The app is for your schedule, not a showroom — seed()
+ *  still exists as a test fixture, but nothing demo-shaped ships to a user. */
+const emptySchedule = () => new Schedule({ config: defaultConfig });
 const SAVE_DEBOUNCE_MS = 1500;
 
 export function useEngine() {
@@ -27,8 +31,17 @@ export function useEngine() {
     } catch {
       sched = null;
     }
-    schedRef.current = sched || seed(new Date());
+    schedRef.current = sched || emptySchedule();
   }
+
+  /** Wipe everything and start over — the only way out of demo data that's
+   *  already persisted, and an honest "I want my own week" button. */
+  const reset = useCallback(() => {
+    storageRef.current.remove(STORAGE_KEY);
+    schedRef.current = emptySchedule();
+    setVersion((v) => v + 1);
+    setSaveState('idle');
+  }, []);
 
   const flush = useCallback(() => {
     // save() reports rather than throws; a failure demotes the adapter to memory,
@@ -53,6 +66,7 @@ export function useEngine() {
     sched: schedRef.current,
     version,
     mutate,
+    reset,
     flush,
     storage: storageRef.current,
     persistence: storageRef.current.status, // 'persistent' | 'session'

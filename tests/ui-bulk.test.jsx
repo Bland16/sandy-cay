@@ -16,7 +16,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup, screen, fireEvent, within } from '@testing-library/react';
 import App from '../src/App.jsx';
-import { Schedule, Task, defaultConfig, resetIds, dateKey } from '../src/core/index.js';
+import { Schedule, Task, defaultConfig, resetIds, dateKey, seed } from '../src/core/index.js';
 import { gridBounds } from '../src/ui/format.js';
 
 const STORAGE_KEY = 'sandy-cay:schedule:v1';
@@ -37,7 +37,11 @@ const rect = (left, top, width, height) => ({
 
 let origRect;
 beforeEach(() => {
+  // The app ships empty now, so a test wanting the seed week hands it over the
+  // same way a returning user would: persisted state. bootWith() overwrites
+  // this for tests that state their own week.
   window.localStorage.clear();
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(seed(new Date()).toJSON()));
   resetIds();
   origRect = Element.prototype.getBoundingClientRect;
   Element.prototype.getBoundingClientRect = function stub() {

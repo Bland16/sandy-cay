@@ -46,7 +46,7 @@ function truncationFor(task, at) {
 }
 
 export default function App() {
-  const { sched, version, mutate, replace, persistence, saveState } = useEngine();
+  const { sched, version, mutate, replace, reset, persistence, saveState } = useEngine();
   const now = useRef(new Date()).current;
   const [weekStart, setWeekStart] = useState(() => weekStartOf(now));
   const [view, setView] = useState('week'); // 'week' | 0..6 | 'cabana'
@@ -309,6 +309,7 @@ export default function App() {
             weekStart={weekStart}
             onBack={() => setView('week')}
             onReplace={replace}
+            onReset={reset}
             showToast={showToast}
           />
         ) : (
