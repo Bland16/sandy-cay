@@ -56,8 +56,8 @@ Left → right. Sprites per FRONTEND-SPEC §3; every button has an SVG/text fall
 ### CRUD (SPEC §1.3)
 | Method | Trigger / surface |
 |---|---|
-| `addFixed` / `addFlexible` | Add panel (type toggle), submit blocked on empty title (7A) |
-| `addProject` | Add panel → Project (total hrs, min/max chunk, range, tags/zone) |
+| `addFixed` / `addFlexible` | Add Task panel (type toggle), submit blocked on empty title (7A); **includes the recurrence editor so a task can be made repeatable at creation** (shared window-row component, §4.3) |
+| `addProject` | Add Project panel (total hrs, min/max chunk, range, tags/zone) |
 | `updateTask(id, changes)` | Task panel inline edits; hover popover; drag `moveTo`; resize borders |
 | `removeTask(id)` | Card context menu → Delete → **removal toast** (S9); recurring → delete flow (§4 / 7D) |
 | `duplicate()` | Card context menu → Duplicate (new id, resets lived data) |
@@ -208,3 +208,45 @@ Each row: the concrete gesture → engine → outcome. This is the coverage proo
   FRONTEND-SPEC §3 image 3). A back/close returns to the week.
 - **Resolved forks:** ＋Add task and Add project are **two separate header buttons**;
   **Find times** is header-only (plus per-task in the panel); **Cabana = own page**.
+
+---
+
+## 6. Phase 2 build checklist — use case → component → milestone
+
+We build the real frontend in two milestones. **M1** = the runnable, engine-wired
+app (views, navigation, all forms/reads). **M2** = interaction physics + generated
+documents (drag/drop/resize choosers, bulk flows, PDF, PWA polish). Every use case
+below maps to a component so nothing is dropped.
+
+| Case | Component / interaction | M |
+|---|---|---|
+| 1A move | edit date in panel (M1) · drag card (M2) | 1·2 |
+| 1B shrink | duration slider in panel (M1) · sand-border resize (M2) | 1·2 |
+| 1C/1D find times + copy | Find-times panel (`findFreeSlots`) | 1 |
+| 1E lunch beats studying | drop → displacement + snap-back (`resolveDropConflicts`) | 2 |
+| 2A protect + alternatives | pinned card + Find-times | 1 |
+| 2B rest survives | Add task w/ protected tag | 1 |
+| 2C study zone | Cabana → Zones editor (`addZone`) | 1 |
+| 2D deadline before zone | deadline field + info/warn badge | 1 |
+| 2E urgency order | Week ⋯ → Re-optimize (`autoSchedule`) | 1 |
+| 3A clear a day | Day ⋯ → Clear Day panel (`evacuateDay`) | 2 |
+| 3B meeting ran long | resize → Ripple⟺Displace chooser (`rippleShift`) | 2 |
+| 3C cancelled → gap | removal toast: leave/backfill/protect | 2 |
+| 3D finished early | card check → Done (`completion`) + remainder toast | 1·2 |
+| 3E end-of-week triage | Week ⋯ Wrap up + past-week banner (`carryOver`) | 1 |
+| 4A–4E recurrence | **recurrence editor in Add task + edit** (periods/interval/temporary) | 1 |
+| 4A/4C occurrence menus | skip via menu (M1) · drop-onto-occurrence menu (M2) | 1·2 |
+| 5A plan ahead | week nav + date-jump | 1 |
+| 5B project in chunks | Add Project panel (`addProject`, bucket preview) | 1 |
+| 5C block weekend | Week ⋯ → Block days… (`blockRange`) | 1 |
+| 5D compare loads | load meter + adjacent-week hover (`getWeekLoad`) | 1 |
+| 6A–6L review | Wrap report (PDF) + Cabana Insights/detectors | 2 (insights read M1) |
+| 7A title-only | Add task, immediate placement | 1 |
+| 7C duplicate | card context menu (`duplicate`) | 1 |
+| 7D recurring delete | occurrence / future / all flow | 1 |
+| persistence | StorageAdapter auto-save + status dot; footlocker export/import | 1 |
+| PWA install/offline | manifest + SW (scaffolded) → polish | 2 |
+
+**M1 exit bar:** app runs on the real engine + seed data; every panel/form works
+(incl. recurrence in Add task); `npm run build` passes; a smoke render test mounts
+the app. **M2** layers the drag/resize physics, bulk flows, and the Wrap PDF.
