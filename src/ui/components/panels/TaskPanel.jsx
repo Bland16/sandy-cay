@@ -15,6 +15,18 @@ import TagEditor from '../TagEditor.jsx';
 import RecurrenceEditor from '../RecurrenceEditor.jsx';
 import Icon from '../../Icon.jsx';
 
+// Satisfaction facets are tri-state in the engine (-1 | 0 | 1), so the control
+// cycles = → ↑ → ↓ and says what each state means (R-5). Neither arrow is a
+// judgement — no warning colour on a rating (P-1).
+const FACETS = [
+  { key: 'timingFit', label: 'timing', zero: 'just right', pos: 'too late', neg: 'too early' },
+  { key: 'durationFit', label: 'duration', zero: 'just right', pos: 'too long', neg: 'too short' },
+  { key: 'energy', label: 'energy', zero: 'neutral', pos: 'energized me', neg: 'drained me' },
+];
+const facetGlyph = (v) => (v === 1 ? '↑' : v === -1 ? '↓' : '=');
+const facetWord = (f, v) => (v === 1 ? f.pos : v === -1 ? f.neg : f.zero);
+const cycleFacet = (v) => (!v ? 1 : v === 1 ? -1 : 0);
+
 export default function TaskPanel({ task, sched, mutate, weekStart, onClose, showToast }) {
   // Resolve the editable underlying task: an occurrence edits its parent.
   const editable = task.isOccurrence ? sched.tasks.find((t) => t.id === task.parentId) : task;
@@ -46,7 +58,7 @@ export default function TaskPanel({ task, sched, mutate, weekStart, onClose, sho
     upd({ startTime: start, endTime: addMinutes(start, durMin) });
   };
   const setShells = (n) => upd({ satisfaction: { ...sat, overall: n } });
-  const toggleFacet = (key) => upd({ satisfaction: { ...sat, [key]: sat[key] ? 0 : (key === 'energy' ? -1 : 1) } });
+  const setFacet = (key, v) => upd({ satisfaction: { ...sat, [key]: v } });
 
   const applyPattern = () => {
     mutate((s) => {
@@ -181,10 +193,25 @@ export default function TaskPanel({ task, sched, mutate, weekStart, onClose, sho
           ))}
         </div>
         <div className="facets">
-          {[['timingFit', 'timing'], ['durationFit', 'duration'], ['energy', 'energy']].map(([k, label]) => (
-            <button key={k} type="button" className={`facet${sat[k] ? ' on' : ''}`} onClick={() => toggleFacet(k)}>{label}{sat[k] ? ' ✓' : ''}</button>
-          ))}
+          {FACETS.map((f) => {
+            const v = sat[f.key] || 0;
+            return (
+              <button
+                key={f.key}
+                type="button"
+                className={`facet${v ? ' on' : ''}`}
+                onClick={() => setFacet(f.key, cycleFacet(v))}
+                title={`${f.label}: ${facetWord(f, v)} — click to cycle = ↑ ↓`}
+                aria-label={`${f.label}: ${facetWord(f, v)}. Click to cycle.`}
+              >
+                {f.label}
+                <b aria-hidden="true" style={{ margin: '0 4px', fontSize: '1.1em' }}>{facetGlyph(v)}</b>
+                <span style={{ opacity: 0.7 }}>{facetWord(f, v)}</span>
+              </button>
+            );
+          })}
         </div>
+        <p className="psub-note" style={{ marginTop: 4 }}>Optional — click a facet to cycle: <b>=</b> just right · <b>↑</b> more · <b>↓</b> less.</p>
       </div>
 
       <div className="fieldrow">
