@@ -57,8 +57,15 @@ export function rippleShift(schedule, pivotTask, deltaMin) {
     const newEnd = addMinutes(newStart, t.getDuration());
     prevOriginalEnd = t.endTime;
 
-    if (shift > 0 && newEnd.getTime() > limit.getTime()) {
-      // Overflow (past the wall or the day window) → evacuate forward.
+    // §2.2 is a hard rule: a deadline task may only occupy slots ending ≤ its
+    // deadline. A plain shift has no deadline awareness, so rippling could push
+    // work past its due date for free and say nothing. Treat that like any other
+    // overflow — hand it to placeTask, which honours deadlines and parks with a
+    // warning if nothing fits (visible beats invisible).
+    const breaksDeadline = t.deadline && newEnd.getTime() > t.deadline.getTime();
+
+    if (shift > 0 && (newEnd.getTime() > limit.getTime() || breaksDeadline)) {
+      // Overflow (past the wall, the day window, or its deadline) → evacuate.
       const occupied = intervalsOf(
         schedule.tasks.filter((o) => o !== t && !o.chunking && !o.recurrence),
       );
