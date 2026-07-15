@@ -2,7 +2,7 @@
 // on empty, case 7A). Includes the shared recurrence editor so a task can be made
 // repeatable at creation. Submit places it immediately via a scored free slot.
 import { useState } from 'react';
-import { addDays } from '../../../core/index.js';
+import { addDays, dateFromKey } from '../../../core/index.js';
 import { buildRecurrence, emptyRecurrence } from '../../recurrenceModel.js';
 import PanelHeader from '../PanelHeader.jsx';
 import DurationControl from '../DurationControl.jsx';
@@ -29,7 +29,7 @@ export default function AddTaskPanel({ sched, mutate, weekStart, onClose, showTo
       priority,
       pinned,
       from: weekStart,
-      deadline: deadline ? new Date(deadline) : null,
+      deadline: deadline ? dateFromKey(deadline) : null,
     };
     const rec = buildRecurrence(recModel, weekStart);
     if (rec) data.recurrence = rec;

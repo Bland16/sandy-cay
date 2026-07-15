@@ -83,3 +83,25 @@ describe('1E — displacement via resolveDropConflicts', () => {
     expect(movie.startTime.getHours()).toBe(12);
   });
 });
+
+describe('displacement never double-books (F1 regression)', () => {
+  beforeEach(() => resetIds());
+
+  it('two evicted tasks land in different slots, not on top of each other', () => {
+    // intervalsOf snapshots Date OBJECTS; placeTask assigns fresh ones. Building
+    // the occupied set once, before the loop, left every later evictee blind to
+    // where the previous one just landed.
+    const s = new Schedule({ config: defaultConfig });
+    const a = s.addFlexible({ title: 'Alpha', startTime: D(2026, 6, 14, 14), endTime: D(2026, 6, 14, 15) });
+    const b = s.addFlexible({ title: 'Bravo', startTime: D(2026, 6, 14, 15), endTime: D(2026, 6, 14, 16) });
+    const dropped = s.addFixed({ title: 'Block', startTime: D(2026, 6, 14, 9), endTime: D(2026, 6, 14, 11) });
+    dropped.moveTo(D(2026, 6, 14, 14)); // a 2h block across BOTH
+
+    const res = s.resolveDropConflicts(dropped);
+
+    expect(res.displaced.length).toBe(2);
+    expect(a.overlaps(b)).toBe(false); // the actual bug: both landed on 14:30
+    expect(a.overlaps(dropped)).toBe(false);
+    expect(b.overlaps(dropped)).toBe(false);
+  });
+});

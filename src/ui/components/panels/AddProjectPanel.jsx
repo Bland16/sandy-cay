@@ -2,7 +2,7 @@
 // hours + a date range; a live bucket preview via the engine's sliceChunks;
 // submit materializes chunks through addProject.
 import { useState } from 'react';
-import { addDays, sliceChunks, dateKey } from '../../../core/index.js';
+import { addDays, sliceChunks, dateKey, dateFromKey } from '../../../core/index.js';
 import PanelHeader from '../PanelHeader.jsx';
 import TagEditor from '../TagEditor.jsx';
 import Icon from '../../Icon.jsx';
@@ -30,7 +30,7 @@ export default function AddProjectPanel({ mutate, weekStart, onClose, showToast 
         totalMinutes: totalMin,
         minChunk: Math.round(min * 60),
         maxChunk: Math.round(max * 60),
-        range: { from: new Date(from), until: new Date(until) },
+        range: { from: dateFromKey(from), until: dateFromKey(until) },
       },
     }));
     showToast(`Project "${title.trim()}" built across the weeks`);

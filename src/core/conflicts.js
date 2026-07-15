@@ -47,14 +47,18 @@ export function resolveDropConflicts(schedule, droppedTask, opts = {}) {
   }
 
   // No rejection → evict every flexible/unpinned overlap and re-place it.
-  const others = intervalsOf(
-    schedule.tasks.filter((t) => t !== droppedTask && !t.chunking && !t.recurrence),
-  ).concat(
-    schedule.tasks.filter((t) => t.recurrence).flatMap((t) => intervalsOf(expandRecurrence(t, ws))),
-  );
-
   for (const target of blockers) {
     if (target.isAnchored(protectedTags)) continue;
+    // Rebuilt EVERY pass, deliberately. intervalsOf snapshots the Date objects,
+    // and placeTask assigns fresh ones when it re-places a task — so a snapshot
+    // taken before this loop still describes the slot the previous evictee just
+    // vacated, and every later evictee is placed blind on top of it. evacuate.js
+    // and carryOver.js already recompute inside their loops; this must too.
+    const others = intervalsOf(
+      schedule.tasks.filter((t) => t !== droppedTask && !t.chunking && !t.recurrence),
+    ).concat(
+      schedule.tasks.filter((t) => t.recurrence).flatMap((t) => intervalsOf(expandRecurrence(t, ws))),
+    );
     // occupied = everyone except the evicted target, including the dropped task.
     const occupied = others
       .filter((iv) => iv.task !== target && iv.task.id !== target.id)

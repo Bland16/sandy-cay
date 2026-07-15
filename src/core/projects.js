@@ -6,7 +6,7 @@
 
 import { Task } from './Task.js';
 import { addMinutes } from './time.js';
-import { intervalsOf, placeTask } from './placement.js';
+import { intervalsOf, placeTask, recurrenceIntervals } from './placement.js';
 
 /** Slice `total` minutes into chunks each within [min, max], as even as
  *  possible. */
@@ -79,7 +79,8 @@ export function redistribute(schedule, parent) {
   const { minChunk, maxChunk, range } = parent.chunking;
   const sizes = sliceChunks(remaining, minChunk, maxChunk);
   const created = [];
-  let occupied = intervalsOf(schedule.tasks.filter((t) => !t.chunking && !t.recurrence));
+  let occupied = intervalsOf(schedule.tasks.filter((t) => !t.chunking && !t.recurrence))
+    .concat(recurrenceIntervals(schedule, range.from, range.until)); // occurrences are anchors (§4.4)
   for (const size of sizes) {
     const child = new Task({
       title: parent.title,

@@ -4,7 +4,7 @@
 // as placedBy:'auto', incrementing history.carriedCount.
 
 import { addDays, dayStart } from './time.js';
-import { intervalsOf, placeTask } from './placement.js';
+import { intervalsOf, placeTask, recurrenceIntervals } from './placement.js';
 
 /**
  * @returns { carried: Task[], missedDeadline: Task[], dropped: Task[] }
@@ -41,7 +41,7 @@ export function carryOver(schedule, fromWeekStart, toWeekStart, opts = {}) {
     }
     const occupied = intervalsOf(
       schedule.tasks.filter((o) => o !== t && !o.chunking && !o.recurrence && o.getDayIndex(toWs) >= 0 && o.getDayIndex(toWs) <= 6),
-    );
+    ).concat(recurrenceIntervals(schedule, toWs, to)); // occurrences are anchors (§4.4)
     placeTask(schedule, t, { from: toWs, to, occupied, origin: t.startTime });
     t.placedBy = 'auto';
     t.history.carriedCount += 1;

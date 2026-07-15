@@ -1,7 +1,7 @@
 // evacuate.js — evacuateDay (SPEC §3.4) and blockRange (SPEC §3.5).
 
 import { sameDay, dayStart, addDays } from './time.js';
-import { dayWindowBounds, intervalsOf, placeTask } from './placement.js';
+import { dayWindowBounds, intervalsOf, placeTask, recurrenceIntervals } from './placement.js';
 import { Task } from './Task.js';
 
 /** Create a full-day protected blocker task for a date. */
@@ -39,7 +39,7 @@ export function evacuateDay(schedule, date, { blockDay = false } = {}) {
   for (const t of movable) {
     const occupied = intervalsOf(
       schedule.tasks.filter((o) => o !== t && !o.chunking && !o.recurrence),
-    );
+    ).concat(recurrenceIntervals(schedule, from, to)); // occurrences are anchors (§4.4)
     const res = placeTask(schedule, t, { from, to, occupied, origin: t.startTime });
     t.placedBy = 'auto';
     relocated.push(t);

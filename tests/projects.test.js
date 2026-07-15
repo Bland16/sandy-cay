@@ -105,3 +105,58 @@ describe('§3.7 / OD-14 — projects & work conservation', () => {
     expect(childrenOf(s, parent.id).filter((t) => t.completion === null).length).toBe(0);
   });
 });
+
+describe('placement respects recurrence occurrences (F3 regression)', () => {
+  beforeEach(() => resetIds());
+
+  /** A pinned recurring gym, Mon/Tue 08:00–09:00 — same shape as seed(). */
+  function withGym() {
+    const s = new Schedule({ config: defaultConfig });
+    const gym = s.addFixed({ title: 'Morning gym', startTime: new Date(2026, 6, 13, 8), endTime: new Date(2026, 6, 13, 9) });
+    gym.pinned = true;
+    gym.recurrence = {
+      periods: [{
+        windows: [
+          { day: 'mon', start: '08:00', end: '09:00' },
+          { day: 'tue', start: '08:00', end: '09:00' },
+        ],
+        interval: 1, effectiveFrom: null, effectiveUntil: null,
+      }],
+      anchorDate: MON,
+      exceptions: [],
+    };
+    return s;
+  }
+
+  /** Do any of `tasks` sit on top of a materialized gym occurrence? */
+  function clashesWithGym(s, tasks) {
+    const occs = s.getTasksForWeek(MON).filter((t) => t.isOccurrence);
+    return tasks.some((t) => occs.some((o) => t.overlaps(o)));
+  }
+
+  it('project chunks are not placed through a pinned recurring gym', () => {
+    // The occupied set filtered the recurring PARENT out (right — it's a pattern
+    // record) but never added its occurrences back, so 08:00–09:00 looked free.
+    const s = withGym();
+    const { children } = s.addProject({
+      title: 'Thesis',
+      chunking: { totalMinutes: 240, minChunk: 60, maxChunk: 120, range: { from: MON, until: addDays(MON, 5) } },
+    });
+    expect(children.length).toBeGreaterThan(0);
+    expect(clashesWithGym(s, children)).toBe(false);
+  });
+
+  it('evacuateDay does not relocate onto a recurring occurrence', () => {
+    const s = withGym();
+    const victim = s.addFlexible({ title: 'Victim', startTime: new Date(2026, 6, 15, 10), endTime: new Date(2026, 6, 15, 11) });
+    s.evacuateDay(new Date(2026, 6, 15), { blockDay: false });
+    expect(clashesWithGym(s, [victim])).toBe(false);
+  });
+
+  it('carryOver does not carry a task onto a recurring occurrence', () => {
+    const s = withGym();
+    const late = s.addFlexible({ title: 'Unfinished', startTime: new Date(2026, 6, 7, 8), endTime: new Date(2026, 6, 7, 9) });
+    s.carryOver(addDays(MON, -7), MON, { now: new Date(2026, 6, 13, 12) });
+    expect(clashesWithGym(s, [late])).toBe(false);
+  });
+});

@@ -90,3 +90,21 @@ describe('2B — protected tags survive autoSchedule', () => {
     expect(movie.startTime.getTime()).toBe(before); // never moved
   });
 });
+
+describe('autoSchedule preserves placedBy (F6 regression)', () => {
+  beforeEach(() => resetIds());
+
+  it('a hand-placed task stays placedBy:user across re-optimizes', () => {
+    // OD-3 makes placedBy a SOFT preference: it earns a stability bonus so the
+    // algorithm prefers not to move it. Stamping 'auto' after each placement
+    // erased that memory, permanently disabling w.stability (0.15 of the score).
+    const s = new Schedule({ config: defaultConfig });
+    const t = s.addFlexible({ title: 'Deep work', startTime: D(0, 8), endTime: D(0, 9) });
+    t.placedBy = 'user'; // the user dragged it here
+
+    s.autoSchedule({ weekStart: MON });
+    expect(t.placedBy).toBe('user');
+    s.autoSchedule({ weekStart: MON });
+    expect(t.placedBy).toBe('user'); // still remembered on the second run
+  });
+});

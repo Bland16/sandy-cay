@@ -225,6 +225,19 @@ describe('B — resize via the themed borders (OD-1)', () => {
     expect(timeOf(after.find((c) => columnOf(c) === 4))).toBe('08:00–09:00'); // routine intact
   });
 
+  it('resizing a post-midnight task keeps it post-midnight (F2 regression)', () => {
+    // The grid is 5am-anchored: a 02:00 task lives at row 26 of the PREVIOUS
+    // night's column. begin() used to record raw getHours()*60, i.e. 120, which
+    // is 24h below the column's own coordinate space — the resize clamp then
+    // collapsed and forced the start to 05:00, yielding a 22-hour task.
+    render(<App />);
+    dragBody(cardFor('Read novel'), xAt(2), yAt(26)); // → Wed column, 02:00
+    expect(timeOf(cardFor('Read novel'))).toBe('02:00–03:00');
+
+    dragStrip(cardFor('Read novel'), 'start', yAt(26, 30)); // pull the start to 02:30
+    expect(timeOf(cardFor('Read novel'))).toBe('02:30–03:00'); // not 05:00–03:00
+  });
+
   it('body drag is move, never resize', () => {
     render(<App />);
     const novel = cardFor('Read novel');
@@ -294,5 +307,26 @@ describe('C — ripple ⟺ displace chooser (OD-8)', () => {
     const thesis = allCardsFor('Thesis');
     const monday = thesis.filter((c) => columnOf(c) === 0).map(timeOf);
     expect(monday).not.toContain('10:00–12:00');
+  });
+});
+
+describe('rating a session writes to that session, not the pattern (F5)', () => {
+  it('rating Monday\'s gym does not rate Friday\'s, and the pattern stays clean', () => {
+    render(<App />);
+    // Open Monday's gym and give it 4 shells.
+    const mon = allCardsFor('Morning gym').find((c) => columnOf(c) === 0);
+    fireEvent.click(mon);
+    const shells = document.querySelectorAll('.shells .sh');
+    expect(shells.length).toBe(5);
+    fireEvent.click(shells[3]); // 4 shells
+
+    // Monday's panel remembers it…
+    expect(document.querySelectorAll('.shells .sprite:not(.off)').length).toBe(4);
+
+    // …but Friday's session is a different session and must be unrated.
+    fireEvent.keyDown(document, { key: 'Escape' });
+    const fri = allCardsFor('Morning gym').find((c) => columnOf(c) === 4);
+    fireEvent.click(fri);
+    expect(document.querySelectorAll('.shells .sprite:not(.off)').length).toBe(0);
   });
 });

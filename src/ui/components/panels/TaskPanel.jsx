@@ -5,7 +5,7 @@
 import { useState } from 'react';
 import {
   addMinutes, atTime, addDays, dateKey, formatHHMM,
-  addException, splitPeriod, temporaryChange, endRecurrence, dayStart,
+  addException, splitPeriod, temporaryChange, endRecurrence, dayStart, dateFromKey,
 } from '../../../core/index.js';
 import { DAY_NAMES, fmtRange } from '../../format.js';
 import { modelFromTask, buildRecurrence } from '../../recurrenceModel.js';
@@ -43,9 +43,29 @@ export default function TaskPanel({ task, sched, mutate, weekStart, onClose, sho
   const isOcc = !!task.isOccurrence;
   const durMin = task.getDuration();
   const dayIdx = ((task.startTime.getDay() + 6) % 7);
-  const sat = editable.satisfaction || {};
+  // §4.4: an occurrence's lived data lives in the parent's occurrenceData, never
+  // on the pattern. Reading `editable.satisfaction` here would show every session
+  // the same rating; writing it would make Friday's gym overwrite Monday's, and
+  // leave retrain() seeing ONE sample no matter how many sessions were rated.
+  const sat = (isOcc ? task.satisfaction : editable.satisfaction) || {};
 
   const upd = (changes) => mutate((s) => s.updateTask(editable.id, changes));
+
+  /** Merge satisfaction into the right home: occurrenceData for a session,
+   *  the task itself otherwise (mirrors App.jsx's completion path). */
+  const updSatisfaction = (patch) => {
+    if (!isOcc) { upd({ satisfaction: { ...sat, ...patch } }); return; }
+    mutate((s) => {
+      const parent = s.tasks.find((t) => t.id === editable.id);
+      if (!parent) return;
+      const key = task.occurrenceDate;
+      const prev = parent.occurrenceData[key] || {};
+      parent.occurrenceData = {
+        ...parent.occurrenceData,
+        [key]: { ...prev, satisfaction: { ...(prev.satisfaction || {}), ...patch } },
+      };
+    });
+  };
 
   const setDuration = (mins) => {
     if (isOcc) return; // occurrence duration is governed by the pattern window
@@ -59,8 +79,8 @@ export default function TaskPanel({ task, sched, mutate, weekStart, onClose, sho
     const start = atTime(dayStart(task.startTime), hhmm);
     upd({ startTime: start, endTime: addMinutes(start, durMin) });
   };
-  const setShells = (n) => upd({ satisfaction: { ...sat, overall: n } });
-  const setFacet = (key, v) => upd({ satisfaction: { ...sat, [key]: v } });
+  const setShells = (n) => updSatisfaction({ overall: n });
+  const setFacet = (key, v) => updSatisfaction({ [key]: v });
 
   const applyPattern = () => {
     mutate((s) => {
@@ -70,7 +90,7 @@ export default function TaskPanel({ task, sched, mutate, weekStart, onClose, sho
       if (!recModel.enabled) { parent.recurrence = null; return; }
       if (!parent.recurrence) { parent.recurrence = buildRecurrence(recModel, weekStart); return; }
       if (recModel.temporary && recModel.temporary.from && recModel.temporary.until) {
-        temporaryChange(parent, new Date(recModel.temporary.from), new Date(recModel.temporary.until), windows, { interval: recModel.interval });
+        temporaryChange(parent, dateFromKey(recModel.temporary.from), dateFromKey(recModel.temporary.until), windows, { interval: recModel.interval });
       } else if (recModel.scope === 'future') {
         splitPeriod(parent, new Date(), windows, { interval: recModel.interval });
       } else {
@@ -185,7 +205,7 @@ export default function TaskPanel({ task, sched, mutate, weekStart, onClose, sho
         </div>
         <div>
           <div className="flabel">Deadline</div>
-          <input className="timein" style={{ width: 140 }} type="date" value={editable.deadline ? dateKey(editable.deadline) : ''} onChange={(e) => upd({ deadline: e.target.value ? new Date(e.target.value) : null })} />
+          <input className="timein" style={{ width: 140 }} type="date" value={editable.deadline ? dateKey(editable.deadline) : ''} onChange={(e) => upd({ deadline: e.target.value ? dateFromKey(e.target.value) : null })} />
         </div>
       </div>
 

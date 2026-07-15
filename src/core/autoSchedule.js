@@ -109,7 +109,15 @@ export function autoSchedule(schedule, opts = {}) {
     remaining.splice(remaining.indexOf(pick), 1);
 
     const res = placeTask(schedule, pick, { from, to, occupied });
-    pick.placedBy = 'auto';
+    // NB: placedBy is deliberately NOT reset to 'auto' here.
+    //
+    // OD-3 makes it a soft preference: hand-placing a task rewards it with a
+    // stability bonus so the algorithm PREFERS not to move it — while still
+    // being allowed to. Stamping 'auto' after the first placement erased that
+    // memory on every run, so w.stability (0.15 of the score) could never fire
+    // again and re-optimize treated your hand-placed work as anonymous. §3.6
+    // explicitly says carryOver re-enters tasks as 'auto'; §2.4 says no such
+    // thing for autoSchedule, which also runs on load.
     occupied.push({ start: pick.startTime, end: pick.endTime, task: pick });
     placed.push(pick);
     if (res.warning) warnings.push(pick);

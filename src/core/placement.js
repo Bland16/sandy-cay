@@ -12,9 +12,11 @@ import {
   weekdayIndex,
   dayKeyOf,
   clamp,
+  weekStart as weekStartOf,
 } from './time.js';
 import { walkGaps, breakMinForFill } from './gaps.js';
 import { score } from './scoring.js';
+import { expandRecurrence } from './recurrence.js';
 
 /** Config window bounds for a calendar day. */
 export function dayWindowBounds(config, date) {
@@ -121,6 +123,36 @@ export function occupiedMinutesOnDay(occupied, config, date) {
 
 export function intervalsOf(tasks) {
   return tasks.map((t) => ({ start: t.startTime, end: t.endTime, task: t }));
+}
+
+/**
+ * Occupied intervals contributed by recurring tasks over [from, to].
+ *
+ * A recurring parent must be filtered OUT of an occupied set — it's a pattern
+ * record, not a thing sitting in the day. But its materialized occurrences are
+ * `type: 'fixed'` anchors (§4.4), so dropping the parent without adding the
+ * occurrences back makes those hours look free, and placement walks straight
+ * through a pinned gym. Every caller that builds an occupied set from
+ * `!t.recurrence` needs to concat this.
+ */
+export function recurrenceIntervals(schedule, from, to) {
+  const out = [];
+  const seen = new Set();
+  const endMs = (to || addDays(from, 7)).getTime();
+  let ws = weekStartOf(from);
+  // Expand each week the range touches (a lookahead can cross a week boundary).
+  for (let guard = 0; ws.getTime() <= endMs && guard < 60; guard += 1) {
+    for (const t of schedule.tasks) {
+      if (!t.recurrence) continue;
+      for (const occ of expandRecurrence(t, ws)) {
+        if (seen.has(occ.id)) continue;
+        seen.add(occ.id);
+        out.push({ start: occ.startTime, end: occ.endTime, task: occ });
+      }
+    }
+    ws = addDays(ws, 7);
+  }
+  return out;
 }
 
 /**

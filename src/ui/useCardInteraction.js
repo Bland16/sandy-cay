@@ -13,6 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { addDays, addMinutes, minutesBetween, addException, formatHHMM, dateKey } from '../core/index.js';
+import { gridHour } from './format.js';
 import {
   MIN_DURATION_MIN,
   atMinutes,
@@ -72,6 +73,18 @@ function columnAt(cols, x) {
 /** Screen y → minute-of-day, snapped to 15 (OD-1 / §3.1). */
 function minutesAt(col, y) {
   return snapTo(col.startHour * 60 + ((y - col.top) / col.pxh) * 60);
+}
+
+/**
+ * A task's span in the column's 5am-anchored grid minutes (300…1740).
+ * A task that crosses the 05:00 anchor (04:00–05:00) would otherwise measure its
+ * end below its own start, so the end is taken from the duration in that case.
+ */
+function gridSpanOf(task) {
+  const startMin = gridHour(task.startTime) * 60;
+  const rawEnd = gridHour(task.endTime) * 60;
+  const endMin = rawEnd > startMin ? rawEnd : startMin + task.getDuration();
+  return { startMin, endMin };
 }
 
 function rectFor(col, startMin, durMin) {
@@ -480,8 +493,11 @@ export function useCardInteraction({ sched, mutate, showToast, weekStart }) {
       startY: e.clientY,
       grab: { dx: e.clientX - rect.left, dy: e.clientY - rect.top },
       origin: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
-      startMin: task.startTime.getHours() * 60 + task.startTime.getMinutes(),
-      endMin: task.endTime.getHours() * 60 + task.endTime.getMinutes(),
+      // GRID minutes, not calendar minutes. The day is 5am-anchored, so the
+      // column's coordinate space runs 300…1740 and a 02:00 task lives at 1560.
+      // Reading raw getHours() here put a post-midnight task 24h below its own
+      // column: the resize clamp then collapsed and forced it to 05:00.
+      ...gridSpanOf(task),
       moved: false,
       cols: null,
       col: null,

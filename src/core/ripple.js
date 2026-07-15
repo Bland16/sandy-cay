@@ -6,7 +6,7 @@
 // after it stay put.
 
 import { sameDay, addMinutes, minutesBetween, addDays } from './time.js';
-import { dayWindowBounds, intervalsOf, placeTask } from './placement.js';
+import { dayWindowBounds, intervalsOf, placeTask, recurrenceIntervals } from './placement.js';
 
 export function rippleShift(schedule, pivotTask, deltaMin) {
   const config = schedule.config;
@@ -66,11 +66,11 @@ export function rippleShift(schedule, pivotTask, deltaMin) {
 
     if (shift > 0 && (newEnd.getTime() > limit.getTime() || breaksDeadline)) {
       // Overflow (past the wall, the day window, or its deadline) → evacuate.
-      const occupied = intervalsOf(
-        schedule.tasks.filter((o) => o !== t && !o.chunking && !o.recurrence),
-      );
       const from = new Date(pivotEnd.getTime()); // forward-only from the pivot
       const to = addDays(from, config.maxPlacementLookahead);
+      const occupied = intervalsOf(
+        schedule.tasks.filter((o) => o !== t && !o.chunking && !o.recurrence),
+      ).concat(recurrenceIntervals(schedule, from, to)); // occurrences are anchors (§4.4)
       t.history.rippleCount += 1;
       placeTask(schedule, t, { from, to, occupied, origin: t.startTime });
       t.placedBy = 'auto';
