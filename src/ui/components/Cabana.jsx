@@ -9,6 +9,42 @@ import Icon from '../Icon.jsx';
 
 const WEIGHT_KEYS = [['proximity', 'Proximity'], ['balance', 'Balance'], ['stability', 'Stability'], ['preference', 'Preference (learned)']];
 
+// Zone tags: add one at a time as chips — no comma-separated secret format.
+// Uses the Cabana's own .cabtag chip idiom (same as Tag roles).
+function ZoneTags({ tags, onAdd, onRemove }) {
+  const [draft, setDraft] = useState('');
+  const commit = () => {
+    const t = draft.trim().toLowerCase();
+    if (t && !tags.includes(t)) onAdd(t);
+    setDraft('');
+  };
+  return (
+    <>
+      <div className="zonewin" style={{ gap: 6 }}>
+        <span>tags:</span>
+        {tags.length === 0 && <span style={{ opacity: 0.6 }}>none yet — tasks won&apos;t route here</span>}
+        {tags.map((t) => (
+          <span className="w cabtag" key={t}>
+            {t}
+            <button className="rm" onClick={() => onRemove(t)} aria-label={`Remove tag ${t}`}>×</button>
+          </span>
+        ))}
+      </div>
+      <div className="zonewin">
+        <input
+          value={draft}
+          placeholder="add a tag…"
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } }}
+          style={{ flex: 1 }}
+          aria-label="Add zone tag"
+        />
+        <button className="btn2" style={{ maxWidth: 80 }} onClick={commit}>＋ tag</button>
+      </div>
+    </>
+  );
+}
+
 export default function Cabana({ sched, mutate, weekStart, onBack, onReplace, showToast }) {
   const fileRef = useRef(null);
   const [editingId, setEditingId] = useState(null);
@@ -28,7 +64,6 @@ export default function Cabana({ sched, mutate, weekStart, onBack, onReplace, sh
   const addZoneWindow = (id) => mutate((s) => { const z = s.zones.find((x) => x.id === id); z.windows = [...z.windows, { day: 'mon', start: '18:00', end: '20:00' }]; });
   const patchWindow = (id, i, delta) => mutate((s) => { const z = s.zones.find((x) => x.id === id); z.windows = z.windows.map((w, idx) => (idx === i ? { ...w, ...delta } : w)); });
   const removeWindow = (id, i) => mutate((s) => { const z = s.zones.find((x) => x.id === id); z.windows = z.windows.filter((_, idx) => idx !== i); });
-  const setZoneTags = (id, val) => mutate((s) => s.updateZone(id, { matchTags: val.split(',').map((t) => t.trim()).filter(Boolean) }));
   const removeZone = (id) => mutate((s) => s.removeZone(id));
 
   const addProtected = () => { const t = newTag.trim().toLowerCase(); if (!t) return; mutate((s) => { if (!s.config.protectedTags.includes(t)) s.config.protectedTags.push(t); }); setNewTag(''); };
@@ -125,10 +160,11 @@ export default function Cabana({ sched, mutate, weekStart, onBack, onReplace, sh
                   <span>name:</span>
                   <input defaultValue={z.label} onBlur={(e) => mutate((s) => s.updateZone(z.id, { label: e.target.value.trim() || z.label }))} style={{ flex: 1 }} aria-label="Zone name" />
                 </div>
-                <div className="zonewin">
-                  <span>tags:</span>
-                  <input defaultValue={z.matchTags.join(', ')} onBlur={(e) => setZoneTags(z.id, e.target.value)} style={{ flex: 1 }} aria-label="Zone tags" />
-                </div>
+                <ZoneTags
+                  tags={z.matchTags}
+                  onAdd={(t) => mutate((s) => s.updateZone(z.id, { matchTags: [...z.matchTags, t] }))}
+                  onRemove={(t) => mutate((s) => s.updateZone(z.id, { matchTags: z.matchTags.filter((x) => x !== t) }))}
+                />
                 {z.windows.map((w, i) => (
                   <div className="zonewin" key={i}>
                     <select value={w.day} onChange={(e) => patchWindow(z.id, i, { day: e.target.value })} aria-label="Zone day">
