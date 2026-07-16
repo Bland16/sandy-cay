@@ -6,7 +6,7 @@ committed and pushed to `main` (https://github.com/Bland16/sandy-cay). CI green.
 ```bash
 npm install
 npm run dev      # http://localhost:5173/sandy-cay/
-npm run test:run # 280 tests, all green
+npm run test:run # 299 tests — see the ⚠️ flaky-tests note below before trusting green
 npm run build
 npx eslint src
 ```
@@ -15,8 +15,19 @@ npx eslint src
 
 ## ⚠️ READ THIS FIRST
 
-**The tree is clean and everything below is pushed.** The **Wrap report is DONE**
-(§7.1 / R-7), including the week-rollover trigger. Next job is **Responsive**.
+**Wrap report (§7.1 / R-7) and Responsive (§11) are DONE.** Next job: **verify
+touch drag on a real phone**, then fix the flaky tests below.
+
+**⚠️ 11 UI tests are DATE-FLAKY — red Thu–Sun, green Mon–Wed, every week.**
+`tests/ui-drag.test.jsx` and `tests/ui-bulk.test.jsx` seed with `new Date()` and
+hardcode weekday placement (e.g. "Read novel → Wed col 2"). Auto-placement floors
+at "now" (sharp edge — never let it reach the past), so once the wall clock is
+late enough in the week the seeded flexible lands a day later and the hardcoded
+column is wrong. **This is not a code bug and not the responsive work** — proven
+by stashing: 11 fail at HEAD too, identically. These UI files violate the very
+rule §core tests follow ("tests inject fixed dates; never read the wall clock").
+**Fix: `vi.setSystemTime(a fixed Monday)` in each file's `beforeEach`** so
+placement is deterministic. Until then, `test:run` is only trustworthy Mon–Wed.
 
 **Never trust an agent's "it passes" — run it yourself.** Every background agent
 in session 1 reported green: one genuinely was, one was 11 tests red mid-flight,
@@ -45,6 +56,7 @@ were the UI disagreeing with an engine that was right all along.
 | **Calendar interchange** (`.ics` + Google) | ✅ `.ics` done & tested. Google import **works** (proven against the real account). **Export → Google NEVER RUN.** |
 | **Wrap-report PDF** (§7.1 / R-7) | ✅ **Done.** Printed and checked by the user. All 5 detectors surfaced (their only home). No page budget — see Decisions. |
 | **Week rollover** (R-7) | ✅ Done. Retrains + offers the report. Deliberately does **not** carryOver — see Decisions. |
+| **Responsive** (§11) | ✅ Built, tests green. ⚠️ **Touch drag UNVERIFIED on a real device** — see below. Phone <768 (day + picker), tablet 768–1279 (Mon–Fri + weekend drawer), desktop ≥1280. |
 | Sprites | ✅ segmented; only **3 of 57** wired, deliberately. Scenes raw. |
 
 **Docs:** `SPEC.md` (engine, authoritative) · `USE-CASE-ANALYSIS.md` (decision
@@ -53,16 +65,26 @@ record, arbitrates — 75KB, **grep it, never read it whole**) · `FRONTEND-SPEC
 
 ---
 
-## NEXT JOB: Responsive (SPEC §11)
+## NEXT JOB: verify touch drag on a real phone (Responsive is otherwise done)
 
-**<768 single-day** (the *primary* mobile layout) and **768–1279 Mon–Fri +
-weekend drawer** (drawer pull drawn as a beach-towel tab, FRONTEND-SPEC §5).
-Neither exists — the app is desktop-only. Film sprockets collapse to top-only on
-mobile. The day view already exists as a main-area mode and is most of the <768
-answer; the work is making the week grid *become* it, not building a new screen.
+**Responsive (§11) is built and tested** — phone <768 (day view + `DayPicker`
+strip), tablet 768–1279 (`WeekGrid days={[0..4]}` + `WeekendDrawer`), desktop
+≥1280 unchanged. `useViewport` is the single breakpoint source; CSS and JS share
+its numbers (767/1279).
 
-Mind sharp edge #5 (the 5am-anchored grid) and #6 (stacking contexts) — both
-bite hardest when columns start collapsing.
+**But the touch-drag gate is UNVERIFIED on a real device**, exactly like the
+print check was before the user ran it — and the print check found a real bug.
+jsdom has no touch and no layout, so the tests prove the *logic* (hold arms the
+drag, moving first scrolls instead, `pointercancel` abandons it, mouse still
+picks up instantly) and nothing about the *feel*. Two specific risks:
+- **`LONG_PRESS_MS = 450`** may feel slow or fast (`useCardInteraction.js`).
+- **`touch-action: manipulation` + a non-passive `touchmove` `preventDefault`**
+  is the standard "hold to drag, otherwise scroll" pattern, but browsers differ
+  on when they commit to a scroll. If a drag still scrolls the day, that's where.
+
+To test: `npm run dev -- --host`, open from a phone on the same network, try
+dragging a card (hold ~½s first) and scrolling the day (just swipe). Sharp
+edges #5/#6 still apply.
 
 ### Then, roughly in order
 1. **§2.2 precedence binds only automatic placement.** Ripple now honours
@@ -171,6 +193,21 @@ a block is honest there.
     `lastSeenWeek`, `dismissed` all persist; absent keys load clean, so old saves
     are fine. `useEngine#replace` (footlocker import) must copy them too — it
     silently dropped them once already.
+16. **Cards are `touch-action: manipulation`, drag arms on a long-press.** It was
+    `none`, which made a card swallow every touch gesture — so on a phone (where
+    the grid is mostly cards) scrolling the day was impossible and any swipe flung
+    a task (the 4px mouse threshold is nothing to a finger). Now: hold ~450ms to
+    pick up (`LONG_PRESS_MS`), else the browser scrolls. Once a drag is live a
+    **non-passive `touchmove` `preventDefault`** stops the scroll — vertical drag
+    IS how you change a time, so a passive listener would lose the gesture. Don't
+    revert `touch-action` to `none`.
+17. **`[data-dropzone]` is global; a hidden drawer must be truly inert.** The drag
+    code finds columns by querying the whole document. The tablet weekend drawer
+    is a real `<WeekGrid days={[5,6]}>`, so when CLOSED it must carry `inert` +
+    `pointer-events:none` + `visibility:hidden`, or its Sat/Sun columns sit behind
+    Friday silently eating drops near the right edge. Same UI-vs-engine shape as
+    #14. **The drawer renders a real grid, never a lookalike** — reimplementing
+    those columns drifts from the drop-geometry contract and mis-places drops.
 
 ---
 
@@ -178,6 +215,14 @@ a block is honest there.
 
 - **Layout B+C**: week grid + a contextual right panel **closed by default**; day
   headers open a day view with ✕; **Cabana is its own full page**.
+- **Responsive is three layouts, not one grid squeezed** (§11): phone shows a
+  single day (the *primary* mobile layout, per spec — not a fallback), tablet
+  shows Mon–Fri with the weekend in a drawer, desktop shows the week. **The phone
+  opens on TODAY**, and narrowing to phone width while on the week grid drops you
+  into today's day; widening does *not* force the reverse (you asked for that
+  day). ✕ is absent on phone — the day isn't a mode there, so there's no week
+  behind it to return to; the `DayPicker` navigates, and its calendar button
+  reaches the week overview.
 - **Full-bleed**: the app fills the viewport (`min-height:0` on
   `.frame`/`.body`/`.main` is load-bearing, not decoration).
 - **P-1 everywhere**: coral/`--warning` is for scheduling **physics** only, never

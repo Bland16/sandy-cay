@@ -37,7 +37,10 @@ export default function DayView({
   return (
     <div className="dayview">
       <div className="dvhead">
-        <button className="px" onClick={onBack} aria-label="Back to week"><Icon name="x" /></button>
+        {/* On a phone the day IS the layout, so there is no week behind it to
+            go back to and the ✕ would be a lie — the picker navigates instead
+            (SPEC §11). Everywhere else the day view is a mode, and ✕ leaves it. */}
+        {onBack && <button className="px" onClick={onBack} aria-label="Back to week"><Icon name="x" /></button>}
         <div className="dvt">
           {DAY_FULL[dayIndex]}
           <small>{MONTHS[date.getMonth()]} {date.getDate()} · {date.getFullYear()}</small>
@@ -79,6 +82,7 @@ export default function DayView({
               onOpen={onOpenTask}
               onToggleComplete={onToggleComplete}
               dragging={interaction ? interaction.hiddenId === task.id : false}
+              pressing={interaction ? interaction.pressingId === task.id : false}
               onMoveStart={interaction ? interaction.onMoveStart : undefined}
               onResizeStart={interaction ? interaction.onResizeStart : undefined}
             />

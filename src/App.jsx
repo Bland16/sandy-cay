@@ -7,9 +7,10 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import './ui/styles.css';
 import {
   weekStart as weekStartOf, addDays, letThemGo, dateKey, addException, formatHHMM,
-  minutesBetween, checkRollover, commitRollover,
+  minutesBetween, sameDay, checkRollover, commitRollover,
 } from './core/index.js';
 import { useEngine } from './ui/useEngine.js';
+import { useViewport, readViewport } from './ui/useViewport.js';
 import { useCardInteraction } from './ui/useCardInteraction.js';
 import { MIN_DURATION_MIN } from './ui/interaction.js';
 import { backfillCandidates, backfillGap, protectGap, protectSomeRecovery, worthOffering } from './ui/gapActions.js';
@@ -26,9 +27,19 @@ import GapToast from './ui/components/GapToast.jsx';
 import OccurrenceMenu from './ui/components/OccurrenceMenu.jsx';
 import OverpackNotice from './ui/components/OverpackNotice.jsx';
 import WrapReport from './ui/components/WrapReport.jsx';
+import DayPicker from './ui/components/DayPicker.jsx';
+import WeekendDrawer from './ui/components/WeekendDrawer.jsx';
 import Icon from './ui/Icon.jsx';
 
+const WEEKDAYS = [0, 1, 2, 3, 4];
+
 const GAP_OFFER_MS = 9000; // long enough to read three options and choose one
+
+/** Which column of `ws` holds `now`, or Monday when the week isn't this one. */
+function dayIndexIn(ws, now) {
+  for (let i = 0; i < 7; i += 1) if (sameDay(addDays(ws, i), now)) return i;
+  return 0;
+}
 
 /**
  * Where a task finished early should be cut (§3.9 / 3D), or null if there's
@@ -50,7 +61,14 @@ export default function App() {
   const { sched, version, mutate, replace, reset, persistence, saveState } = useEngine();
   const now = useRef(new Date()).current;
   const [weekStart, setWeekStart] = useState(() => weekStartOf(now));
-  const [view, setView] = useState('week'); // 'week' | 0..6 | 'cabana' | 'report'
+  const viewport = useViewport(); // 'phone' | 'tablet' | 'desktop' — SPEC §11
+  const isPhone = viewport === 'phone';
+  // On a phone the single day is the layout, so we open on one rather than on a
+  // seven-column grid nobody can read (§11). readViewport() rather than the hook
+  // because this is the FIRST render: the hook's effect hasn't run yet, and
+  // opening on the week and then jumping to a day is a flash of the wrong app.
+  const [view, setView] = useState(() => (readViewport() === 'phone' ? dayIndexIn(weekStartOf(now), now) : 'week'));
+  const [weekend, setWeekend] = useState(false); // tablet: the Sat/Sun drawer
   const [reportWeek, setReportWeek] = useState(null); // which week the report is OF
   const [rollover, setRollover] = useState(null); // { closedWeek } — the R-7 offer
   const [selection, setSelection] = useState(null); // null | 'wtd'|'find'|'add-task'|'add-project' | {taskId}
@@ -71,6 +89,15 @@ export default function App() {
   useEffect(() => () => { clearTimeout(toastTimer.current); clearTimeout(gapTimer.current); }, []);
 
   const closePanel = useCallback(() => setSelection(null), []);
+
+  // Narrowing to a phone while the week grid is open drops you into a day —
+  // seven columns don't survive the width, and §11 says the day is the answer.
+  // Widening does NOT force the reverse: you asked for that day.
+  const wasPhone = useRef(isPhone);
+  useEffect(() => {
+    if (isPhone && !wasPhone.current && view === 'week') setView(dayIndexIn(weekStart, now));
+    wasPhone.current = isPhone;
+  }, [isPhone, view, weekStart, now]);
 
   // Drag / resize / conflict-chooser / occurrence-menu physics (M2.1 + M2.2).
   const interaction = useCardInteraction({ sched, mutate, showToast, weekStart });
@@ -391,35 +418,68 @@ export default function App() {
             showToast={showToast}
           />
         ) : (
-          <div className="body">
+          <div className={`body${isPhone ? ' phone' : ''}`}>
             <div className="main">
+              {/* The phone's primary navigation, above whichever view — it is
+                  how you change day, and (via its last control) how you reach
+                  the week overview at all. */}
+              {isPhone && (
+                <DayPicker
+                  sched={sched}
+                  weekStart={weekStart}
+                  active={typeof view === 'number' ? view : null}
+                  today={now}
+                  onPick={(i) => { setView(i); setSelection(null); }}
+                  onWeek={() => { setView('week'); setSelection(null); }}
+                />
+              )}
               {typeof view === 'number' ? (
                 <DayView
                   sched={sched}
                   weekStart={weekStart}
                   dayIndex={view}
-                  onBack={() => setView('week')}
+                  /* No ✕ on a phone: the day isn't a mode there, it's the
+                     layout, and there's no week behind it to return to. */
+                  onBack={isPhone ? undefined : () => setView('week')}
                   onOpenTask={openTask}
                   onToggleComplete={toggleComplete}
                   interaction={interaction}
                   truncations={truncations}
                 />
               ) : (
-                <WeekGrid
-                  sched={sched}
-                  weekStart={weekStart}
-                  today={now}
-                  onOpenTask={openTask}
-                  onToggleComplete={toggleComplete}
-                  onOpenDay={(i) => { setView(i); setSelection(null); }}
-                  onDayMenu={(dayIndex, anchor) => {
-                    setClearDay(null);
-                    setDayMenu((m) => (m && m.dayIndex === dayIndex ? null : { dayIndex, anchor }));
-                  }}
-                  interaction={interaction}
-                  truncations={truncations}
-                  notice={notice}
-                />
+                <div className="weekwrap">
+                  <WeekGrid
+                    sched={sched}
+                    weekStart={weekStart}
+                    today={now}
+                    onOpenTask={openTask}
+                    onToggleComplete={toggleComplete}
+                    onOpenDay={(i) => { setView(i); setSelection(null); }}
+                    onDayMenu={(dayIndex, anchor) => {
+                      setClearDay(null);
+                      setDayMenu((m) => (m && m.dayIndex === dayIndex ? null : { dayIndex, anchor }));
+                    }}
+                    interaction={interaction}
+                    truncations={truncations}
+                    notice={notice}
+                    /* Tablet: Mon–Fri here, the weekend in the drawer (§11). */
+                    days={viewport === 'tablet' ? WEEKDAYS : undefined}
+                  />
+                  {viewport === 'tablet' && (
+                    <WeekendDrawer
+                      open={weekend}
+                      onToggle={() => setWeekend((w) => !w)}
+                      sched={sched}
+                      weekStart={weekStart}
+                      today={now}
+                      onOpenTask={openTask}
+                      onToggleComplete={toggleComplete}
+                      onOpenDay={(i) => { setView(i); setSelection(null); }}
+                      interaction={interaction}
+                      truncations={truncations}
+                    />
+                  )}
+                </div>
               )}
             </div>
             {panelSelection && (

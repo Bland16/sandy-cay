@@ -42,7 +42,7 @@ function Badges({ task }) {
  */
 export default function TaskCard({
   task, style, compact, onOpen, onToggleComplete,
-  ghost = false, dragging = false, phase, onMoveStart, onResizeStart,
+  ghost = false, dragging = false, pressing = false, phase, onMoveStart, onResizeStart,
 }) {
   const kind = cardKind(task);
   // Recurrence occurrences are virtual (§4.4): moving one writes an exception,
@@ -61,6 +61,8 @@ export default function TaskCard({
     ghost ? 'ghost' : '',
     ghost && phase ? `ghost-${phase}` : '',
     !ghost && dragging ? 'dragging' : '',
+    // Touch hold in progress — the drag hasn't armed yet (see LONG_PRESS_MS).
+    !ghost && !dragging && pressing ? 'pressing' : '',
   ].filter(Boolean).join(' ');
 
   const deadlineChip = task.deadline && !task.isOccurrence;

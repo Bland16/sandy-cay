@@ -35,6 +35,14 @@ const SNAP_MS = 150; // SPEC §10 motion: 150ms snap on drop
 const SHAKE_MS = 340;
 const CLICK_SUPPRESS_MS = 300;
 
+// Touch needs a gate that a mouse doesn't. A finger on a card is ambiguous —
+// "move this" and "scroll the day" look identical for the first few pixels —
+// and 4px of slop is nothing on a touchscreen, so every attempt to scroll the
+// 24-hour grid would have flung a task somewhere. Hold still and the drag arms;
+// move first and the browser keeps the gesture and scrolls, as it should.
+const LONG_PRESS_MS = 450;
+const TOUCH_SLOP_PX = 10; // moved this far before arming ⇒ you meant to scroll
+
 const clamp = (n, lo, hi) => Math.min(Math.max(n, lo), Math.max(lo, hi));
 
 function prefersReducedMotion() {
@@ -104,8 +112,13 @@ export function useCardInteraction({ sched, mutate, showToast, weekStart }) {
   const [chooser, setChooser] = useState(null);
   const [occMenu, setOccMenu] = useState(null); // 4C — drop onto a recurring session
   const [active, setActive] = useState(false);
+  // The card being held down on touch, before the drag arms — it gets a visual
+  // "winding up" cue, so a long-press is something you can see working rather
+  // than a delay that feels like the app ignoring you.
+  const [pressingId, setPressingId] = useState(null);
 
   const session = useRef(null);
+  const press = useRef(null); // { timer, taskId } — the touch hold in progress
   const timer = useRef(null);
   const clickGuard = useRef(0);
   // Mirrors for the pointer-down guard, which must not re-bind. Either an open
@@ -490,34 +503,38 @@ export function useCardInteraction({ sched, mutate, showToast, weekStart }) {
       }
     };
 
+    // The card is `touch-action: manipulation`, so the browser is still willing
+    // to scroll this gesture. Once a drag is live we have to actively refuse it:
+    // a passive listener CANNOT, hence {passive: false}. Without this the first
+    // upward drag on a phone scrolls the day instead of moving the task — and
+    // moving it vertically IS how you change its time.
+    const onTouchMove = (e) => { if (session.current) e.preventDefault(); };
+
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onCancel);
+    window.addEventListener('touchmove', onTouchMove, { passive: false });
     window.addEventListener('keydown', onKey, true);
     document.body.classList.add('sc-dragging');
     return () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onCancel);
+      window.removeEventListener('touchmove', onTouchMove);
       window.removeEventListener('keydown', onKey, true);
       document.body.classList.remove('sc-dragging');
     };
   }, [active, finish, cancelDrag]);
 
-  const begin = useCallback((e, task, compact, mode) => {
-    if (e.pointerType === 'mouse' && e.button !== 0) return;
-    // An open chooser or occurrence menu is an unresolved drop — settle it
-    // (or Esc) before starting another one.
-    if (chooserRef.current || occMenuRef.current) return;
-    const rect = e.currentTarget.closest('.card').getBoundingClientRect();
+  const openSession = useCallback((geom, task, compact, mode) => {
     session.current = {
       mode,
       task,
       compact,
-      startX: e.clientX,
-      startY: e.clientY,
-      grab: { dx: e.clientX - rect.left, dy: e.clientY - rect.top },
-      origin: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+      startX: geom.x,
+      startY: geom.y,
+      grab: { dx: geom.x - geom.rect.left, dy: geom.y - geom.rect.top },
+      origin: { left: geom.rect.left, top: geom.rect.top, width: geom.rect.width, height: geom.rect.height },
       // GRID minutes, not calendar minutes. The day is 5am-anchored, so the
       // column's coordinate space runs 300…1740 and a 02:00 task lives at 1560.
       // Reading raw getHours() here put a post-midnight task 24h below its own
@@ -529,6 +546,59 @@ export function useCardInteraction({ sched, mutate, showToast, weekStart }) {
     };
     setActive(true);
   }, []);
+
+  const begin = useCallback((e, task, compact, mode) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    // An open chooser or occurrence menu is an unresolved drop — settle it
+    // (or Esc) before starting another one.
+    if (chooserRef.current || occMenuRef.current) return;
+    const rect = e.currentTarget.closest('.card').getBoundingClientRect();
+    const geom = { x: e.clientX, y: e.clientY, rect };
+
+    if (e.pointerType !== 'touch') {
+      openSession(geom, task, compact, mode);
+      return;
+    }
+
+    // ---- touch: hold to pick up -----------------------------------------
+    // Read the coordinates NOW; by the time the timer fires this event object
+    // may have been recycled.
+    let done = false;
+    const stop = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(press.current?.timer);
+      press.current = null;
+      setPressingId(null);
+      window.removeEventListener('pointermove', onPreMove);
+      window.removeEventListener('pointerup', stop);
+      // pointercancel is the browser saying "this gesture is mine now, I'm
+      // scrolling" — the clearest possible signal that no drag was meant.
+      window.removeEventListener('pointercancel', stop);
+    };
+    const onPreMove = (ev) => {
+      if (Math.hypot(ev.clientX - geom.x, ev.clientY - geom.y) > TOUCH_SLOP_PX) stop();
+    };
+    const timer = setTimeout(() => {
+      if (done) return;
+      done = true;
+      window.removeEventListener('pointermove', onPreMove);
+      window.removeEventListener('pointerup', stop);
+      window.removeEventListener('pointercancel', stop);
+      press.current = null;
+      setPressingId(null);
+      openSession(geom, task, compact, mode);
+      // A pick-up you can't feel is a pick-up you don't trust. Optional and
+      // silently absent on desktop and iOS.
+      if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(8);
+    }, LONG_PRESS_MS);
+
+    press.current = { timer, taskId: task.id };
+    setPressingId(task.id);
+    window.addEventListener('pointermove', onPreMove);
+    window.addEventListener('pointerup', stop);
+    window.addEventListener('pointercancel', stop);
+  }, [openSession]);
 
   const onMoveStart = useCallback((e, task, compact) => begin(e, task, compact, 'move'), [begin]);
   const onResizeStart = useCallback(
@@ -665,12 +735,17 @@ export function useCardInteraction({ sched, mutate, showToast, weekStart }) {
     ? `${blockerKind(sched, chooser.blockers[0])} conflict: ${chooser.blockers[0].title}`
     : null;
 
+  // A hold that outlives its card (the week flips, the panel closes) must not
+  // fire a drag on a task that is no longer under the finger.
+  useEffect(() => () => clearTimeout(press.current?.timer), []);
+
   return {
     ghost,
     hiddenId,
     chooser,
     chooserLabel,
     occMenu,
+    pressingId,
     busy: active || !!chooser || !!occMenu,
     onMoveStart,
     onResizeStart,
