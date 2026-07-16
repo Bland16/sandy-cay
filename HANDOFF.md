@@ -1,12 +1,15 @@
 # Sandy Cay — handoff
 
-**Updated:** 2026-07-15, second session. Everything described as done is
-committed and pushed to `main` (https://github.com/Bland16/sandy-cay). CI green.
+**Updated:** 2026-07-16, third session. **The active line of work is the
+`wrap-report` branch, NOT `main`** (https://github.com/Bland16/sandy-cay):
+wrap-report is ~5 commits ahead of main (wrap report, recurrence/zones,
+responsive) and was never merged. Session 3's precedence + de-flake work stacks
+on top of it. Don't assume `main` has any of this.
 
 ```bash
 npm install
 npm run dev      # http://localhost:5173/sandy-cay/
-npm run test:run # 299 tests — see the ⚠️ flaky-tests note below before trusting green
+npm run test:run # 308 tests, all green any day of the week (flaky tests fixed)
 npm run build
 npx eslint src
 ```
@@ -15,19 +18,20 @@ npx eslint src
 
 ## ⚠️ READ THIS FIRST
 
-**Wrap report (§7.1 / R-7) and Responsive (§11) are DONE.** Next job: **verify
-touch drag on a real phone**, then fix the flaky tests below.
+**Wrap report (§7.1 / R-7) and Responsive (§11) are DONE. The date-flaky tests
+are FIXED and ripple now honours zones (session 3).** Next job: **verify touch
+drag on a real phone** (still unrun), and drive a ripple near the work zone.
 
-**⚠️ 11 UI tests are DATE-FLAKY — red Thu–Sun, green Mon–Wed, every week.**
-`tests/ui-drag.test.jsx` and `tests/ui-bulk.test.jsx` seed with `new Date()` and
-hardcode weekday placement (e.g. "Read novel → Wed col 2"). Auto-placement floors
-at "now" (sharp edge — never let it reach the past), so once the wall clock is
-late enough in the week the seeded flexible lands a day later and the hardcoded
-column is wrong. **This is not a code bug and not the responsive work** — proven
-by stashing: 11 fail at HEAD too, identically. These UI files violate the very
-rule §core tests follow ("tests inject fixed dates; never read the wall clock").
-**Fix: `vi.setSystemTime(a fixed Monday)` in each file's `beforeEach`** so
-placement is deterministic. Until then, `test:run` is only trustworthy Mon–Wed.
+**✅ The 11 date-flaky UI tests are fixed (session 3).** `tests/ui-drag.test.jsx`
+and `tests/ui-bulk.test.jsx` seeded with `new Date()` and hardcoded weekday
+columns ("Read novel → Wed col 2"). A fresh flexible's placement origin is "now",
+so proximity lands the seed's flexibles on now's own weekday (Mon→col0, Tue→col1,
+Wed→col2). The columns assume **Wednesday** (also the day the seed skips the gym,
+freeing Wed morning) — so the suite was red Thu–Sun, green only mid-week. Both
+files now `vi.setSystemTime` a fixed **Wednesday** (2026-07-15) before the seed,
+faking only `Date` so async timers live. **Note: this handoff previously advised
+a fixed *Monday* — that's wrong, Monday lands Read novel on col0.** `test:run` is
+now trustworthy every day (299 → 308 with new tests, green on a Thursday).
 
 **Never trust an agent's "it passes" — run it yourself.** Every background agent
 in session 1 reported green: one genuinely was, one was 11 tests red mid-flight,
@@ -87,9 +91,27 @@ dragging a card (hold ~½s first) and scrolling the day (just swipe). Sharp
 edges #5/#6 still apply.
 
 ### Then, roughly in order
-1. **§2.2 precedence binds only automatic placement.** Ripple now honours
-   deadlines, but **displace and carryOver still don't inherit zones/deadlines**
-   — so a zone is a guarantee in one code path and a suggestion in two.
+1. **✅ §2.2 precedence — DONE (session 3).** The old claim that "displace and
+   carryOver don't inherit zones/deadlines" was **stale**: displace, carryOver,
+   autoSchedule and ripple-*overflow* all route through `placeTask`, which is
+   zone- and deadline-aware (proven by probe, not read). The one real leak was
+   ripple's plain-*shift* branch — pure arithmetic that could slide a non-work
+   flexible into an exclusive zone silently. Fixed: it now treats "enters a
+   forbidden exclusive zone" like a broken deadline and hands the task to
+   `placeTask`. Decision locked (per the user): **automatic re-optimizing carries
+   the guarantee; a manual drag/drop keeps its autonomy** (R-1 — a person may
+   drop a non-work task into the work zone and it stays). SPEC §2.2 + the
+   USE-CASE-ANALYSIS 2D-precedence note now say who the rule binds. Regression
+   tests lock displace/carryOver/ripple + manual autonomy.
+   **An adversarial sweep then caught a second, deeper leak (also fixed):**
+   `computeWindows`'s *matching* branch never subtracted *other* overlapping
+   exclusive zones, so a `work` task routed into the Work zone could be dropped
+   inside an overlapping exclusive Study block (reachable in the real config —
+   Work 09:00–18:30 and the seed Study zone Tue/Thu 18:00–21:00 overlap at
+   18:00–18:30). Fixed in `placement.js` (exclusivity is symmetric). A third,
+   *accepted* edge: when there's genuinely no non-zone time in the whole lookahead
+   a no-deadline task parks inside the zone with a warning — the §2.2
+   "visible beats invisible" last resort, left as-is. See the 2D-precedence note.
 2. **`history`/`occurrenceData` grow forever.** No retention policy → the
    starvation detector eventually becomes a permanent nag (a P-1 violation) and
    localStorage exhaustion is the designed end state. `_snapshots` and

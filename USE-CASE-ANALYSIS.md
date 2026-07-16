@@ -311,6 +311,25 @@ deadline: Date | null      // new Task property
 > exclusive zone" exactly like "would break a deadline" or "would overflow the
 > day" — it hands the task to `placeTask`, which relocates it clear. A third
 > UI-vs-engine copy of zone logic would drift; this keeps the check in the engine.
+>
+> **Two more leaks an adversarial sweep then surfaced (both 2026-07-16):**
+> - **Overlapping exclusive zones (FIXED).** `computeWindows`'s *matching* branch
+>   built the allowed windows from the task's own zones only and never subtracted
+>   *other* exclusive zones — so a `work` task routed into the Work zone could be
+>   deposited inside an overlapping exclusive Study block (reachable in the real
+>   config: Work 09:00–18:30 vs the seed's Study zone Tue/Thu 18:00–21:00 overlap
+>   at 18:00–18:30). Exclusivity is symmetric; the matching branch now subtracts
+>   non-matching exclusive zones the same way the non-matching branch always did.
+>   This also completes the ripple fix — its evacuation re-places via `placeTask`,
+>   which would otherwise have re-deposited into the overlap.
+> - **Parking fallback ignores zones (ACCEPTED, not changed).** When a non-matching
+>   no-deadline task has *no* non-zone capacity anywhere in the lookahead,
+>   `placeTask` steps 3–4 relax the zone and park it inside reserved hours with
+>   `schedulingWarning`. This is the §2.2 "visible beats invisible" last resort
+>   (the same clause that lets parking violate break padding), only reachable when
+>   every non-zone minute for `maxPlacementLookahead` days is already full, and it
+>   is flagged — so it stands. If it ever needs tightening, the move is to widen
+>   the search horizon before relaxing, not to drop the task.
 
 ## 2E — Assignments due Wed & Thu, different priorities, Monday packed
 
