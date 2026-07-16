@@ -45,7 +45,7 @@ Mirrors the existing **Zone** pattern (a class + a collection on `Schedule` +
 ### Bucket (a category = a named group of tags)
 
 The one concept behind both "activity categories" and "tag buckets". A bucket
-gives a set of tags a shared identity and a **kind** that the steering reasons
+gives a set of tags a shared identity and a **role** that the steering reasons
 about.
 
 ```
@@ -53,15 +53,16 @@ Bucket {
   id,
   label,                 // "Rest", "Work / School", "Creative", "Around the house"
   tags: string[],        // the tags that belong to this bucket
-  kind: 'restorative' | 'productive' | 'neutral',   // drives steering
+  role: 'rest' | 'creative' | 'work' | 'social' | 'health' | 'neutral',  // drives steering (LOCKED)
   color?,
 }
 ```
 
 - A tag belongs to **at most one** bucket (or none → "unbucketed").
-- `kind` lets steering reason about complement/reinforce **without hardcoding tag
-  names** — a draining run of `productive` work invites `restorative`/creative
-  time; a restful, energised run invites `productive` work.
+- `role` lets steering reason about complement/reinforce **without hardcoding tag
+  names**, and maps 1:1 onto the six starter buckets. It's a single readable
+  enum, not a two-axis dial — chosen for legibility over expressiveness. (LOCKED,
+  was OPEN #1's taxonomy question.)
 
 ### Activity (a template you drop into an opening)
 
@@ -117,20 +118,19 @@ metadata (bucket assignment + retired flag) — either on the buckets or a small
 Seed these on first run (each editable, renamable, deletable), pre-assigning
 existing tags where obvious; the user reshapes from there:
 
-| Bucket | kind | seeds (tags it grabs if present) |
+| Bucket | role | seeds (tags it grabs if present) |
 |---|---|---|
-| Rest | restorative | `rest`, `leisure`, `nap` |
-| Work / School | productive | `work`, `study`, `thesis`, `admin` |
-| Creative | restorative* | `creative`, `music`, `art`, `personal-project` |
-| Home | productive | `chores`, `errand`, `home` |
-| Social | neutral | `social`, `family`, `friends` |
-| Health | restorative | `health`, `sports`, `exercise`, `gym` |
+| Rest | `rest` | `rest`, `leisure`, `nap` |
+| Work / School | `work` | `work`, `study`, `thesis`, `admin` |
+| Creative | `creative` | `creative`, `music`, `art`, `personal-project` |
+| Home | `work` | `chores`, `errand`, `home` |
+| Social | `social` | `social`, `family`, `friends` |
+| Health | `health` | `health`, `sports`, `exercise`, `gym` |
 
-\* Creative is *active* restoration — the antidote the user named for flat rest.
-The three-`kind` taxonomy may be too coarse to separate "passive rest" from
-"active/creative restoration"; whether `kind` needs a finer axis (or an extra
-`passive|active` flag) is part of **OPEN #1**. Seeding is idempotent and only
-runs when there are no buckets yet, so it never clobbers an edited set.
+Roles map 1:1 onto the starter buckets, so "passive rest" (`rest`) and "active
+creative restoration" (`creative`) are distinct — which is what makes the "rest
+flat → creative" rule expressible. Seeding is idempotent and only runs when there
+are no buckets yet, so it never clobbers an edited set.
 
 ## Activity Library (new Cabana section)
 
@@ -152,41 +152,50 @@ Today's Right-Now panel: opening line → ranked existing tasks → "Do it now" 
    duration).
 5. Still never auto-opens; skipping still never tracked (P-1, boundary #2).
 
-### The steering heuristic — v1 proposal (OPEN #1)
+### The steering heuristic (LOCKED)
 
 Inputs, all already in the model — **no new tracking**:
-- **Recent per-bucket satisfaction:** over the last N rated tasks (proposal:
-  N = 10, or trailing 2 weeks), per bucket compute `avgOverall` (1–5) and
-  `netEnergy` (Σ of the tri-state `energy` facet).
-- **Priority space:** how much of your *committed high-priority* time is already
-  handled vs open (proposal: sum of unmet P4–P5 task-minutes still unplaced or
-  still ahead this week). Covered priorities → genuinely free time → lean
-  restorative/creative; open priorities → lean productive. (Exact definition is
-  **OPEN #2**.)
-- **Opening fit:** prefer activities whose range fits the opening comfortably.
+- **Recent per-role satisfaction:** over the last N rated tasks (N = 10, or the
+  trailing 14 days, whichever yields more — else cold start), aggregate by the
+  task's bucket `role`: `avgOverall` (1–5) and `netEnergy` (Σ of the tri-state
+  `energy` facet).
+- **energyBalance:** Σ `energy` across all recent rated tasks — are you charged or
+  running down?
+- **priorityPressure (= "priority space", LOCKED):** the summed minutes of
+  **incomplete P4–P5 tasks due within `config.maxPlacementLookahead`**, normalised
+  against that window's capacity. High → important work looms; ~0 → genuinely free
+  time.
+- **Opening fit:** prefer activities whose `[min,max]` fits the opening
+  comfortably. **Fit dominates** — steering is a gentle additive bias, so a
+  well-fitting activity always beats a poorly-fitting one whatever the mood.
 
-Mapping (each yields an invitation-phrased reason):
-- Recent run **productive & draining** (low `netEnergy` on productive buckets) →
-  surface **restorative** activities. *"You've been running hard — something
-  restful?"*
-- A **restorative** bucket you've leaned on is **low `avgOverall`** (rest isn't
-  landing) → surface **creative / personal-project** activities. *"Rest's felt flat
-  lately — a creative project?"*
-- Recent work **high `avgOverall` & energising** → offer **more productive**
-  activities. *"Work's been landing — keep the momentum?"*
-- **Priority space open** → weight `productive` up regardless of mood.
-- Neutral / cold start (<10 ratings) → fit-first spread, no mood claim.
+Mapping → a small bias per bucket `role` (each yields one invitation-phrased
+reason, derived from the actual numbers):
 
-All reasons are invitations, explainable from the actual numbers, never a
-judgement. This mapping and its weights are the part to co-design.
+| Condition | biases up | reason |
+|---|---|---|
+| `energyBalance` ≤ 0 (net-draining lately) | `rest`, `health` | "You've been running down — something restful?" |
+| `rest` role `avgOverall` low *and* you've been resting | `creative` (shifts the rest bias here) | "Rest's felt flat lately — a creative project?" |
+| `energyBalance` high **and** `priorityPressure` high | `work` | "Momentum and things due — a focused block?" |
+| `energyBalance` high **and** `priorityPressure` low | `creative`, `social` | "Nothing pressing — time for something you enjoy?" |
+| < 10 ratings (cold start) | none — fit + variety only | — |
+
+Plus a small **variety** nudge away from the role of the task you just finished,
+so it doesn't offer more of the exact thing you just did.
+
+Final order = `fit (dominant) + roleBias + variety`. All reasons are invitations,
+explainable from the numbers, never a judgement. Thresholds/weights live in
+`config` (Cabana-tunable later); starting values are a design detail for Phase C,
+not a reopened decision.
 
 ## Build plan (author + wire together, per the user's choice)
 
 - **Phase A — model + persistence.** `Bucket` + `Activity` classes, `Schedule`
   collections + CRUD, `toJSON/fromJSON`, `replace`/footlocker copy, `schemaVersion`
   1. Unit tests (round-trip, CRUD, replace-copies-them).
-- **Phase B — Cabana.** Tag Manager (bucket assign, create/rename/recolor, kind,
-  retire/un-retire, unbucketed surfacing) + Activities editor. Component tests.
+- **Phase B — Cabana.** Tag Manager (bucket assign, create/rename/recolor, role,
+  protected-role, retire/un-retire, unbucketed surfacing) + Activities editor.
+  Component tests.
 - **Phase C — "What to do".** Library fallback + steered ordering + "Do it now"
   instantiation (fill-the-opening). Tests: fit filter, fallback only after real
   tasks, steering reasons, and a **P-1 test that skipping records nothing**.
@@ -200,15 +209,13 @@ judgement. This mapping and its weights are the part to co-design.
 - **Tag Manager** absorbs "Tag roles"; **retire** = hide-from-new, keep history,
   zones unaffected, un-retirable.
 - **Starter buckets:** seed the 6-bucket set above, editable.
+- **Bucket role:** a single enum per bucket (`rest`/`creative`/`work`/`social`/
+  `health`/`neutral`), not a two-axis dial.
+- **Priority space:** looming P4–P5 minutes due within the placement lookahead.
+- **Steering:** the mapping table above; fit dominates, role-bias is gentle.
 - **P-1:** skipping is never tracked; steering never judges; user-authored only.
 
-## Open — settle before Phase C (the picker wiring), NOT blocking A/B
-
-1. **Steering mapping, weights & the `kind` taxonomy** — the v1 above; refine the
-   bucket→bucket rules, how hard satisfaction vs priority-space vs fit each pull,
-   and whether `kind` needs a finer passive/active axis for rest-vs-creative.
-2. **"Priority space" precise definition** — unmet P4–P5 minutes this week? free
-   capacity? something else?
-
-Phase A (model + persistence) and Phase B (Tag Manager + Activities editor) are
-fully specified and can proceed now; Phase C waits on #1–#2.
+**The spec is fully settled — Phases A, B and C are all specified.** Remaining
+choices (exact bias weights, the aggregation window N, cold-start count) are
+ordinary Phase-C implementation values in `config`, tunable later, not open
+design questions.
