@@ -292,6 +292,26 @@ deadline: Date | null      // new Task property
 3. No capacity *anywhere* pre-deadline → `schedulingWarning = true`, coral badge, task parks in the best pre-deadline gap even if break padding is violated. **Visible beats invisible** — a cramped warning on the grid is actionable; a vanished assignment is a catastrophe.
 4. Popover/detail modal gain a deadline field; cards with deadlines show a small due-date chip.
 
+> **2D-precedence — who the rule binds (RESOLVED 2026-07-16).** Precedence is a
+> guarantee the *engine* keeps, not a law imposed on the *user*. Every automatic
+> placement path honours deadline > zone: first placement, `autoSchedule`/
+> re-optimize, displacement (`resolveDropConflicts`), `carryOver`, and **both
+> branches of ripple**. Manual drag/drop is exempt under **R-1** — the user's
+> hand always wins, so dropping a non-work task into the work zone (or placing a
+> work task there yourself) is honoured verbatim and never re-routed. In short:
+> *automatic re-optimizing carries the guarantee; a person keeps their autonomy.*
+>
+> This was mostly already true — displace/carryOver/autoSchedule/ripple-overflow
+> all route through `placeTask`, which is zone- and deadline-aware (verified by
+> probe, not assumption). The one leak: ripple's **plain-shift** branch moved
+> downstream tasks by pure arithmetic. It had grown a deadline check but no zone
+> check, so a shift could nudge a flexible non-work task into an exclusive zone
+> silently (proven: a 07:30 errand rippled to 08:35–09:35, straddling a 09:00
+> work zone, no flag). Fix: the shift branch now treats "would enter a forbidden
+> exclusive zone" exactly like "would break a deadline" or "would overflow the
+> day" — it hands the task to `placeTask`, which relocates it clear. A third
+> UI-vs-engine copy of zone logic would drift; this keeps the check in the engine.
+
 ## 2E — Assignments due Wed & Thu, different priorities, Monday packed
 
 | | |

@@ -105,3 +105,66 @@ describe('displacement never double-books (F1 regression)', () => {
     expect(b.overlaps(dropped)).toBe(false);
   });
 });
+
+describe('§2.2 — displace honours zones & deadlines; a manual drop keeps autonomy (R-1)', () => {
+  // Wide day window so there's ordinary time either side of the 09:00–18:30 zone.
+  const wideCfg = { ...cfg, windows: { ...cfg.windows, monFri: { start: '06:00', end: '23:00' } } };
+  const workZone = (extra = {}) => ({
+    label: 'Work',
+    matchTags: ['work'],
+    windows: ['mon', 'tue', 'wed', 'thu', 'fri'].map((day) => ({ day, start: '09:00', end: '18:30' })),
+    exclusive: true,
+    ...extra,
+  });
+  const inZone = (d) => {
+    const h = d.getHours() + d.getMinutes() / 60;
+    return d.getDay() >= 1 && d.getDay() <= 5 && h >= 9 && h < 18.5; // Tue 2026-07-14
+  };
+  let s;
+  beforeEach(() => {
+    resetIds();
+    s = new Schedule({ config: wideCfg });
+    s.addZone(workZone());
+  });
+
+  it('a displaced non-work task never lands inside the exclusive work zone', () => {
+    // A personal errand the user parked inside work hours (their call, R-1). A
+    // work meeting drops on top of it → the errand is evicted and re-placed, and
+    // the engine must route it clear of the zone it doesn't belong to.
+    const errand = s.addFlexible({ title: 'Errand', tags: ['personal'], startTime: D(2026, 6, 14, 10, 0), endTime: D(2026, 6, 14, 11, 0) });
+    errand.placedBy = 'user';
+    const meeting = new Task({ title: 'Meeting', type: 'fixed', tags: ['work'], startTime: D(2026, 6, 14, 10, 0), endTime: D(2026, 6, 14, 11, 0) });
+    s.tasks.push(meeting);
+
+    const res = s.resolveDropConflicts(meeting);
+    expect(res.displaced.map((t) => t.id)).toContain(errand.id);
+    expect(inZone(errand.startTime)).toBe(false);
+    expect(inZone(new Date(errand.endTime.getTime() - 1))).toBe(false);
+  });
+
+  it('a displaced task with a deadline is re-placed within it', () => {
+    const report = s.addFlexible({ title: 'Report', tags: ['personal'], startTime: D(2026, 6, 14, 7, 0), endTime: D(2026, 6, 14, 8, 0), deadline: D(2026, 6, 14, 9, 0) });
+    report.placedBy = 'user';
+    const call = new Task({ title: 'Call', type: 'fixed', tags: ['personal'], startTime: D(2026, 6, 14, 7, 0), endTime: D(2026, 6, 14, 8, 0) });
+    s.tasks.push(call);
+
+    const res = s.resolveDropConflicts(call);
+    expect(res.displaced.map((t) => t.id)).toContain(report.id);
+    expect(report.endTime.getTime()).toBeLessThanOrEqual(D(2026, 6, 14, 9, 0).getTime());
+  });
+
+  it('a manual drop into the work zone is honoured, not re-routed (R-1 autonomy)', () => {
+    // The user places a personal task inside empty work-zone time. No conflict,
+    // so the engine leaves it exactly where the hand put it: the zone binds the
+    // scheduler, never the person. (A guard against "fixing" the drop handler to
+    // validate the *dropped* task against zones.)
+    const errand = s.addFlexible({ title: 'Errand', tags: ['personal'], startTime: D(2026, 6, 14, 10, 0), endTime: D(2026, 6, 14, 11, 0) });
+    errand.placedBy = 'user';
+    const before = errand.startTime.getTime();
+
+    const res = s.resolveDropConflicts(errand);
+    expect(res.displaced.length).toBe(0);
+    expect(errand.startTime.getTime()).toBe(before); // unmoved
+    expect(inZone(errand.startTime)).toBe(true); // still where the user dropped it
+  });
+});

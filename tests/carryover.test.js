@@ -53,3 +53,31 @@ describe('3E — carryOver classification (OD-9/13)', () => {
     expect(t.completion).toBe('skipped');
   });
 });
+
+describe('§2.2 — carryOver keeps a non-work task out of the exclusive zone', () => {
+  const wideCfg = { ...defaultConfig, windows: { ...defaultConfig.windows, monFri: { start: '06:00', end: '23:00' } } };
+  const workZone = () => ({
+    label: 'Work',
+    matchTags: ['work'],
+    windows: ['mon', 'tue', 'wed', 'thu', 'fri'].map((day) => ({ day, start: '09:00', end: '18:30' })),
+    exclusive: true,
+  });
+  const inZone = (d) => {
+    const h = d.getHours() + d.getMinutes() / 60;
+    return d.getDay() >= 1 && d.getDay() <= 5 && h >= 9 && h < 18.5;
+  };
+
+  it('a carried personal task lands in ordinary hours, never in work time', () => {
+    resetIds();
+    const s = new Schedule({ config: wideCfg });
+    s.addZone(workZone());
+    // A personal errand from last week (Tue), incomplete and now in the past.
+    const errand = s.addFlexible({ title: 'Errand', tags: ['personal'], startTime: F(1, 10), endTime: F(1, 11) });
+    errand.placedBy = 'user';
+
+    const res = s.carryOver(FROM, TO, { now: NOW });
+    const carried = res.carried.find((t) => t.id === errand.id);
+    expect(carried).toBeTruthy();
+    expect(inZone(carried.startTime)).toBe(false);
+  });
+});
