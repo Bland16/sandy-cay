@@ -188,6 +188,64 @@ explainable from the numbers, never a judgement. Thresholds/weights live in
 `config` (Cabana-tunable later); starting values are a design detail for Phase C,
 not a reopened decision.
 
+## Learning extension — per-bucket position & availability (LOCKED)
+
+`learning.js` today is a flat ridge regression whose features are all **additive
+and independent**: tag, time-of-day (6), day-of-week (7), duration (5), day-fill,
+priority, placed-by-user, move-count. So it can learn "mornings are good" *and*
+"work is good" as separate weights, but **not** "work is good *in the morning*" —
+a linear model with independent tag and time features cannot represent the
+combination. Two additions fix that, both enabled by the bucket `role`.
+
+### 1. Per-bucket position (the "where tasks sit, by bucket" ask)
+
+Add **interaction features** on the task's bucket `role`:
+- `role × timeOfDay` — one-hot(role) × one-hot(6 time buckets) = 36 binary terms.
+- `role × weekend` — 6 scalar terms (isWeekend bit per role).
+- `role × dayFill` — 6 scalar terms (day-fill scalar per role).
+
+Inspectable, so the Cabana can finally say *"work · morning +0.6"* honestly
+(SPEC §6's promised "study rated highest before noon" needs exactly this).
+
+### 2. Availability (the "time I normally have" ask — all three senses, own weights)
+
+Global scalar features, each with its own learned weight:
+- `crunch` = clamp(taskDuration / openingSize, 0, 1) — how tightly the task filled
+  the free block it sat in (1 = crammed). Snapshotted at completion, like
+  `_dayFillAtCompletion`.
+- `availabilityDeviation` = (freeAtSlot − typicalFreeAtSlot) normalised — *"unusually
+  free vs a normal busy Tuesday."* Needs a rolling **baseline of your usual free
+  minutes per (time-bucket, weekday)**, computed from schedule history.
+- `dayFill` (exists) + new `weekFill` — busyness of the day and the week.
+
+### Keeping it honest on sparse data (the load-bearing part)
+
+Interactions add ~50 features; on 10–50 ratings a naive fit hallucinates patterns
+from single data points. Contained by:
+- **Base + refinement:** the existing global terms stay as the backbone;
+  interactions only adjust them, so thin data still behaves like today.
+- **Per-cell gating:** a `role×position` term contributes **0** until that cell has
+  ≥ `config.learning.interactionMinSamples` (~4) ratings. One grumpy Saturday can't
+  mint "work is bad on weekends".
+- **Grouped ridge:** interaction terms get a heavier `lambda` than base terms.
+- **Roles (6), not tags,** bound the cross-term count.
+- Whole-model cold start (`coldStartRatings`) still returns 0 until enough total
+  ratings — unchanged.
+
+### Migration (free)
+
+Changing the feature layout invalidates stored `weights`, but weights are
+**disposable** — derived from ratings, which persist on tasks. Bump a model
+**layout version**; on load, if it differs, discard weights and **retrain from the
+rated tasks**. No data loss. `role` for a rated task is derived from its tags via
+the bucket map (`roleOf(task)`; first matching bucket wins, else `neutral`).
+
+### Feeds the steering
+
+Once trained past cold start, the Phase-C steering prefers the *learned* per-role
+positional preference (`modelScore` for the role at this slot) over the recent-
+satisfaction heuristic — the heuristic is the cold-start fallback.
+
 ## Build plan (author + wire together, per the user's choice)
 
 - **Phase A — model + persistence.** `Bucket` + `Activity` classes, `Schedule`
@@ -199,6 +257,14 @@ not a reopened decision.
 - **Phase C — "What to do".** Library fallback + steered ordering + "Do it now"
   instantiation (fill-the-opening). Tests: fit filter, fallback only after real
   tasks, steering reasons, and a **P-1 test that skipping records nothing**.
+- **Phase D — learning extension.** `role×{time, weekend, dayFill}` interactions +
+  `crunch` / `availabilityDeviation` / `weekFill` availability features + the
+  per-(time,weekday) availability baseline; per-cell gating, grouped ridge, layout
+  version + retrain-on-load migration; Cabana insight shows the new terms. Tests:
+  the model learns a synthetic per-role positional pattern; a single rating does
+  **not** move a gated cell; layout bump retrains cleanly; diverged-guard still
+  holds. (Independent of A–C except that it consumes `role`, so it can land after
+  A or in parallel.)
 
 ## Decisions locked (session 4)
 
@@ -213,6 +279,10 @@ not a reopened decision.
   `health`/`neutral`), not a two-axis dial.
 - **Priority space:** looming P4–P5 minutes due within the placement lookahead.
 - **Steering:** the mapping table above; fit dominates, role-bias is gentle.
+- **Learning extension:** `role×{time-of-day, weekend, day-fill}` interactions +
+  three availability features (`crunch`, `availabilityDeviation` vs a learned
+  per-slot baseline, `weekFill`), each own weight; contained by base+refinement,
+  per-cell gating, grouped ridge; layout bump + retrain-on-load migration.
 - **P-1:** skipping is never tracked; steering never judges; user-authored only.
 
 **The spec is fully settled — Phases A, B and C are all specified.** Remaining
