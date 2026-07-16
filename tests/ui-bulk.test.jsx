@@ -35,8 +35,16 @@ const rect = (left, top, width, height) => ({
   toJSON() {},
 });
 
+// A fixed Wednesday — see ui-drag.test.jsx for the full note. The seed's
+// auto-placed flexibles track now's weekday (a fresh flexible's origin is now),
+// so seeded columns were date-flaky (red Thu-Sun). The tests hardcode Wed
+// placement, so freeze to a Wednesday; only Date is faked so async timers live.
+const FIXED_WEDNESDAY = new Date(2026, 6, 15, 9, 0, 0); // Wed 2026-07-15 09:00
+
 let origRect;
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(FIXED_WEDNESDAY);
   // The app ships empty now, so a test wanting the seed week hands it over the
   // same way a returning user would: persisted state. bootWith() overwrites
   // this for tests that state their own week.
@@ -65,6 +73,7 @@ beforeEach(() => {
 afterEach(() => {
   Element.prototype.getBoundingClientRect = origRect;
   cleanup();
+  vi.useRealTimers();
 });
 
 function pointer(type, clientX, clientY) {

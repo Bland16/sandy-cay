@@ -12,7 +12,7 @@
 //   Wed  08:00 Read novel (flexible, unpinned)
 //   Thu  14:00 Dentist (fixed)
 //   Fri  08:00 Morning gym · 16:00 Weekly review (pinned) · 20:00 Movie night (rest)
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup, screen, fireEvent, within } from '@testing-library/react';
 import App from '../src/App.jsx';
 import { gridBounds } from '../src/ui/format.js';
@@ -38,8 +38,20 @@ const rect = (left, top, width, height) => ({
   toJSON() {},
 });
 
+// A fixed Wednesday. A fresh flexible's origin is "now", so proximity lands the
+// seed's flexibles on now's own weekday: Mon col0, Tue col1, Wed col2. These
+// tests hardcode Wed col2 (the seed also skips the gym on Wed, freeing its
+// Wed morning). Run any other day and the flexible drifts a column, so the
+// suite was red Thu-Sun. Freeze to a Wednesday and placement is deterministic
+// every day; 09:00 clears the 5am-grid boundary and only Date is faked so
+// testing-library's async timers survive. (The one test that sets its own clock
+// below likewise uses 2026-07-15, a Wednesday.)
+const FIXED_WEDNESDAY = new Date(2026, 6, 15, 9, 0, 0); // Wed 2026-07-15 09:00
+
 let origRect;
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(FIXED_WEDNESDAY);
   // The app no longer ships demo data — it starts empty. These tests want the
   // seed week, so they hand it to the app the way a returning user would: via
   // persisted state.
@@ -67,6 +79,7 @@ beforeEach(() => {
 afterEach(() => {
   Element.prototype.getBoundingClientRect = origRect;
   cleanup();
+  vi.useRealTimers();
 });
 
 function pointer(type, clientX, clientY) {
