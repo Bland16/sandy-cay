@@ -1,31 +1,38 @@
 // TagManager — the Cabana's single place per tag (design/ACTIVITY-LIBRARY.md).
 // Absorbs the old "Tag roles" card: for each tag you set its bucket, whether it's
-// protected (survives auto-eviction), and whether it's retired. Buckets are
-// created/renamed/recoloured/roled here too, and the six starter buckets can be
-// seeded when there are none. Tags group under their bucket, with an "Unbucketed"
-// group that surfaces tags that have appeared but aren't sorted yet.
+// protected (survives auto-eviction), and whether it's retired. Buckets are a
+// compact LIST you drill into to edit (name, colour, role, energy load) — the
+// Zones-editor idiom — so nothing is a wall of open controls. Tags list under
+// their bucket as tight one-line rows, with an "Unbucketed" group surfacing tags
+// that have appeared but aren't sorted yet.
+import { useState } from 'react';
 import { BUCKET_ROLES, seedStarterBuckets } from '../../core/index.js';
 import { tagsInUse } from './TagEditor.jsx';
 import { AXES, AXIS_META } from '../energyMeta.js';
+import Icon from '../Icon.jsx';
 
 const ROLE_LABELS = {
   rest: 'Rest', creative: 'Creative', work: 'Work',
   social: 'Social', health: 'Health', neutral: 'Neutral',
 };
 
+// A tiny one-line summary of a bucket's non-zero load, e.g. "🐦+2 🦀+1".
+function loadSummary(load) {
+  if (!load) return '';
+  return AXES.filter((a) => load[a]).map((a) => `${AXIS_META[a].glyph}${load[a] > 0 ? '+' : ''}${load[a]}`).join(' ');
+}
+
 export default function TagManager({ sched, mutate }) {
+  const [editingId, setEditingId] = useState(null);
   const buckets = sched.buckets;
   const retired = sched.retiredTags;
   const protectedTags = sched.config.protectedTags;
 
-  // Every tag the app knows about: on tasks (current or historical), assigned to a
-  // bucket, or retired. A retired tag stays listed here so it can be un-retired.
   const allTags = Array.from(new Set([
     ...tagsInUse(sched),
     ...buckets.flatMap((b) => b.tags),
     ...retired,
   ])).sort();
-
   const bucketOf = (tag) => buckets.find((b) => b.tags.includes(tag)) || null;
   const unbucketed = allTags.filter((t) => !bucketOf(t));
 
@@ -44,14 +51,12 @@ export default function TagManager({ sched, mutate }) {
   });
   const toggleRetire = (tag) => mutate((s) => (s.isTagRetired(tag) ? s.unretireTag(tag) : s.retireTag(tag)));
 
-  // Load dials (design/ENERGY-MODEL.md): + spends that reserve, − restores it.
   const patchLoad = (id, axis, v) => mutate((s) => {
     const b = s.buckets.find((x) => x.id === id);
     if (!b) return;
-    const val = Math.max(-2, Math.min(2, Math.round(Number(v) || 0)));
-    b.load = { ...b.load, [axis]: val };
+    b.load = { ...b.load, [axis]: Math.max(-2, Math.min(2, Math.round(Number(v) || 0))) };
   });
-  const addBucket = () => mutate((s) => s.addBucket({ label: 'New bucket', role: 'neutral', tags: [] }));
+  const addBucket = () => { const b = mutate((s) => s.addBucket({ label: 'New bucket', role: 'neutral', tags: [] })); if (b) setEditingId(b.id); };
   const seed = () => mutate((s) => seedStarterBuckets(s));
   const patchBucket = (id, changes) => mutate((s) => s.updateBucket(id, changes));
   const dropBucket = (id) => mutate((s) => s.removeBucket(id));
@@ -61,76 +66,73 @@ export default function TagManager({ sched, mutate }) {
     const isRet = retired.includes(tag);
     const isProt = protectedTags.includes(tag);
     return (
-      <div className="zonewin" key={tag} style={{ gap: 6, opacity: isRet ? 0.55 : 1 }}>
-        <span className="cabtag" style={{ minWidth: 84 }}>{tag}</span>
-        <select
-          value={b ? b.id : ''}
-          onChange={(e) => assign(tag, e.target.value || null)}
-          aria-label={`Bucket for ${tag}`}
-        >
-          <option value="">— unbucketed —</option>
+      <div key={tag} className="tagline" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '2px 0', opacity: isRet ? 0.5 : 1 }}>
+        <span className="cabtag" style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tag}</span>
+        <select value={b ? b.id : ''} onChange={(e) => assign(tag, e.target.value || null)} aria-label={`Bucket for ${tag}`} style={{ maxWidth: 112 }}>
+          <option value="">— none —</option>
           {buckets.map((bk) => <option key={bk.id} value={bk.id}>{bk.label}</option>)}
         </select>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', fontSize: 12 }}>
-          <input type="checkbox" checked={isProt} onChange={() => toggleProtect(tag)} aria-label={`Protect ${tag}`} />
-          protected
-        </label>
-        <button
-          className="btn2 ghost"
-          style={{ padding: '4px 8px', maxWidth: 92 }}
-          onClick={() => toggleRetire(tag)}
-          aria-label={`${isRet ? 'Un-retire' : 'Retire'} ${tag}`}
-        >
+        <input type="checkbox" checked={isProt} onChange={() => toggleProtect(tag)} aria-label={`Protect ${tag}`} title="Protected — survives auto-eviction" />
+        <button className="btn2 ghost" style={{ padding: '2px 7px', whiteSpace: 'nowrap' }} onClick={() => toggleRetire(tag)} aria-label={`${isRet ? 'Un-retire' : 'Retire'} ${tag}`}>
           {isRet ? 'un-retire' : 'retire'}
         </button>
       </div>
     );
   };
 
+  const editing = buckets.find((b) => b.id === editingId) || null;
+
+  // ---- drill-in bucket editor -------------------------------------------
+  if (editing) {
+    return (
+      <div className="cabcard">
+        <div className="cabsign">Edit bucket</div>
+        <button className="btn2 ghost" style={{ marginBottom: 10, padding: '5px 9px' }} onClick={() => setEditingId(null)}>
+          <Icon name="back" /> All buckets
+        </button>
+        <div className="zonewin" style={{ gap: 6 }}>
+          <input type="color" value={editing.color} onChange={(e) => patchBucket(editing.id, { color: e.target.value })} aria-label="Bucket colour" style={{ width: 30, padding: 0 }} />
+          <input defaultValue={editing.label} onBlur={(e) => patchBucket(editing.id, { label: e.target.value.trim() || editing.label })} aria-label="Bucket name" style={{ flex: 1 }} />
+        </div>
+        <div className="zonewin" style={{ gap: 6 }}>
+          <span style={{ opacity: 0.6, fontSize: 12, minWidth: 44 }}>role</span>
+          <select value={editing.role} onChange={(e) => patchBucket(editing.id, { role: e.target.value })} aria-label="Bucket role" style={{ flex: 1 }}>
+            {BUCKET_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+          </select>
+        </div>
+        <div className="zonewin" style={{ gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ opacity: 0.6, fontSize: 12, minWidth: 44 }}>energy</span>
+          {AXES.map((a) => (
+            <label key={a} title={AXIS_META[a].label} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+              <span aria-hidden="true">{AXIS_META[a].glyph}</span>
+              <input type="number" min="-2" max="2" step="1" value={(editing.load && editing.load[a]) ?? 0} onChange={(e) => patchLoad(editing.id, a, e.target.value)} aria-label={`${editing.label} ${AXIS_META[a].label} load`} style={{ width: 46 }} />
+            </label>
+          ))}
+        </div>
+        <p className="insight" style={{ opacity: 0.6, marginTop: 2 }}>＋ spends that reserve, − restores it.</p>
+        <button className="btn2 ghost" style={{ marginTop: 8, padding: '5px 9px' }} onClick={() => { dropBucket(editing.id); setEditingId(null); }} aria-label={`Remove bucket ${editing.label}`}>
+          remove bucket
+        </button>
+      </div>
+    );
+  }
+
+  // ---- bucket list + tag list -------------------------------------------
   return (
     <div className="cabcard">
       <div className="cabsign">Tags &amp; buckets</div>
-      <p>Sort tags into buckets, mark the protected ones (they survive auto-eviction), and retire tags you&apos;re done with.</p>
+      <p>Click a bucket to set its energy, colour and role. Sort each tag below.</p>
 
       {buckets.length === 0 && <p className="insight">No buckets yet.</p>}
       {buckets.map((b) => (
-        <div key={b.id} style={{ marginBottom: 6 }}>
-          <div className="zonewin" style={{ gap: 6 }}>
-            <input
-              type="color"
-              value={b.color}
-              onChange={(e) => patchBucket(b.id, { color: e.target.value })}
-              aria-label={`${b.label} colour`}
-              style={{ width: 30, padding: 0 }}
-            />
-            <input
-              defaultValue={b.label}
-              onBlur={(e) => patchBucket(b.id, { label: e.target.value.trim() || b.label })}
-              aria-label="Bucket name"
-              style={{ flex: 1 }}
-            />
-            <select value={b.role} onChange={(e) => patchBucket(b.id, { role: e.target.value })} aria-label={`${b.label} role`}>
-              {BUCKET_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
-            </select>
-            <button className="rm" onClick={() => dropBucket(b.id)} aria-label={`Remove bucket ${b.label}`}>×</button>
-          </div>
-          {/* Load dials — how this bucket spends (+) or restores (−) each reserve. */}
-          <div className="zonewin" style={{ gap: 8, fontSize: 12, opacity: 0.85, paddingLeft: 4 }}>
-            <span style={{ opacity: 0.6 }}>energy:</span>
-            {AXES.map((a) => (
-              <label key={a} title={AXIS_META[a].label} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <span aria-hidden="true">{AXIS_META[a].glyph}</span>
-                <input
-                  type="number" min="-2" max="2" step="1"
-                  value={(b.load && b.load[a]) ?? 0}
-                  onChange={(e) => patchLoad(b.id, a, e.target.value)}
-                  aria-label={`${b.label} ${AXIS_META[a].label} load`}
-                  style={{ width: 42 }}
-                />
-              </label>
-            ))}
-          </div>
-        </div>
+        <button key={b.id} className="zonerow" onClick={() => setEditingId(b.id)} aria-label={`Edit bucket ${b.label}`}>
+          <span aria-hidden="true" style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: b.color, flexShrink: 0, marginRight: 2 }} />
+          <b style={{ color: 'var(--cab-accent)' }}>{b.label}</b>
+          <span className="zmeta">
+            {ROLE_LABELS[b.role]}{loadSummary(b.load) ? ` · ${loadSummary(b.load)}` : ''} · {b.tags.length} tag{b.tags.length === 1 ? '' : 's'}
+          </span>
+          <span aria-hidden="true">edit ›</span>
+        </button>
       ))}
       <div className="chest" style={{ marginTop: 4 }}>
         <button className="btn2 ghost" style={{ padding: '5px 9px' }} onClick={addBucket} aria-label="Add bucket">＋ bucket</button>

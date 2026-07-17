@@ -87,6 +87,7 @@ describe('TagManager', () => {
     const s = schedWith(['foo']);
     s.addBucket({ label: 'Rest', role: 'rest', tags: ['foo'] });
     render(<Harness sched={s} Comp={TagManager} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit bucket Rest' })); // drill in
     fireEvent.click(screen.getByRole('button', { name: 'Remove bucket Rest' }));
     expect(s.buckets).toHaveLength(0);
     // 'foo' is still a known tag, now unbucketed and offered again.
@@ -154,6 +155,7 @@ describe('L-1 energy UI', () => {
     const s = new Schedule({ config: wide() });
     s.addBucket({ label: 'Work', role: 'work', tags: ['work'] });
     render(<Harness sched={s} Comp={TagManager} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit bucket Work' })); // drill in to edit
 
     const dial = screen.getByLabelText('Work mental load');
     expect(Number(dial.value)).toBe(2); // the work role default
