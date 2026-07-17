@@ -5,6 +5,7 @@ import { Task } from './Task.js';
 import { Zone } from './Zone.js';
 import { Bucket } from './Bucket.js';
 import { Activity } from './Activity.js';
+import { makeId } from './ids.js';
 import { makeConfig } from './config.js';
 import { normalizeWeights } from './scoring.js';
 import { LearningModule } from './learning.js';
@@ -44,6 +45,12 @@ export class Schedule {
   constructor(init = {}) {
     this.config = makeConfig(init.config);
     this.tasks = (init.tasks || []).map((t) => (t instanceof Task ? t : Task.fromJSON(t)));
+    // The id counter (ids.js) resets every page load, so a task created after a
+    // reload can be handed the same slug+suffix as one already saved with the same
+    // title — e.g. two "Work on website" tasks colliding on `work-on-website-0001`.
+    // A shared id makes `tasks.find(id===…)` return the WRONG task, so resizing the
+    // second silently edited the first. Repair any collision already in the save.
+    this._dedupeTaskIds();
     this.zones = (init.zones || []).map((z) => (z instanceof Zone ? z : Zone.fromJSON(z)));
     // Activity library (design/ACTIVITY-LIBRARY.md): buckets (categories + tag
     // groups), the activities inside them, and the set of retired tags. All
@@ -104,8 +111,27 @@ export class Schedule {
   }
 
   // ---- CRUD --------------------------------------------------------------
+  /** Guarantee `task.id` is unique among the current tasks (regenerate on clash).
+   *  Call before pushing a freshly-created task — the id counter resets per load,
+   *  so a new id can collide with one restored from storage. */
+  _uniqueId(task) {
+    while (this.tasks.some((x) => x !== task && x.id === task.id)) task.id = makeId(task.title);
+    return task;
+  }
+
+  /** Repair any duplicate task ids already present (e.g. from a save written
+   *  before the collision was fixed) by reissuing the later duplicate a fresh id. */
+  _dedupeTaskIds() {
+    const seen = new Set();
+    for (const t of this.tasks) {
+      if (seen.has(t.id)) while (seen.has(t.id) || this.tasks.some((x) => x !== t && x.id === t.id)) t.id = makeId(t.title);
+      seen.add(t.id);
+    }
+  }
+
   addFixed(data) {
     const t = new Task({ ...data, type: 'fixed' });
+    this._uniqueId(t);
     this.tasks.push(t);
     if (!data.startTime) this._place(t, { from: data.from, to: data.to });
     this._touch();
@@ -114,6 +140,7 @@ export class Schedule {
 
   addFlexible(data) {
     const t = new Task({ ...data, type: 'flexible' });
+    this._uniqueId(t);
     this.tasks.push(t);
     // 7A defaults cascade: placed immediately via scored placement. `to` bounds
     // the search when the caller has a week in mind; without it the search runs
