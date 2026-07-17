@@ -1,7 +1,9 @@
 # Sandy Cay — handoff
 
-**Updated:** 2026-07-15, second session. Everything described as done is
-committed and pushed to `main` (https://github.com/Bland16/sandy-cay). CI green.
+**Updated:** 2026-07-17, session 4 (reconciliation). Sessions 1–2 are on `main`
+(https://github.com/Bland16/sandy-cay), CI green. Session 3 (responsive) and
+session 4 (this pass) live on branches/worktrees, **not yet merged** — see "Where
+the work is" below.
 
 ```bash
 npm install
@@ -15,19 +17,62 @@ npx eslint src
 
 ## ⚠️ READ THIS FIRST
 
-**Wrap report (§7.1 / R-7) and Responsive (§11) are DONE.** Next job: **verify
-touch drag on a real phone**, then fix the flaky tests below.
+### Session 4 was a RECONCILIATION. The master plan is `design/RECONCILIATION.md`.
 
-**⚠️ 11 UI tests are DATE-FLAKY — red Thu–Sun, green Mon–Wed, every week.**
-`tests/ui-drag.test.jsx` and `tests/ui-bulk.test.jsx` seed with `new Date()` and
-hardcode weekday placement (e.g. "Read novel → Wed col 2"). Auto-placement floors
-at "now" (sharp edge — never let it reach the past), so once the wall clock is
-late enough in the week the seeded flexible lands a day later and the hardcoded
-column is wrong. **This is not a code bug and not the responsive work** — proven
-by stashing: 11 fail at HEAD too, identically. These UI files violate the very
-rule §core tests follow ("tests inject fixed dates; never read the wall clock").
-**Fix: `vi.setSystemTime(a fixed Monday)` in each file's `beforeEach`** so
-placement is deterministic. Until then, `test:run` is only trustworthy Mon–Wed.
+Real use exposed that the activity / energy / bucket features accrued design debt
+(a fix that wasn't generalised, a UI redesign applied to one editor not all, a
+feature on the wrong object, fabricated energy numbers, a redundant `role` enum).
+So this session shipped **no features** — it wrote a corrected model and a
+consolidated fix/redesign plan. **Read `design/RECONCILIATION.md` first.** State:
+
+- **Forks are RESOLVED.** `role` gets **ripped out of the model entirely** (a
+  bucket's character IS its load vector — the enum was a redundant second
+  description); the energy budget shows a *"still learning"* state until ~3 weeks
+  of ratings calibrate capacity (no fabricated ceiling before that); bucket/task
+  load defaults to **neutral 0, user-set**.
+- **Task is the atom; Activity is a thin task template** (nothing a task lacks).
+  So energy becomes editable **on the task, on the schedule**; the per-activity
+  energy override is wrong-object and gets removed.
+- **⛔ NOTHING IS BUILT YET — deliberately.** The user's explicit call:
+  *spec it all, build nothing until the plan is reviewed.* Do **not** start
+  editing code until they've torn the spec apart and signed off. The rip-out is
+  fully spec'd (file-by-file table in RECONCILIATION.md §"The role rip-out"), but
+  it stays a plan until approved.
+
+**Build order once approved** (RECONCILIATION.md §"Build order"):
+1. **Bug-fix PR** (off `wrap-report`): the cross-week double-book bugs — `conflicts.js`
+   silently books a displaced task onto next week's pinned recurring anchor
+   (proven 800/800 silent), `carryOver` double-books *and* places outside the
+   target week, `_occupiedExcluding` when `to` is omitted — all HIGH; the iCal
+   `UNTIL`/`EXDATE` bugs; **unique ids for Bucket/Activity/Zone** (the
+   two-new-buckets bug — the task-id fix was never generalised); and
+   **reproduce-then-fix the ripple bug** (a 5-min ripple flung the next task to
+   the next day — core `rippleShift` tests clean, so it's the UI commit path).
+2. **Reconciliation redesign** (feature branch): role rip-out, task energy on the
+   schedule, Activities → drill-in editor, energy "still learning" state, unify
+   the three editor idioms into drill-in + `TagEditor`.
+3. **Two product calls still open for the user:** retire (add a control, or drop
+   the half-wired feature — `unretireTag` has UI, `retireTag` has none) and
+   project management (build a surface for the chunk ops, or leave them internal).
+
+**Same lesson as session 2, reinforced:** every HIGH bug this session found is in
+code the green suite "covers." The cross-week double-books are *proven* by probe
+yet no test caught them. Drive the real app on real data; don't trust green.
+
+---
+
+**Wrap report (§7.1 / R-7) and Responsive (§11) are DONE** (sessions 2–3). Two
+pre-reconciliation items remain, now sequenced *behind* the plan above: **verify
+touch drag on a real phone** (see PENDING section) and confirm the flaky-test fix
+landed on your branch.
+
+**✅ The date-flaky UI tests are FIXED.** `tests/ui-drag.test.jsx` and
+`tests/ui-bulk.test.jsx` now pin the clock with `vi.setSystemTime` (present in
+both), so `test:run` is deterministic again — no more red Thu–Sun / green Mon–Wed.
+*(The fix is in-tree here; confirm it's on whichever branch you build from.)*
+The old bug: they seeded with `new Date()` and hardcoded weekday placement, so a
+late-in-week wall clock floored auto-placement a day later and the hardcoded
+column missed. Kept as a cautionary tale — UI tests must inject fixed dates too.
 
 **Never trust an agent's "it passes" — run it yourself.** Every background agent
 in session 1 reported green: one genuinely was, one was 11 tests red mid-flight,
@@ -65,7 +110,25 @@ record, arbitrates — 75KB, **grep it, never read it whole**) · `FRONTEND-SPEC
 
 ---
 
-## NEXT JOB: verify touch drag on a real phone (Responsive is otherwise done)
+## Where the work is (session 3–4 branches, none merged yet)
+
+`git worktree list` — the main checkout sits on `wrap-report`; the rest are
+isolated worktrees under `.claude/worktrees/`. Confirm PR numbers with
+`gh pr list`; per session notes they are roughly:
+
+| Worktree / branch | Base | Holds |
+|---|---|---|
+| main checkout — `wrap-report` | `main` | wrap report + responsive + rollover (session 2–3) |
+| `worktree-activity-library` | wrap-report | activity library, L-1 energy, Tag Manager drill-in, **`design/RECONCILIATION.md`** (this session) |
+| `worktree-bugfix-sweep` / `worktree-core-bugfixes` | wrap-report | the bug-fix PR home (cross-week + iCal + unique-id fixes) — **build order step 1** |
+| `worktree-precedence-zones` | wrap-report | §2.2 precedence for displace/carryOver |
+
+**The reconciliation redesign (role rip-out etc.) has NO branch yet** — it's spec
+only, gated on the user's review. Start it on a fresh feature branch off
+`wrap-report` once approved. **Commit by explicit path, never `git add -A`** (the
+privacy note still holds — `design/import/` and `*.ics` are gitignored real data).
+
+## PENDING (pre-reconciliation): verify touch drag on a real phone
 
 **Responsive (§11) is built and tested** — phone <768 (day view + `DayPicker`
 strip), tablet 768–1279 (`WeekGrid days={[0..4]}` + `WeekendDrawer`), desktop

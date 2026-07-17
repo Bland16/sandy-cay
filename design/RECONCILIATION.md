@@ -133,7 +133,76 @@ Bucket {
 6. **Docs:** fold these into `ACTIVITY-LIBRARY.md` / `ENERGY-MODEL.md` and retire
    the contradicted parts (role enum, fabricated capacities, per-activity override).
 
-## The three forks I need you to call
-- **⚑ Energy before it's learned:** hide (A) or neutral-shape (B)?
-- **⚑ Roles:** hide-now-derive-from-load (b), or full rip-out now (a)?
-- **⚑ Load defaults:** confirm neutral-0-and-user-set (not role-derived) is right.
+## Forks — RESOLVED (session 4)
+
+- **Energy before it's learned → a "still learning" state.** Show the day's energy
+  *shape as it's forming* with a clear *"we're still learning — here's how your
+  budget's shaping up"* caveat; **no hard capacity, no over/under verdict** until
+  ~3 weeks of `energy` ratings calibrate it (`config`). Descriptive, never
+  judgmental, never a fabricated ceiling.
+- **Roles → full rip-out, now.** `role` leaves the model entirely; steering and
+  learning are rewritten to key off **load**.
+- **Load defaults → neutral 0, user-set.** No role-derived defaults presented as
+  truth.
+
+## The role rip-out — concrete plan (spec'd; build gated on review)
+
+`role` is redundant with the load vector, so it goes. What changes, and what
+replaces it:
+
+| File | Change |
+|---|---|
+| `Bucket.js` | drop `role` + `BUCKET_ROLES`; a bucket is `{label, tags, colour, load}`; load default **neutral 0** |
+| `energy.js` | drop `DEFAULT_LOAD_BY_ROLE` / `defaultLoadForRole`; bucket load defaults neutral |
+| `index.js` | `STARTER_BUCKETS` lose `role`; `seed()` updated; drop `BUCKET_ROLES` export |
+| `Schedule.js` | remove `roleOf` (keep `bucketForTask`) |
+| `learning.js` | remove `role×time` (36) + `role×weekend` (6) interactions and the `roleOf` plumbing → revert to base features; **keep** the finer `DURATION_EDGES` + the layout-version migration; bump `MODEL_LAYOUT_VERSION`. *(Phase D.1's role feature is undone; per-position learning returns in L-2 keyed off **load**, not role.)* |
+| `suggest.js` | rewrite `steerBias`/`suggestActivities` to key off **load character** — restorative (net-negative load) nudged up when you're running down, demanding (net-positive) when charged + pressured; `energyBalance` + `priorityPressure` unchanged; drop `roleOf`/`activityRole` |
+| `TagManager.jsx` | remove the role `<select>` and role from the list summary |
+| tests | update `learning` / `suggest` / `energy` / `activity-library` / `activity-cabana` |
+
+## Consolidated findings — the master fix / redesign list (audits + map)
+
+### A. Real bugs → the bug-fix PR (off `wrap-report`, PR #4)
+1. **HIGH** — `resolveDropConflicts` silently double-books a displaced task onto
+   **next week's** recurring pinned anchor (`conflicts.js` uses single-week
+   `expandRecurrence` while the search crosses the week). Proven 800/800 silent.
+2. **HIGH** — `carryOver` double-books **and places carried work outside the target
+   week** (over-wide `to = toWs+9` + occupied filtered to days 0–6). `carryOver.js:22,42`.
+3. **MED** — `addFlexible`/`addFixed` (`_occupiedExcluding`) same cross-week overlap
+   when `to` is omitted. `Schedule.js:101`.
+4. **MED-HIGH** — iCal export `UNTIL` at midnight drops the **final day's**
+   occurrences on third-party calendars. `ical.js:71`.
+5. **MED** — iCal `EXDATE`/`RECURRENCE-ID` use the wrong time after `splitPeriod`
+   (`hhmmOf` reads `periods[0]`). `ical.js:174`.
+6. **Your ripple bug** — a 5-min ripple flung the next task to the next day. Core
+   `rippleShift` tested *clean*, so it's the **commit path** (`commitRipple`'s
+   trailing `resolveDropConflicts` — which hits bug #1 — or the UI delta math).
+   **Needs a repro** as step 1 of the fix.
+7. **Unique ids** — `Bucket`/`Activity`/`Zone` collide (the two-new-buckets bug);
+   generalise the task-id fix.
+8. **LOW** — a recurrence `add` on a day the pattern already fills is silently
+   dropped. `recurrence.js:62`.
+9. cosmetic — wrong example in the `time.js:143` isoWeek comment.
+
+### B. UI / design smells → reconciliation redesign (feature branch)
+- **You can't edit a task's energy on the schedule** — `TaskPanel` has no load
+  control; only buckets/activities do. (Fixed by Principle 1/2.)
+- **Three editor idioms** — Zones (inline + bespoke `ZoneTags`) vs Buckets
+  (drill-in + shared `TagEditor`) vs Activities (flat rows). Unify to drill-in +
+  `TagEditor`.
+- **Retire is half-wired** — `unretireTag` has UI, `retireTag` has **none**
+  (orphaned). Decide: add a retire control, or drop both.
+- **No project-management surface** — `growChunk`/`shrinkChunk`/`resizeChunk`/
+  `deleteChunk`/`finishProject`/`redistribute` are all unreachable from the UI.
+- **Dead bits** — TopBar `now` prop unused; prev-week load-hover preview can't
+  fire; "stub" comment on the (finished) wrap report; `overpackCheck` detector
+  never called.
+
+## Build order (AFTER you've torn this apart — nothing before)
+1. **Bug-fix PR:** #1–3 cross-week overlaps, #4–5 iCal, #7 unique ids, and #6
+   reproduce-then-fix the ripple. (Off `wrap-report`; merges ahead.)
+2. **Reconciliation redesign** (feature branch): role rip-out, task energy on the
+   schedule, Activities drill-in, energy "still learning" state, editor-idiom unify.
+3. **Two product calls needed:** retire (keep with a control, or remove) and
+   project management (build a surface, or leave chunk ops internal).
