@@ -7,6 +7,8 @@ import { exportState, summarizeImport, dateKey, dateFromKey, lastRunDay, untilAf
 import { DAY_NAMES, DAY_KEYS, fmtDur } from '../format.js';
 import Icon from '../Icon.jsx';
 import CalendarCard from './CalendarCard.jsx';
+import TagManager from './TagManager.jsx';
+import ActivitiesEditor from './ActivitiesEditor.jsx';
 
 const WEIGHT_KEYS = [['proximity', 'Proximity'], ['balance', 'Balance'], ['stability', 'Stability'], ['preference', 'Preference (learned)']];
 
@@ -49,7 +51,6 @@ function ZoneTags({ tags, onAdd, onRemove }) {
 export default function Cabana({ sched, mutate, weekStart, onBack, onReplace, onReset, showToast }) {
   const fileRef = useRef(null);
   const [editingId, setEditingId] = useState(null);
-  const [newTag, setNewTag] = useState('');
   const [, force] = useState(0);
   const bump = () => force((n) => n + 1);
 
@@ -77,9 +78,6 @@ export default function Cabana({ sched, mutate, weekStart, onBack, onReplace, on
   const patchWindow = (id, i, delta) => mutate((s) => { const z = s.zones.find((x) => x.id === id); z.windows = z.windows.map((w, idx) => (idx === i ? { ...w, ...delta } : w)); });
   const removeWindow = (id, i) => mutate((s) => { const z = s.zones.find((x) => x.id === id); z.windows = z.windows.filter((_, idx) => idx !== i); });
   const removeZone = (id) => mutate((s) => s.removeZone(id));
-
-  const addProtected = () => { const t = newTag.trim().toLowerCase(); if (!t) return; mutate((s) => { if (!s.config.protectedTags.includes(t)) s.config.protectedTags.push(t); }); setNewTag(''); };
-  const removeProtected = (t) => mutate((s) => { s.config.protectedTags = s.config.protectedTags.filter((x) => x !== t); });
 
   const doExport = () => {
     const { filename, data } = exportState(sched);
@@ -226,20 +224,12 @@ export default function Cabana({ sched, mutate, weekStart, onBack, onReplace, on
           })()}
         </div>
 
-        {/* Tag roles */}
-        <div className="cabcard">
-          <div className="cabsign">Tag roles</div>
-          <p>Protected tags survive auto-eviction (the hammock badge).</p>
-          <div className="zonewin" style={{ gap: 6 }}>
-            {sched.config.protectedTags.map((t) => (
-              <span className="w cabtag" key={t}>{t}<button className="rm" onClick={() => removeProtected(t)} aria-label={`Remove ${t}`}>×</button></span>
-            ))}
-          </div>
-          <div className="zonewin">
-            <input value={newTag} placeholder="add protected tag…" onChange={(e) => setNewTag(e.target.value)} style={{ flex: 1 }} aria-label="New protected tag" />
-            <button className="btn2" style={{ maxWidth: 90 }} onClick={addProtected}>＋ tag</button>
-          </div>
-        </div>
+        {/* Tags & buckets — absorbs the old Tag roles card (protected is one role
+            a tag can carry). Buckets + per-tag bucket/protect/retire. */}
+        <TagManager sched={sched} mutate={mutate} />
+
+        {/* Activities — the user-authored library that populates "what to do". */}
+        <ActivitiesEditor sched={sched} mutate={mutate} />
 
         <CalendarCard sched={sched} weekStart={weekStart} mutate={mutate} showToast={showToast} />
 
