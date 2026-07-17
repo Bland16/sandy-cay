@@ -15,6 +15,11 @@ import { expandRecurrence } from './recurrence.js';
 export function resolveDropConflicts(schedule, droppedTask, opts = {}) {
   const protectedTags = schedule.config.protectedTags;
   const ws = weekStartOf(droppedTask.startTime);
+  // Never re-place an evicted task into the past. Its search starts at its own
+  // day, but if that day is today the floor is *now* — dropping onto a full
+  // afternoon at 11:13 must not shove the displaced task back to 09:00 this
+  // morning. Injected like autoSchedule/carryOver so tests stay deterministic.
+  const now = opts.now || new Date();
 
   // Blocking tasks: real tasks + recurrence occurrences for the week, minus the
   // dropped task itself.
@@ -63,7 +68,8 @@ export function resolveDropConflicts(schedule, droppedTask, opts = {}) {
     const occupied = others
       .filter((iv) => iv.task !== target && iv.task.id !== target.id)
       .concat([{ start: droppedTask.startTime, end: droppedTask.endTime, task: droppedTask }]);
-    const from = opts.from ? new Date(opts.from) : dayStart(target.startTime);
+    let from = opts.from ? new Date(opts.from) : dayStart(target.startTime);
+    if (from.getTime() < now.getTime()) from = new Date(now.getTime());
     const to = opts.to ? new Date(opts.to) : addDays(from, schedule.config.maxPlacementLookahead);
     target.history.displacedCount += 1;
     const res = placeTask(schedule, target, { from, to, occupied, origin: target.startTime });
