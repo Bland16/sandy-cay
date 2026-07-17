@@ -257,14 +257,25 @@ satisfaction heuristic — the heuristic is the cold-start fallback.
 - **Phase C — "What to do".** Library fallback + steered ordering + "Do it now"
   instantiation (fill-the-opening). Tests: fit filter, fallback only after real
   tasks, steering reasons, and a **P-1 test that skipping records nothing**.
-- **Phase D — learning extension.** `role×{time, weekend, dayFill}` interactions +
-  `crunch` / `availabilityDeviation` / `weekFill` availability features + the
-  per-(time,weekday) availability baseline; per-cell gating, grouped ridge, layout
-  version + retrain-on-load migration; Cabana insight shows the new terms. Tests:
-  the model learns a synthetic per-role positional pattern; a single rating does
-  **not** move a gated cell; layout bump retrains cleanly; diverged-guard still
-  holds. (Independent of A–C except that it consumes `role`, so it can land after
-  A or in parallel.)
+- **Phase D.1 — per-bucket position learning (DONE).** `role×time` (36) +
+  `role×weekend` (6) interactions + finer `DURATION_EDGES` (7 buckets, splits the
+  old single "< 45" bucket); per-cell gating (`interactionMinSamples`), grouped
+  ridge (`interactionLambda`), `MODEL_LAYOUT_VERSION` + retrain-on-load migration;
+  the diverged-guard and cold-start still hold; Cabana insight shows the new
+  `role×time` terms. `role` is resolved by the caller (`Schedule.roleOf`) and
+  threaded through `train`/`modelScore`. Tests: opposite per-role time patterns a
+  base-time model can't represent, one rating can't move a gated cell, old-layout
+  save retrains cleanly, sub-45 duration buckets exist.
+- **Phase D.2 — availability (DEFERRED, with reason).** `crunch` /
+  `availabilityDeviation` (vs a per-(time,weekday) baseline) / `weekFill` +
+  `role×dayFill`. These need a **completion-context snapshot** recorded at rating
+  time — which the app does **not** have: the existing `_dayFillAtCompletion` was
+  read by the model but **never set anywhere** (the dayFill feature has been dead).
+  Wiring the snapshot subsystem (record day/week-fill + crunch + a rolling
+  availability baseline at the moment a task is rated, plus prospective
+  computation so they rank slots) is its own phase, not a bolt-on. D.1 ships the
+  position half (the "where tasks sit by bucket" ask) cleanly; D.2 is the "time I
+  normally have" half.
 
 ## Decisions locked (session 4)
 
@@ -279,10 +290,11 @@ satisfaction heuristic — the heuristic is the cold-start fallback.
   `health`/`neutral`), not a two-axis dial.
 - **Priority space:** looming P4–P5 minutes due within the placement lookahead.
 - **Steering:** the mapping table above; fit dominates, role-bias is gentle.
-- **Learning extension:** `role×{time-of-day, weekend, day-fill}` interactions +
-  three availability features (`crunch`, `availabilityDeviation` vs a learned
-  per-slot baseline, `weekFill`), each own weight; contained by base+refinement,
-  per-cell gating, grouped ridge; layout bump + retrain-on-load migration.
+- **Learning extension:** split into **D.1 (built)** — `role×time` + `role×weekend`
+  position interactions, finer duration buckets, per-cell gating, grouped ridge,
+  layout-version migration — and **D.2 (deferred)** — the availability features
+  (`crunch`, `availabilityDeviation` vs a baseline, `weekFill`, `role×dayFill`),
+  which need a completion-context snapshot the app doesn't record yet.
 - **P-1:** skipping is never tracked; steering never judges; user-authored only.
 
 **The spec is fully settled — Phases A, B and C are all specified.** Remaining

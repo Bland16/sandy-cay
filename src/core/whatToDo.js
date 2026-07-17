@@ -126,7 +126,7 @@ export function whatToDo(schedule, now = new Date(), options = {}) {
     // 3) preference (only when trained)
     let pref = 0;
     if (trained) {
-      pref = schedule.learning.modelScore(t, { start: now, end: new Date(now.getTime() + dur * 60000) });
+      pref = schedule._modelScore(t, { start: now, end: new Date(now.getTime() + dur * 60000) });
       if (pref >= 0.6) reasons.push('you rate this kind of work well right now');
     }
 

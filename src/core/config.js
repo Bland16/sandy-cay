@@ -29,7 +29,12 @@ export const defaultConfig = {
   },
   coldStartRatings: 10,
   stabilityBonus: 1, // raw bonus magnitude for a placedBy:'user' task (scaled by weight)
-  learning: { lambda: 0.1, learningRate: 0.05, epochs: 400, topTags: 6 },
+  learning: {
+    lambda: 0.1, learningRate: 0.05, epochs: 400, topTags: 6,
+    // Phase D.1: role×position interactions are regularized harder than base
+    // terms and gated off until a cell has enough ratings (sparse-data safety).
+    interactionLambda: 0.4, interactionMinSamples: 4,
+  },
   // Activity-library "what to do" steering (design/ACTIVITY-LIBRARY.md, Phase C).
   // Fit dominates; the role bias is a gentle nudge derived only from ratings.
   suggest: {

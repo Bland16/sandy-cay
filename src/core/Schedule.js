@@ -62,6 +62,10 @@ export class Schedule {
     this._lastSeenWeek = init.lastSeenWeek || null;
     this._dismissed = init.dismissed ? { ...init.dismissed } : {};
     this._changeCount = 0;
+    // A save from an older model feature-layout can't be scored against the new
+    // vector — retrain from the rated tasks now (weights are disposable; the
+    // ratings persist). One-time, until it's re-saved with the current layout.
+    if (this.learning.needsRetrain) this.retrain();
   }
 
   // ---- weight / model helpers used by placement -------------------------
@@ -73,7 +77,8 @@ export class Schedule {
 
   _modelScore(task, slot) {
     if (this.learning.sampleCount < this.config.coldStartRatings) return 0;
-    return this.learning.modelScore(task, slot);
+    // Give the model the task's bucket role so its role×position terms fire.
+    return this.learning.modelScore(task, slot, { role: this.roleOf(task) });
   }
 
   _expand(task, ws) {
@@ -430,7 +435,9 @@ export class Schedule {
   // ---- learning ----------------------------------------------------------
   retrain(opts = {}) {
     const rated = this.tasks.filter((t) => t.satisfaction && typeof t.satisfaction.overall === 'number');
-    this.learning.train(rated, opts);
+    // The model has no bucket access of its own — hand it a role resolver so its
+    // role×position features can be built (Phase D.1).
+    this.learning.train(rated, { roleOf: (t) => this.roleOf(t), ...opts });
     this._touch();
     return this.learning.sampleCount;
   }
