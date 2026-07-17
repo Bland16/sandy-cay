@@ -105,3 +105,35 @@ describe('displacement never double-books (F1 regression)', () => {
     expect(b.overlaps(dropped)).toBe(false);
   });
 });
+
+describe('displacement never re-places into the past', () => {
+  beforeEach(() => resetIds());
+
+  it('an evicted task lands no earlier than now, even when only the morning is free', () => {
+    // It is 11:00. A flexible Study sits at lunch; a Meeting is dropped on top of
+    // it. The whole afternoon (and the next three days) are full, so the only
+    // room left is this morning — which is already behind the clock. The engine
+    // must floor at now, not shove Study back to 08:00.
+    const s = new Schedule({ config: cfg }); // monFri 08:00–18:00
+    const now = D(2026, 6, 15, 11, 0); // Wed 11:00
+
+    const study = s.addFixed({ title: 'Study', tags: ['study'], startTime: D(2026, 6, 15, 12, 0), endTime: D(2026, 6, 15, 12, 30) });
+    study.type = 'flexible';
+    // Fill this afternoon and the whole lookahead so the morning is the only gap.
+    for (let d = 15; d <= 18; d += 1) {
+      const pm = new Task({ title: `PM${d}`, type: 'fixed', tags: ['x'], startTime: D(2026, 6, d, 13, 0), endTime: D(2026, 6, d, 18, 0) });
+      pm.pinned = true; s.tasks.push(pm);
+      if (d > 15) {
+        const am = new Task({ title: `AM${d}`, type: 'fixed', tags: ['x'], startTime: D(2026, 6, d, 8, 0), endTime: D(2026, 6, d, 12, 30) });
+        am.pinned = true; s.tasks.push(am);
+      }
+    }
+    const meeting = new Task({ title: 'Meeting', type: 'fixed', tags: ['work'], startTime: D(2026, 6, 15, 12, 0), endTime: D(2026, 6, 15, 13, 0) });
+    s.tasks.push(meeting);
+
+    const res = s.resolveDropConflicts(meeting, { now });
+    const moved = res.displaced.find((t) => t.id === study.id);
+    expect(moved).toBeTruthy();
+    expect(moved.startTime.getTime()).toBeGreaterThanOrEqual(now.getTime()); // not this morning
+  });
+});
