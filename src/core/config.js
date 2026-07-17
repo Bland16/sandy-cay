@@ -30,6 +30,17 @@ export const defaultConfig = {
   coldStartRatings: 10,
   stabilityBonus: 1, // raw bonus magnitude for a placedBy:'user' task (scaled by weight)
   learning: { lambda: 0.1, learningRate: 0.05, epochs: 400, topTags: 6 },
+  // Activity-library "what to do" steering (design/ACTIVITY-LIBRARY.md, Phase C).
+  // Fit dominates; the role bias is a gentle nudge derived only from ratings.
+  suggest: {
+    window: 10, // recent rated tasks to steer from…
+    recentDays: 14, // …or the trailing days, whichever yields more
+    fitWeight: 1, // opening-fit weight (dominant)
+    roleBias: 0.35, // magnitude of one steering lean
+    varietyPenalty: 0.15, // nudge away from the role just finished
+    priorityPressureHigh: 0.15, // normalised threshold: important work "looms"
+    restFlat: 3, // rest avgOverall (1–5) at/below which rest reads as "flat"
+  },
 };
 
 /** Structured deep clone of plain JSON-ish data (no class instances). */

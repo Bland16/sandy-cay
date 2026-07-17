@@ -32,6 +32,7 @@ import { carryOver as runCarryOver } from './carryOver.js';
 import { addProject as runAddProject } from './projects.js';
 import { getWeekLoad as runWeekLoad, getTagBreakdown as runTagBreakdown, snapshot as runSnapshot } from './queries.js';
 import { whatToDo as runWhatToDo } from './whatToDo.js';
+import { suggestActivities as runSuggest, placeActivity as runPlaceActivity } from './suggest.js';
 import { overpackCheck } from './detectors.js';
 
 const UPDATE_WHITELIST = [
@@ -314,6 +315,16 @@ export class Schedule {
 
   whatToDo(now = new Date(), options = {}) {
     return runWhatToDo(this, now, options);
+  }
+
+  /** Library-activity fallback for "what to do" (Phase C). Read-only. */
+  suggestActivities(now = new Date(), opts = {}) {
+    return runSuggest(this, now, opts);
+  }
+
+  /** "Do it now" for a library activity: instantiate it into the opening. */
+  placeActivity(activity, start, openingMin) {
+    return runPlaceActivity(this, activity, start, openingMin);
   }
 
   // ---- engine ------------------------------------------------------------

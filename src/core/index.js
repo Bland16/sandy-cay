@@ -34,6 +34,7 @@ export {
   dayGaps, getBreakCompression, getSatisfactionMatrix,
 } from './queries.js';
 export { whatToDo, currentOpening, openingLabel } from './whatToDo.js';
+export { suggestActivities, placeActivity, steerBias, priorityPressure } from './suggest.js';
 export {
   toICS, parseICS, importEvents, eventToTask, deriveTags,
   toRRULE, fromRRULE, toICSDate, fromICSDate,

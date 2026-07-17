@@ -13,8 +13,8 @@ export default function WhatToDoPanel({ sched, now, mutate, onOpenTask, onClose,
   const [tags, setTags] = useState([]);
 
   const opening = currentOpening(sched, now);
-  const ranked = sched.whatToDo(now, { tags: tags.length ? tags : null });
   const pool = tagsInUse(sched);
+  const filterTags = tags.length ? tags : null;
 
   const toggleTag = (t) => {
     setHead(0);
@@ -38,6 +38,34 @@ export default function WhatToDoPanel({ sched, now, mutate, onOpenTask, onClose,
       `${task.title} → ${formatHHMM(start)}${moved ? ` · ${moved} moved aside` : ''}`,
     );
   };
+
+  // "Do it now" for a library activity: instantiate it into the opening, sized to
+  // fill it. The only mutation the picker ever makes — cycling records nothing.
+  const doActivityNow = (activity) => {
+    if (!opening) return;
+    let outcome = null;
+    mutate((s) => { outcome = s.placeActivity(activity, opening.start, opening.minutes); });
+    const moved = outcome && outcome.displaced ? outcome.displaced.length : 0;
+    showToast(`${activity.label} → ${formatHHMM(opening.start)}${moved ? ` · ${moved} moved aside` : ''}`);
+  };
+
+  // Real waiting tasks first; library activities are the fallback that surfaces as
+  // you cycle past them (or when nothing waiting fits). One combined cycle list.
+  const taskPicks = sched.whatToDo(now, { tags: filterTags });
+  let libraryPicks = opening ? sched.suggestActivities(now, { opening, limit: 5 }) : [];
+  if (filterTags) libraryPicks = libraryPicks.filter((p) => (p.activity.tags || []).some((t) => filterTags.includes(t)));
+  const entries = [
+    ...taskPicks.map((p) => ({
+      type: 'task', key: `t:${p.task.id}`, title: p.task.title, reasons: p.reasons,
+      fromLibrary: false, deadline: p.task.deadline,
+      onOpen: () => onOpenTask(p.task), onDo: () => doItNow(p.task),
+    })),
+    ...libraryPicks.map((p) => ({
+      type: 'activity', key: `a:${p.activity.id}`, title: p.activity.label, reasons: p.reasons,
+      fromLibrary: true, deadline: null,
+      onOpen: null, onDo: () => doActivityNow(p.activity),
+    })),
+  ];
 
   const openingLine = opening
     ? opening.startsLater
@@ -73,7 +101,7 @@ export default function WhatToDoPanel({ sched, now, mutate, onOpenTask, onClose,
         </div>
       )}
 
-      {ranked.length === 0 ? (
+      {entries.length === 0 ? (
         <div className="empty">
           <Icon name="crab" style={{ width: 26, height: 26 }} /><br />
           {tags.length ? 'Nothing tagged that way is waiting.' : 'Nothing waiting. Enjoy the shore.'}
@@ -81,20 +109,24 @@ export default function WhatToDoPanel({ sched, now, mutate, onOpenTask, onClose,
       ) : (
         <>
           {(() => {
-            const order = ranked.map((_, i) => ranked[(i + head) % ranked.length]);
+            const order = entries.map((_, i) => entries[(i + head) % entries.length]);
             const [pick, ...alts] = order;
+            const openProps = pick.onOpen
+              ? { role: 'button', tabIndex: 0, onClick: pick.onOpen, onKeyDown: (e) => { if (e.key === 'Enter') pick.onOpen(); } }
+              : {};
             return (
               <>
-                <div className="pick" role="button" tabIndex={0} onClick={() => onOpenTask(pick.task)} onKeyDown={(e) => { if (e.key === 'Enter') onOpenTask(pick.task); }}>
+                <div className="pick" {...openProps}>
                   <div className="pt2">
-                    <span>{pick.task.title}</span>
-                    {pick.task.deadline && <span className="dueno">has a deadline</span>}
+                    <span>{pick.title}</span>
+                    {pick.fromLibrary && <span className="dueno">from your library</span>}
+                    {pick.deadline && <span className="dueno">has a deadline</span>}
                   </div>
                   <div className="why">{capitalize(pick.reasons.join(' · '))}</div>
                 </div>
 
                 {opening && (
-                  <button type="button" className="btn cta" style={{ marginTop: 8 }} onClick={() => doItNow(pick.task)}>
+                  <button type="button" className="btn cta" style={{ marginTop: 8 }} onClick={pick.onDo}>
                     <Icon name="compass" /> Do it now — {formatHHMM(opening.start)}
                   </button>
                 )}
@@ -102,15 +134,19 @@ export default function WhatToDoPanel({ sched, now, mutate, onOpenTask, onClose,
                 {alts.length > 0 && (
                   <div className="alts">
                     {alts.map((a) => (
-                      <button key={a.task.id} className="alt" onClick={() => onOpenTask(a.task)}>
-                        <span>{a.task.title}</span>
+                      <button
+                        key={a.key}
+                        className="alt"
+                        onClick={a.onOpen ? a.onOpen : () => setHead(entries.findIndex((e) => e.key === a.key))}
+                      >
+                        <span>{a.title}{a.fromLibrary ? ' · library' : ''}</span>
                         <span className="why">{a.reasons[0]}</span>
                       </button>
                     ))}
                   </div>
                 )}
 
-                <button type="button" className="btn" style={{ marginTop: 11 }} onClick={() => setHead((h) => (h + 1) % ranked.length)} disabled={ranked.length < 2}>
+                <button type="button" className="btn" style={{ marginTop: 11 }} onClick={() => setHead((h) => (h + 1) % entries.length)} disabled={entries.length < 2}>
                   <Icon name="refresh" /> Another →
                 </button>
               </>
