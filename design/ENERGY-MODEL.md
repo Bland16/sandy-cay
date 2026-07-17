@@ -75,6 +75,24 @@ about are literally indistinguishable to it. So retain a tiny gated per-tag term
 for idiosyncratic favourites; the load basis carries the generalisation, the
 residual carries the quirks.
 
+### The accountant and the model close a loop (train the model on the budget)
+
+The budget isn't only a warning light — it's a **feature the model trains on**.
+Snapshot *how much of each axis's budget was already spent* at the moment a task
+happened, and the model learns fatigue/accumulation directly: *"I rate work lower
+once my mental budget is ~80% gone."* That is the honest, P-1-clean **"read my
+day"** — computed only from what you *did*, never from what you skipped.
+
+It runs both ways: your **`energy` ratings calibrate the accountant's capacity**.
+Rate "drained" on days it called over-budget and it learns your real mental ceiling
+(the per-user scaling factor). *Accountant → budget-state feature → model; model's
+ratings → capacity → accountant* — each makes the other personal.
+
+Caveat, unchanging: it inherits the hand-authored load error until calibrated, and
+it's **correlational** — an over-budget day might *cause* the low rating, or you
+might just pack hard days when you're already stretched. Narrate "tends to," offer
+the experiment, never assert.
+
 ## Why this is the keystone — three primitives, one graph
 
 Turning the whole "over-the-top" list into buildable kernels, they collapse onto
