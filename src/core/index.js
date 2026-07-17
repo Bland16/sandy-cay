@@ -8,6 +8,8 @@ import { weekStart as weekStartOf, addDays, atTime, dateKey } from './time.js';
 
 export { Task } from './Task.js';
 export { Zone } from './Zone.js';
+export { Bucket, BUCKET_ROLES } from './Bucket.js';
+export { Activity } from './Activity.js';
 export { Schedule } from './Schedule.js';
 export { LearningModule } from './learning.js';
 export { StorageAdapter, exportState, summarizeImport, pickBackend } from './storage.js';
@@ -47,6 +49,29 @@ export {
 export { score, normalizeWeights } from './scoring.js';
 export { findBestSlot, placeTask, dayWindowBounds, intervalsOf } from './placement.js';
 export { resetIds } from './ids.js';
+
+// Starter buckets (design/ACTIVITY-LIBRARY.md): a proposed set the user edits.
+// Roles map 1:1 so passive rest and active creative stay distinct. The `tags`
+// are the ones each bucket grabs if they're already in use.
+export const STARTER_BUCKETS = [
+  { label: 'Rest', role: 'rest', tags: ['rest', 'leisure', 'nap'] },
+  { label: 'Work / School', role: 'work', tags: ['work', 'study', 'thesis', 'admin'] },
+  { label: 'Creative', role: 'creative', tags: ['creative', 'music', 'art', 'personal-project'] },
+  { label: 'Home', role: 'work', tags: ['chores', 'errand', 'home'] },
+  { label: 'Social', role: 'social', tags: ['social', 'family', 'friends'] },
+  { label: 'Health', role: 'health', tags: ['health', 'sports', 'exercise', 'gym'] },
+];
+
+/**
+ * Seed the starter buckets onto a schedule. Idempotent: a no-op the moment any
+ * bucket exists, so it never clobbers an edited set. Returns the buckets it added
+ * (empty if it did nothing). The *trigger* (first run vs a Cabana action) is a
+ * Phase-B decision; this is just the data + the guard.
+ */
+export function seedStarterBuckets(schedule) {
+  if (!schedule || (schedule.buckets && schedule.buckets.length > 0)) return [];
+  return STARTER_BUCKETS.map((b) => schedule.addBucket(b));
+}
 
 /**
  * Seed a rich, deterministic Schedule that exercises every badge and rule on

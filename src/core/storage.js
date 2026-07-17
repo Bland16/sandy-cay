@@ -128,6 +128,8 @@ export function summarizeImport(blob) {
     valid: true,
     taskCount: (blob.tasks || []).length,
     zoneCount: (blob.zones || []).length,
+    bucketCount: (blob.buckets || []).length,
+    activityCount: (blob.activities || []).length,
     ratings: blob.model ? blob.model.sampleCount || 0 : 0,
   };
 }

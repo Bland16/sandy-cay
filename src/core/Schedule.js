@@ -3,6 +3,8 @@
 
 import { Task } from './Task.js';
 import { Zone } from './Zone.js';
+import { Bucket } from './Bucket.js';
+import { Activity } from './Activity.js';
 import { makeConfig } from './config.js';
 import { normalizeWeights } from './scoring.js';
 import { LearningModule } from './learning.js';
@@ -42,6 +44,13 @@ export class Schedule {
     this.config = makeConfig(init.config);
     this.tasks = (init.tasks || []).map((t) => (t instanceof Task ? t : Task.fromJSON(t)));
     this.zones = (init.zones || []).map((z) => (z instanceof Zone ? z : Zone.fromJSON(z)));
+    // Activity library (design/ACTIVITY-LIBRARY.md): buckets (categories + tag
+    // groups), the activities inside them, and the set of retired tags. All
+    // additive — absent on every save written before this shipped, which loads
+    // clean; schemaVersion stays 1.
+    this.buckets = (init.buckets || []).map((b) => (b instanceof Bucket ? b : Bucket.fromJSON(b)));
+    this.activities = (init.activities || []).map((a) => (a instanceof Activity ? a : Activity.fromJSON(a)));
+    this.retiredTags = Array.isArray(init.retiredTags) ? [...init.retiredTags] : [];
     this.learning = init.model instanceof LearningModule
       ? init.model
       : LearningModule.fromJSON(init.model, this.config);
@@ -161,6 +170,92 @@ export class Schedule {
     Object.assign(z, changes);
     this._touch();
     return z;
+  }
+
+  // ---- activity library (buckets / activities / retired tags) ------------
+  addBucket(data) {
+    const b = new Bucket(data);
+    this.buckets.push(b);
+    this._touch();
+    return b;
+  }
+
+  removeBucket(id) {
+    const i = this.buckets.findIndex((b) => b.id === id);
+    if (i < 0) return null;
+    const [removed] = this.buckets.splice(i, 1);
+    // Orphan its activities rather than delete them — a mis-click on a bucket
+    // shouldn't silently destroy the activities the user authored inside it. The
+    // Cabana surfaces orphans (bucketId === null) for reassignment.
+    for (const a of this.activities) if (a.bucketId === id) a.bucketId = null;
+    this._touch();
+    return removed;
+  }
+
+  updateBucket(id, changes) {
+    const b = this.buckets.find((x) => x.id === id);
+    if (!b) return null;
+    Object.assign(b, changes);
+    this._touch();
+    return b;
+  }
+
+  addActivity(data) {
+    const a = new Activity(data);
+    this.activities.push(a);
+    this._touch();
+    return a;
+  }
+
+  removeActivity(id) {
+    const i = this.activities.findIndex((a) => a.id === id);
+    if (i < 0) return null;
+    const [removed] = this.activities.splice(i, 1);
+    this._touch();
+    return removed;
+  }
+
+  updateActivity(id, changes) {
+    const a = this.activities.find((x) => x.id === id);
+    if (!a) return null;
+    Object.assign(a, changes);
+    this._touch();
+    return a;
+  }
+
+  /** Retire a tag: it disappears from *new*-task pickers, chips and the library,
+   *  but stays on historical tasks and in insights (design: hide-from-new). */
+  retireTag(tag) {
+    if (tag && !this.retiredTags.includes(tag)) {
+      this.retiredTags.push(tag);
+      this._touch();
+    }
+    return this.retiredTags;
+  }
+
+  unretireTag(tag) {
+    const i = this.retiredTags.indexOf(tag);
+    if (i >= 0) {
+      this.retiredTags.splice(i, 1);
+      this._touch();
+    }
+    return this.retiredTags;
+  }
+
+  isTagRetired(tag) {
+    return this.retiredTags.includes(tag);
+  }
+
+  /** The bucket that claims this task (first tag match), or null. */
+  bucketForTask(task) {
+    const tags = task && task.tags ? task.tags : [];
+    return this.buckets.find((b) => tags.some((t) => b.tags.includes(t))) || null;
+  }
+
+  /** The task's bucket role for steering / learning features; 'neutral' if none. */
+  roleOf(task) {
+    const b = this.bucketForTask(task);
+    return b ? b.role : 'neutral';
   }
 
   // ---- queries -----------------------------------------------------------
@@ -344,6 +439,9 @@ export class Schedule {
       schemaVersion: 1,
       tasks: this.tasks.map((t) => t.toJSON()),
       zones: this.zones.map((z) => z.toJSON()),
+      buckets: this.buckets.map((b) => b.toJSON()),
+      activities: this.activities.map((a) => a.toJSON()),
+      retiredTags: [...this.retiredTags],
       config: this.config,
       model: this.learning.toJSON(),
       // The planned baseline has to survive a reload or the Wrap report can
@@ -359,6 +457,11 @@ export class Schedule {
       config: json.config,
       tasks: (json.tasks || []).map((t) => Task.fromJSON(t)),
       zones: (json.zones || []).map((z) => Zone.fromJSON(z)),
+      // Additive (design/ACTIVITY-LIBRARY.md): absent on old saves → empty, which
+      // is exactly right. schemaVersion stays 1.
+      buckets: (json.buckets || []).map((b) => Bucket.fromJSON(b)),
+      activities: (json.activities || []).map((a) => Activity.fromJSON(a)),
+      retiredTags: json.retiredTags,
       model: json.model,
       // Absent on every save written before this shipped — an old file loads as
       // a schedule with no baselines, which is exactly right. schemaVersion
