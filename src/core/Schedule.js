@@ -34,6 +34,7 @@ import { addProject as runAddProject } from './projects.js';
 import { getWeekLoad as runWeekLoad, getTagBreakdown as runTagBreakdown, snapshot as runSnapshot } from './queries.js';
 import { whatToDo as runWhatToDo } from './whatToDo.js';
 import { suggestActivities as runSuggest, placeActivity as runPlaceActivity } from './suggest.js';
+import { energyBudget as runEnergyBudget } from './energy.js';
 import { overpackCheck } from './detectors.js';
 
 const UPDATE_WHITELIST = [
@@ -357,6 +358,11 @@ export class Schedule {
   /** "Do it now" for a library activity: instantiate it into the opening. */
   placeActivity(activity, start, openingMin) {
     return runPlaceActivity(this, activity, start, openingMin);
+  }
+
+  /** Deterministic energy budget for a day (design/ENERGY-MODEL.md, L-1). */
+  energyBudget(date = new Date()) {
+    return runEnergyBudget(this, date);
   }
 
   // ---- engine ------------------------------------------------------------

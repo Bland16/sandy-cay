@@ -9,6 +9,7 @@ import Icon from '../Icon.jsx';
 import CalendarCard from './CalendarCard.jsx';
 import TagManager from './TagManager.jsx';
 import ActivitiesEditor from './ActivitiesEditor.jsx';
+import EnergyCard from './EnergyCard.jsx';
 
 const WEIGHT_KEYS = [['proximity', 'Proximity'], ['balance', 'Balance'], ['stability', 'Stability'], ['preference', 'Preference (learned)']];
 
@@ -230,6 +231,9 @@ export default function Cabana({ sched, mutate, weekStart, onBack, onReplace, on
 
         {/* Activities — the user-authored library that populates "what to do". */}
         <ActivitiesEditor sched={sched} mutate={mutate} />
+
+        {/* Energy — today's deterministic budget across the load axes. */}
+        <EnergyCard sched={sched} />
 
         <CalendarCard sched={sched} weekStart={weekStart} mutate={mutate} showToast={showToast} />
 

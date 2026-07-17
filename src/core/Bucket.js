@@ -4,6 +4,7 @@
 // a plain data class with a stable id, tag membership, and JSON round-trip.
 
 import { slug } from './ids.js';
+import { normalizeLoad, defaultLoadForRole } from './energy.js';
 
 // One readable enum per bucket (not a two-axis dial), mapping 1:1 onto the six
 // starter buckets. Steering and the role×position learning features key off it.
@@ -16,6 +17,10 @@ export class Bucket {
     this.tags = Array.isArray(data.tags) ? [...data.tags] : [];
     this.role = BUCKET_ROLES.includes(data.role) ? data.role : 'neutral';
     this.color = data.color ?? '#A8DADC';
+    // Signed load vector (design/ENERGY-MODEL.md): + spends a reserve, − restores.
+    // Defaults from the role; the user tunes it. Additive/optional — old saves
+    // load with the role default, which is exactly right.
+    this.load = data.load ? normalizeLoad(data.load) : defaultLoadForRole(this.role);
   }
 
   /** Does this bucket claim `tag`? */
@@ -37,6 +42,7 @@ export class Bucket {
       tags: [...this.tags],
       role: this.role,
       color: this.color,
+      load: { ...this.load },
     };
   }
 

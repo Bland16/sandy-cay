@@ -5,6 +5,7 @@
 // (clamp(opening, min, max)). Mirrors Zone.js / Bucket.js.
 
 import { slug } from './ids.js';
+import { normalizeLoad } from './energy.js';
 
 const MIN_DURATION = 15; // grid minimum (OD-1) — the wave/sand borders can't cross
 const DEFAULT_MAX = 60;
@@ -22,6 +23,8 @@ export class Activity {
     this.durationMin = min;
     this.durationMax = Math.max(min, max);
     this.priority = Number.isFinite(data.priority) ? data.priority : null;
+    // Optional load override (design/ENERGY-MODEL.md); null = inherit the bucket's.
+    this.load = data.load ? normalizeLoad(data.load) : null;
   }
 
   /** How long this activity runs to fill an opening of `openingMin` minutes:
@@ -46,6 +49,7 @@ export class Activity {
       durationMin: this.durationMin,
       durationMax: this.durationMax,
       priority: this.priority,
+      load: this.load ? { ...this.load } : null,
     };
   }
 

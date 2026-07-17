@@ -129,12 +129,14 @@ parse-from-your-known-activities, autocomplete not comprehension).
 
 ## Build path (validate the axes *before* betting the model on them)
 
-- **L-1 — the vector + the deterministic budget, together.** `load` on `Bucket`
-  (default per role) and `Activity` (override); Cabana slider rows; JSON round-trip;
-  **and** the sum-and-threshold budget accountant with a gentle overdraft band.
-  Zero ML, shippable in an afternoon, instantly useful — and it *validates the four
-  axes* before any model depends on them. If the day-warnings feel right, the axes
-  are right.
+- **L-1 — the vector + the deterministic budget, together. ✅ BUILT.** `load`
+  {mental,physical,social,creative} on `Bucket` (default per role) and `Activity`
+  (optional override); Cabana load dials with critter glyphs (🐦 mental · 🐬
+  physical · 🐠 social · 🦀 creative); `energy.js` sum-and-threshold accountant
+  (`schedule.energyBudget(date)`); an "Energy today" Cabana card with a gentle
+  over-budget flag (physics-framed). Zero ML — it *validates the four axes* before
+  any model depends on them. Tests: load defaults/round-trip, budget sums +
+  overdraft + restore, the dial + the card. (Capacities in `config.energy`.)
 - **L-2 — the model pivot.** `featureVector` uses load dims + `load×time` (keep the
   gates, grouped ridge, and a small per-tag residual). Generalisation and cold-start
   improve for free — and the week-forecast falls out of running this same model
@@ -144,6 +146,22 @@ parse-from-your-known-activities, autocomplete not comprehension).
   hand-authored loads from the `energy` facet — turning a generic accountant into
   *your* economy. Then the cheap add-ons: chronotype view, active elicitation, the
   causal nudge, the seeded-ε steerer.
+
+## Sleep — a capacity input, not a fifth axis
+
+Sleep is the biggest single lever on the budget, but it's the wrong *shape* to be a
+load axis or an activity: it isn't a demand dimension like mental/physical, and a
+night's sleep isn't a daytime task you drop into a gap. Two honest roles instead:
+- **A capacity modulator (L-3 personalisation).** *How you slept sets today's
+  budget.* A rough night → lower today's mental/physical capacity. Highest-value,
+  but it needs an *optional* daily "how rested?" input (no wearable — client-side
+  only) and must stay physics ("lower capacity today"), never "you're overtired,
+  slow down" (P-1). It's an input to the per-user scaling factor, not a new axis.
+- **Protected time.** A nightly *sleep window* the scheduler won't pack past —
+  already expressible as a zone or a nightly routine, not ML.
+
+Deferred, on purpose: it earns its place once L-1's axes are validated and L-3's
+calibration exists to consume it.
 
 ## The brink, kept honest
 

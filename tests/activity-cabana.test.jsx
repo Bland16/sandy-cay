@@ -9,6 +9,7 @@ import { defaultConfig } from '../src/core/config.js';
 import { tagsInUse } from '../src/ui/components/TagEditor.jsx';
 import TagManager from '../src/ui/components/TagManager.jsx';
 import ActivitiesEditor from '../src/ui/components/ActivitiesEditor.jsx';
+import EnergyCard from '../src/ui/components/EnergyCard.jsx';
 
 afterEach(cleanup);
 
@@ -141,5 +142,33 @@ describe('retire hides a tag from the new-task picker', () => {
     const suggestions = tagsInUse(s).filter((t) => !s.isTagRetired(t));
     expect(suggestions).toContain('foo');
     expect(suggestions).not.toContain('bar');
+  });
+});
+
+describe('L-1 energy UI', () => {
+  const D = (d, h) => new Date(2026, 6, d, h, 0, 0, 0);
+  const wide = () => ({ ...defaultConfig, protectedTags: [], windows: { ...defaultConfig.windows, monFri: { start: '06:00', end: '23:00' } } });
+
+  it('a bucket load dial updates the bucket load', () => {
+    resetIds();
+    const s = new Schedule({ config: wide() });
+    s.addBucket({ label: 'Work', role: 'work', tags: ['work'] });
+    render(<Harness sched={s} Comp={TagManager} />);
+
+    const dial = screen.getByLabelText('Work mental load');
+    expect(Number(dial.value)).toBe(2); // the work role default
+    fireEvent.change(dial, { target: { value: '-1' } });
+    expect(s.buckets[0].load.mental).toBe(-1);
+  });
+
+  it('the energy card flags an over-budget axis (physics, not a scold)', () => {
+    resetIds();
+    const s = new Schedule({ config: wide() });
+    s.addBucket({ label: 'Work', role: 'work', tags: ['work'] }); // mental +2, cap 8
+    for (let i = 0; i < 5; i += 1) s.addFixed({ title: `W${i}`, tags: ['work'], startTime: D(15, 7 + i), endTime: D(15, 8 + i) });
+    render(<EnergyCard sched={s} now={D(15, 12)} />);
+
+    expect(screen.getByText('mental')).toBeTruthy();
+    expect(screen.getAllByText('over budget').length).toBeGreaterThan(0); // 10 > 8
   });
 });

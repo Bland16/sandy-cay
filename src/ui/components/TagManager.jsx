@@ -6,6 +6,7 @@
 // group that surfaces tags that have appeared but aren't sorted yet.
 import { BUCKET_ROLES, seedStarterBuckets } from '../../core/index.js';
 import { tagsInUse } from './TagEditor.jsx';
+import { AXES, AXIS_META } from '../energyMeta.js';
 
 const ROLE_LABELS = {
   rest: 'Rest', creative: 'Creative', work: 'Work',
@@ -43,6 +44,13 @@ export default function TagManager({ sched, mutate }) {
   });
   const toggleRetire = (tag) => mutate((s) => (s.isTagRetired(tag) ? s.unretireTag(tag) : s.retireTag(tag)));
 
+  // Load dials (design/ENERGY-MODEL.md): + spends that reserve, − restores it.
+  const patchLoad = (id, axis, v) => mutate((s) => {
+    const b = s.buckets.find((x) => x.id === id);
+    if (!b) return;
+    const val = Math.max(-2, Math.min(2, Math.round(Number(v) || 0)));
+    b.load = { ...b.load, [axis]: val };
+  });
   const addBucket = () => mutate((s) => s.addBucket({ label: 'New bucket', role: 'neutral', tags: [] }));
   const seed = () => mutate((s) => seedStarterBuckets(s));
   const patchBucket = (id, changes) => mutate((s) => s.updateBucket(id, changes));
@@ -86,24 +94,42 @@ export default function TagManager({ sched, mutate }) {
 
       {buckets.length === 0 && <p className="insight">No buckets yet.</p>}
       {buckets.map((b) => (
-        <div className="zonewin" key={b.id} style={{ gap: 6 }}>
-          <input
-            type="color"
-            value={b.color}
-            onChange={(e) => patchBucket(b.id, { color: e.target.value })}
-            aria-label={`${b.label} colour`}
-            style={{ width: 30, padding: 0 }}
-          />
-          <input
-            defaultValue={b.label}
-            onBlur={(e) => patchBucket(b.id, { label: e.target.value.trim() || b.label })}
-            aria-label="Bucket name"
-            style={{ flex: 1 }}
-          />
-          <select value={b.role} onChange={(e) => patchBucket(b.id, { role: e.target.value })} aria-label={`${b.label} role`}>
-            {BUCKET_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
-          </select>
-          <button className="rm" onClick={() => dropBucket(b.id)} aria-label={`Remove bucket ${b.label}`}>×</button>
+        <div key={b.id} style={{ marginBottom: 6 }}>
+          <div className="zonewin" style={{ gap: 6 }}>
+            <input
+              type="color"
+              value={b.color}
+              onChange={(e) => patchBucket(b.id, { color: e.target.value })}
+              aria-label={`${b.label} colour`}
+              style={{ width: 30, padding: 0 }}
+            />
+            <input
+              defaultValue={b.label}
+              onBlur={(e) => patchBucket(b.id, { label: e.target.value.trim() || b.label })}
+              aria-label="Bucket name"
+              style={{ flex: 1 }}
+            />
+            <select value={b.role} onChange={(e) => patchBucket(b.id, { role: e.target.value })} aria-label={`${b.label} role`}>
+              {BUCKET_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+            </select>
+            <button className="rm" onClick={() => dropBucket(b.id)} aria-label={`Remove bucket ${b.label}`}>×</button>
+          </div>
+          {/* Load dials — how this bucket spends (+) or restores (−) each reserve. */}
+          <div className="zonewin" style={{ gap: 8, fontSize: 12, opacity: 0.85, paddingLeft: 4 }}>
+            <span style={{ opacity: 0.6 }}>energy:</span>
+            {AXES.map((a) => (
+              <label key={a} title={AXIS_META[a].label} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <span aria-hidden="true">{AXIS_META[a].glyph}</span>
+                <input
+                  type="number" min="-2" max="2" step="1"
+                  value={(b.load && b.load[a]) ?? 0}
+                  onChange={(e) => patchLoad(b.id, a, e.target.value)}
+                  aria-label={`${b.label} ${AXIS_META[a].label} load`}
+                  style={{ width: 42 }}
+                />
+              </label>
+            ))}
+          </div>
         </div>
       ))}
       <div className="chest" style={{ marginTop: 4 }}>

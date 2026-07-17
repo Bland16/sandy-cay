@@ -28,6 +28,9 @@ export const defaultConfig = {
     pinnedRatioNote: 0.5,
   },
   coldStartRatings: 10,
+  // Energy budget (design/ENERGY-MODEL.md, L-1): daily capacity per load axis, in
+  // "load points" (a task's load is −2…+2 per axis). Cabana-tunable.
+  energy: { capacity: { mental: 8, physical: 6, social: 5, creative: 5 } },
   stabilityBonus: 1, // raw bonus magnitude for a placedBy:'user' task (scaled by weight)
   learning: {
     lambda: 0.1, learningRate: 0.05, epochs: 400, topTags: 6,
