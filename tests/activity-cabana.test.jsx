@@ -167,4 +167,22 @@ describe('L-1 energy UI', () => {
     expect(screen.getByText('mental')).toBeTruthy();
     expect(screen.getAllByText('over budget').length).toBeGreaterThan(0); // 10 > 8
   });
+
+  it('an activity can override its bucket energy (customise → dial → inherit)', () => {
+    resetIds();
+    const s = new Schedule({ config: wide() });
+    s.addBucket({ label: 'Rest', role: 'rest', tags: ['rest'] });
+    s.addActivity({ bucketId: s.buckets[0].id, label: 'Read', durationMin: 15, durationMax: 60 });
+    render(<Harness sched={s} Comp={ActivitiesEditor} />);
+
+    expect(s.activities[0].load).toBeNull(); // inherits by default
+    fireEvent.click(screen.getByRole('button', { name: 'Customise Read energy' }));
+    expect(s.activities[0].load).not.toBeNull(); // seeded from the bucket, now an override
+
+    fireEvent.change(screen.getByLabelText('Read mental load'), { target: { value: '1' } });
+    expect(s.activities[0].load.mental).toBe(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Read inherit bucket energy' }));
+    expect(s.activities[0].load).toBeNull(); // back to inheriting
+  });
 });

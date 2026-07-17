@@ -74,3 +74,30 @@ describe('energy budget accountant', () => {
     for (const a of LOAD_AXES) expect(b[a].net).toBe(0);
   });
 });
+
+describe('per-activity load override', () => {
+  beforeEach(() => resetIds());
+
+  it('flows to the placed task and overrides the bucket in the budget', () => {
+    const s = new Schedule({ config: wide() });
+    s.addBucket({ label: 'Work', role: 'work', tags: ['work'] }); // bucket default: mental +2, creative 0
+    const a = s.addActivity({ bucketId: s.buckets[0].id, label: 'Design', tags: ['work'], durationMin: 60, durationMax: 60, load: { mental: 1, creative: 2 } });
+    const { task } = s.placeActivity(a, D(15, 10), 60);
+
+    expect(task.load).toEqual({ mental: 1, physical: 0, social: 0, creative: 2 });
+    const b = s.energyBudget(D(15, 12));
+    expect(b.creative.net).toBe(2); // the override, not the bucket's 0
+    expect(b.mental.net).toBe(1); // the override, not the bucket's +2
+  });
+
+  it('an activity without an override still uses the bucket default', () => {
+    const s = new Schedule({ config: wide() });
+    s.addBucket({ label: 'Work', role: 'work', tags: ['work'] });
+    const a = s.addActivity({ bucketId: s.buckets[0].id, label: 'Email', tags: ['work'], durationMin: 30, durationMax: 30 });
+    expect(a.load).toBeNull();
+    const { task } = s.placeActivity(a, D(15, 10), 30);
+    const b = s.energyBudget(D(15, 12));
+    expect(task.load).toEqual({ mental: 2, physical: 0, social: 0, creative: 0 }); // bucket default
+    expect(b.mental.net).toBe(2);
+  });
+});

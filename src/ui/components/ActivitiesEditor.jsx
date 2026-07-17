@@ -3,6 +3,10 @@
 // duration min..max (it fills whatever opening you drop it into), tags, and an
 // optional default priority. Same inline-edit idiom as the Zones editor.
 import TagEditor, { tagsInUse } from './TagEditor.jsx';
+import { AXES, AXIS_META } from '../energyMeta.js';
+
+const ZERO = { mental: 0, physical: 0, social: 0, creative: 0 };
+const linkBtn = { background: 'none', border: 'none', color: 'var(--cab-accent)', cursor: 'pointer', fontSize: 12, padding: 0 };
 
 // Number inputs hand back strings — coerce before guarding (else every edit
 // silently floored to the 15-min minimum).
@@ -36,6 +40,17 @@ export default function ActivitiesEditor({ sched, mutate }) {
   };
   const setMax = (a, v) => patch(a.id, { durationMax: Math.max(a.durationMin, clampMin(v)) });
 
+  // Per-activity energy override (design/ENERGY-MODEL.md): most inherit their
+  // bucket; a specific activity can spend/restore differently.
+  const bucketOf = (a) => buckets.find((b) => b.id === a.bucketId) || null;
+  const effLoad = (a) => a.load ?? (bucketOf(a) && bucketOf(a).load) ?? ZERO;
+  const customize = (a) => patch(a.id, { load: { ...effLoad(a) } });
+  const inherit = (a) => patch(a.id, { load: null });
+  const setLoad = (a, axis, v) => {
+    const base = a.load ?? effLoad(a);
+    patch(a.id, { load: { ...base, [axis]: Math.max(-2, Math.min(2, Math.round(Number(v) || 0))) } });
+  };
+
   const row = (a) => (
     <div className="zonewin" key={a.id} style={{ gap: 6, flexWrap: 'wrap', alignItems: 'flex-start' }}>
       <input
@@ -55,6 +70,25 @@ export default function ActivitiesEditor({ sched, mutate }) {
       <button className="rm" style={{ alignSelf: 'center' }} onClick={() => drop(a.id)} aria-label={`Remove ${a.label}`}>×</button>
       <div style={{ flexBasis: '100%' }}>
         <TagEditor tags={a.tags} onChange={(tags) => patch(a.id, { tags })} suggestions={suggestions} />
+      </div>
+      <div style={{ flexBasis: '100%', fontSize: 12 }}>
+        {a.load ? (
+          <div className="zonewin" style={{ gap: 8 }}>
+            <span style={{ opacity: 0.6 }}>energy</span>
+            {AXES.map((ax) => (
+              <label key={ax} title={AXIS_META[ax].label} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <span aria-hidden="true">{AXIS_META[ax].glyph}</span>
+                <input type="number" min="-2" max="2" step="1" value={a.load[ax] ?? 0} onChange={(e) => setLoad(a, ax, e.target.value)} aria-label={`${a.label} ${AXIS_META[ax].label} load`} style={{ width: 40 }} />
+              </label>
+            ))}
+            <button style={linkBtn} onClick={() => inherit(a)} aria-label={`${a.label} inherit bucket energy`}>↺ inherit</button>
+          </div>
+        ) : (
+          <span style={{ opacity: 0.6 }}>
+            energy: inherits its bucket ·{' '}
+            <button style={linkBtn} onClick={() => customize(a)} aria-label={`Customise ${a.label} energy`}>customise</button>
+          </span>
+        )}
       </div>
     </div>
   );

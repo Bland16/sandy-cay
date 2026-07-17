@@ -31,8 +31,11 @@ export function defaultLoadForRole(role) {
   return normalizeLoad(DEFAULT_LOAD_BY_ROLE[role] || DEFAULT_LOAD_BY_ROLE.neutral);
 }
 
-/** A task's effective load: its bucket's load (matched by tag), or zero. */
+/** A task's effective load: its own override if set, else its bucket's (by tag),
+ *  else zero. The per-task override is how a specific thing spends differently
+ *  from the rest of its bucket. */
 export function loadForTask(schedule, task) {
+  if (task && task.load) return normalizeLoad(task.load);
   const b = schedule.bucketForTask ? schedule.bucketForTask(task) : null;
   return b && b.load ? normalizeLoad(b.load) : zeroLoad();
 }

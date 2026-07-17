@@ -3,6 +3,7 @@
 // schemaVersion 1.
 
 import { makeId } from './ids.js';
+import { normalizeLoad } from './energy.js';
 import {
   zeroSeconds,
   addMinutes,
@@ -69,6 +70,10 @@ export class Task {
     this.occurrenceData = data.occurrenceData ? { ...data.occurrenceData } : {};
     this.chunking = data.chunking ? reviveChunking(data.chunking) : null;
     this.parentId = data.parentId ?? null;
+    // Optional per-task energy load (design/ENERGY-MODEL.md): set when an activity
+    // with a load override is instantiated, so a specific thing can spend/restore
+    // differently from its bucket. null = inherit the bucket's load.
+    this.load = data.load ? normalizeLoad(data.load) : null;
     // Virtual-occurrence marker: set on materialized recurrence occurrences.
     this.isOccurrence = data.isOccurrence ?? false;
     this.occurrenceDate = data.occurrenceDate ?? null; // 'YYYY-MM-DD'
@@ -188,6 +193,7 @@ export class Task {
       occurrenceData: { ...this.occurrenceData },
       chunking: chunkingToJSON(this.chunking),
       parentId: this.parentId,
+      load: this.load ? { ...this.load } : null,
       isOccurrence: this.isOccurrence,
       occurrenceDate: this.occurrenceDate,
     };

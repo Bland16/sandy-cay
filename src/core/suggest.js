@@ -169,6 +169,10 @@ export function suggestActivities(schedule, now = new Date(), opts = {}) {
  */
 export function placeActivity(schedule, activity, start, openingMin) {
   const duration = activity.durationFor(openingMin);
+  // Carry the activity's effective load onto the task so its energy budget is
+  // right: the activity's own override if set, else its bucket's default.
+  const bucket = schedule.buckets.find((b) => b.id === activity.bucketId);
+  const load = activity.load ?? (bucket ? bucket.load : null);
   const task = schedule.addFlexible({
     title: activity.label,
     tags: [...activity.tags],
@@ -176,6 +180,7 @@ export function placeActivity(schedule, activity, start, openingMin) {
     startTime: new Date(start),
     endTime: addMinutes(new Date(start), duration),
     placedBy: 'user',
+    load,
   });
   const res = schedule.resolveDropConflicts(task);
   return { task, displaced: (res && res.displaced) || [] };
