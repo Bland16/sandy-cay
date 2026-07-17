@@ -47,51 +47,45 @@ describe('TagManager', () => {
     expect(s.buckets).toHaveLength(1);
   });
 
-  it('surfaces an unused tag as Unbucketed and assigns it to a bucket (moving, not copying)', () => {
-    const s = schedWith(['foo']);
-    s.addBucket({ label: 'Rest', role: 'rest', tags: [] });
+  it('adds tags to a bucket in its editor, moving a tag out of any other bucket', () => {
+    const s = schedWith();
+    s.addBucket({ label: 'Rest', role: 'rest', tags: ['foo'] });
     s.addBucket({ label: 'Work', role: 'work', tags: [] });
     render(<Harness sched={s} Comp={TagManager} />);
 
-    const [rest, work] = s.buckets;
-    const select = screen.getByLabelText('Bucket for foo'); // proves it surfaced
-    fireEvent.change(select, { target: { value: rest.id } });
-    expect(s.buckets.find((b) => b.id === rest.id).tags).toContain('foo');
+    fireEvent.click(screen.getByRole('button', { name: 'Edit bucket Work' }));
+    fireEvent.click(screen.getByRole('button', { name: '＋ tag' })); // TagEditor, same as on a task
+    const input = screen.getByLabelText('Add a tag');
+    fireEvent.change(input, { target: { value: 'foo' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
 
-    // Re-assigning moves it — never in two buckets at once.
-    fireEvent.change(screen.getByLabelText('Bucket for foo'), { target: { value: work.id } });
-    expect(s.buckets.find((b) => b.id === rest.id).tags).not.toContain('foo');
-    expect(s.buckets.find((b) => b.id === work.id).tags).toContain('foo');
+    const work = s.buckets.find((b) => b.label === 'Work');
+    const rest = s.buckets.find((b) => b.label === 'Rest');
+    expect(work.tags).toContain('foo');
+    expect(rest.tags).not.toContain('foo'); // moved, not copied — a tag lives in one bucket
   });
 
-  it('toggles a tag protected (absorbs the old Tag roles card)', () => {
-    const s = schedWith(['foo']);
+  it('protection is a bucket-level toggle in the editor', () => {
+    const s = schedWith();
+    s.addBucket({ label: 'Rest', role: 'rest', tags: ['rest', 'nap'] });
     render(<Harness sched={s} Comp={TagManager} />);
-    fireEvent.click(screen.getByLabelText('Protect foo'));
-    expect(s.config.protectedTags).toContain('foo');
-    fireEvent.click(screen.getByLabelText('Protect foo'));
-    expect(s.config.protectedTags).not.toContain('foo');
+    fireEvent.click(screen.getByRole('button', { name: 'Edit bucket Rest' }));
+
+    const cb = screen.getByLabelText("Protect this bucket's tags");
+    expect(cb.checked).toBe(false);
+    fireEvent.click(cb);
+    expect(s.config.protectedTags).toEqual(expect.arrayContaining(['rest', 'nap']));
+    fireEvent.click(cb);
+    expect(s.config.protectedTags).not.toContain('rest');
   });
 
-  it('retires and un-retires a tag', () => {
-    const s = schedWith(['foo']);
-    render(<Harness sched={s} Comp={TagManager} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Retire foo' }));
-    expect(s.isTagRetired('foo')).toBe(true);
-    // The action flips to un-retire.
-    fireEvent.click(screen.getByRole('button', { name: 'Un-retire foo' }));
-    expect(s.isTagRetired('foo')).toBe(false);
-  });
-
-  it('removing a bucket returns its tags to Unbucketed', () => {
-    const s = schedWith(['foo']);
+  it('removes a bucket from its editor', () => {
+    const s = schedWith();
     s.addBucket({ label: 'Rest', role: 'rest', tags: ['foo'] });
     render(<Harness sched={s} Comp={TagManager} />);
     fireEvent.click(screen.getByRole('button', { name: 'Edit bucket Rest' })); // drill in
     fireEvent.click(screen.getByRole('button', { name: 'Remove bucket Rest' }));
     expect(s.buckets).toHaveLength(0);
-    // 'foo' is still a known tag, now unbucketed and offered again.
-    expect(screen.getByLabelText('Bucket for foo')).toBeTruthy();
   });
 });
 
