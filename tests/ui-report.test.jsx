@@ -312,3 +312,33 @@ describe('regression — "I tried to schedule a break for today and it scheduled
     expect(new Date(added.startTime).getTime()).toBeGreaterThanOrEqual(todayStart);
   });
 });
+
+describe('deadline buffer — facts, never a verdict', () => {
+  const MON = weekStartOf(new Date(2026, 6, 13)); // Monday 2026-07-13
+  const on = (offset, h) => { const d = addDays(MON, offset); d.setHours(h, 0, 0, 0); return d; };
+
+  it('reports how close the week\'s deadlined work ran, and which bucket ran closest', () => {
+    const s = new Schedule({ config: defaultConfig });
+    s.addBucket({ label: 'School', tags: ['study'] });
+    s.addBucket({ label: 'Chores', tags: ['home'] });
+    // essay: finished Wed 17:00, due Wed 20:00 → 3h to spare (close)
+    const essay = s.addFixed({ title: 'Essay', tags: ['study'], startTime: on(2, 15), endTime: on(2, 17) });
+    essay.deadline = on(2, 20); essay.completion = 'done';
+    // dishes: finished Mon 10:00, due Fri 20:00 → days of buffer (roomy)
+    const dishes = s.addFixed({ title: 'Dishes', tags: ['home'], startTime: on(0, 9), endTime: on(0, 10) });
+    dishes.deadline = on(4, 20); dishes.completion = 'done';
+
+    const d = buildWrapReport(s, MON).stats.deadlines;
+    expect(d.count).toBe(2);
+    expect(d.closeCount).toBe(1); // only the essay was under a day
+    expect(d.tightest.title).toBe('Essay');
+    expect(d.closestBucket.label).toBe('School'); // School ran closest to the wire
+  });
+
+  it('is absent when nothing carried a deadline', () => {
+    const s = new Schedule({ config: defaultConfig });
+    const t = s.addFixed({ title: 'Walk', tags: ['x'], startTime: on(0, 9), endTime: on(0, 10) });
+    t.completion = 'done';
+    expect(buildWrapReport(s, MON).stats.deadlines.count).toBe(0);
+  });
+});

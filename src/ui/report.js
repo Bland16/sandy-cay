@@ -329,6 +329,48 @@ function buildInsight(sched) {
 
 // ---- assembly ----------------------------------------------------------------
 
+/**
+ * Deadline buffer — how close to the wire the week's deadlined work ran. PHYSICS,
+ * not a verdict (P-1, design/RECONCILIATION.md): every number is a fact already in
+ * the schedule — the deadline you set and when the task actually sat — never a read
+ * of what you skipped or a word like "procrastinating". Just facts, and not obscured.
+ * Buffer = deadline − the task's scheduled end (a completed task sits where it ran).
+ */
+function buildDeadlineBuffer(sched, weekTasks) {
+  const thresholdHours = (sched.config.detectors && sched.config.detectors.deadlineBufferHours) ?? 24;
+  const done = weekTasks.filter((t) => !t.chunking && t.deadline && (t.completion === 'done' || t.completion === 'partial'));
+  const rows = done.map((t) => ({
+    title: t.title,
+    bufferHours: (t.deadline.getTime() - t.endTime.getTime()) / 3600000,
+    bucket: sched.bucketForTask ? sched.bucketForTask(t) : null,
+  }));
+  if (rows.length === 0) return { count: 0 };
+
+  const median = (arr) => {
+    const s = [...arr].sort((a, b) => a - b);
+    const m = Math.floor(s.length / 2);
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  };
+  const byBucketMap = new Map();
+  for (const r of rows) {
+    const label = r.bucket ? r.bucket.label : 'No bucket';
+    (byBucketMap.get(label) || byBucketMap.set(label, []).get(label)).push(r.bufferHours);
+  }
+  const byBucket = [...byBucketMap.entries()]
+    .map(([label, bufs]) => ({ label, count: bufs.length, medianBufferHours: median(bufs) }))
+    .sort((a, b) => a.medianBufferHours - b.medianBufferHours);
+  const tightest = rows.reduce((m, r) => (r.bufferHours < m.bufferHours ? r : m));
+
+  return {
+    count: rows.length,
+    closeCount: rows.filter((r) => r.bufferHours < thresholdHours).length,
+    thresholdHours,
+    tightest: { title: tightest.title, bufferHours: tightest.bufferHours },
+    byBucket,
+    closestBucket: byBucket.length >= 2 ? byBucket[0] : null,
+  };
+}
+
 export function buildWrapReport(sched, weekStartDate) {
   const ws = weekStartOf(weekStartDate);
   const weekTasks = sched.getTasksForWeek(ws);
@@ -348,6 +390,7 @@ export function buildWrapReport(sched, weekStartDate) {
       matrix: getSatisfactionMatrix(sched, ws),
       breaks: getBreakCompression(sched, ws),
       plan: buildPlanDiff(sched, ws),
+      deadlines: buildDeadlineBuffer(sched, weekTasks),
     },
     insight: buildInsight(sched),
     suggestions: buildSuggestions(sched, ws, weekLoad, weekTasks),
