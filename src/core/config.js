@@ -28,26 +28,29 @@ export const defaultConfig = {
     pinnedRatioNote: 0.5,
   },
   coldStartRatings: 10,
-  // Energy budget (design/ENERGY-MODEL.md, L-1): daily capacity per load axis, in
-  // "load points" (a task's load is −2…+2 per axis). Cabana-tunable.
-  energy: { capacity: { mental: 8, physical: 6, social: 5, creative: 5 } },
+  // Energy battery (design/ENERGY-MODEL.md; design/RECONCILIATION.md P-2). Capacity is
+  // LEARNED from your energy ratings (energy.js#learnedCapacity) once there are ratings
+  // across ≥ calibrationWeeks distinct weeks; before that the card shows a "still learning"
+  // shape, never a fabricated ceiling. `capacity` here is only the PRIOR/fallback used for
+  // an axis that lacks enough evidence days — in load-hours of reserve debt.
+  energy: { capacity: { mental: 8, physical: 6, social: 5, creative: 5 }, calibrationWeeks: 3 },
   stabilityBonus: 1, // raw bonus magnitude for a placedBy:'user' task (scaled by weight)
   learning: {
     lambda: 0.1, learningRate: 0.05, epochs: 400, topTags: 6,
-    // Phase D.1: role×position interactions are regularized harder than base
-    // terms and gated off until a cell has enough ratings (sparse-data safety).
+    // Reserved for future load×position interaction terms (sparse-data safety):
+    // regularized harder than base terms, gated until a cell has enough ratings.
     interactionLambda: 0.4, interactionMinSamples: 4,
   },
   // Activity-library "what to do" steering (design/ACTIVITY-LIBRARY.md, Phase C).
-  // Fit dominates; the role bias is a gentle nudge derived only from ratings.
+  // Fit dominates; the load bias is a gentle nudge derived only from ratings.
   suggest: {
     window: 10, // recent rated tasks to steer from…
     recentDays: 14, // …or the trailing days, whichever yields more
     fitWeight: 1, // opening-fit weight (dominant)
-    roleBias: 0.35, // magnitude of one steering lean
-    varietyPenalty: 0.15, // nudge away from the role just finished
+    loadBias: 0.35, // magnitude of one steering lean (by load character)
+    varietyPenalty: 0.15, // nudge away from the load character just finished
     priorityPressureHigh: 0.15, // normalised threshold: important work "looms"
-    restFlat: 3, // rest avgOverall (1–5) at/below which rest reads as "flat"
+    restFlat: 3, // restorative avgOverall (1–5) at/below which rest reads as "flat"
   },
 };
 

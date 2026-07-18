@@ -3,26 +3,20 @@
 // Weights are directly inspectable so the Cabana can render learned preferences
 // in plain language. Deterministic: zero-initialized, fixed epoch count.
 //
-// Phase D.1 (design/ACTIVITY-LIBRARY.md) adds per-bucket POSITION learning: the
-// base features are additive (it can learn "mornings good" and "work good"
-// separately but not "work good IN the morning"), so interaction terms on the
-// task's bucket `role` × slot position let it represent the combination —
-// `role×time` (36) and `role×weekend` (6). Kept honest on sparse data by:
-//   • per-cell gating — an interaction contributes 0 until its cell has ≥
-//     interactionMinSamples ratings (one grumpy Saturday can't mint a pattern),
-//   • grouped ridge — interactions are regularized harder than base terms.
-// (Phase D.2 — availability features crunch/weekFill/vs-typical baseline — is
-// still to come; it needs a completion-context snapshot the app doesn't record
-// yet.)
+// Features are additive base terms: tag, time-of-day, day-of-week, duration,
+// priority, day-fill, placed-by-user, move-count. (The `role` was ripped out —
+// see design/RECONCILIATION.md — so the old `role×time`/`role×weekend` interaction
+// terms are gone; per-position learning returns in L-2 keyed off *load*, not an
+// enum. Steering now reads a bucket's character from its load vector, in suggest.js.)
 
 import { clamp } from './time.js';
 
 // Bump when featureVector's layout changes: a saved model's weights no longer
 // line up, so it's discarded and retrained from the rated tasks (which persist).
-export const MODEL_LAYOUT_VERSION = 2;
+// v3: dropped the role×time / role×weekend interaction columns (role rip-out).
+export const MODEL_LAYOUT_VERSION = 3;
 
 export const TIME_BUCKETS = ['early', 'morning', 'midday', 'afternoon', 'evening', 'night'];
-export const ROLES = ['rest', 'creative', 'work', 'social', 'health', 'neutral'];
 // Finer low end than before ([45,90,150,240]): "< 45" was one bucket, so the
 // model couldn't tell a 15m task from a 40m one. Now 7 buckets, including < 15.
 const DURATION_EDGES = [15, 30, 45, 90, 150, 240]; // → 7 buckets
@@ -39,11 +33,6 @@ export function timeBucket(hour) {
 function durationBucket(min) {
   for (let i = 0; i < DURATION_EDGES.length; i += 1) if (min < DURATION_EDGES[i]) return i;
   return DURATION_EDGES.length;
-}
-
-function roleIndex(role) {
-  const i = ROLES.indexOf(role);
-  return i >= 0 ? i : ROLES.length - 1; // unknown → neutral
 }
 
 function oneHot(idx, len) {
@@ -67,30 +56,23 @@ export class LearningModule {
     this.needsRetrain = false; // set on load when a stored layout is out of date
   }
 
-  /** Feature vector for a (task, slot). slot defaults to the task's own time.
-   *  `ctx.role` is the task's bucket role (from the caller, which has the buckets);
-   *  absent → neutral. */
-  featureVector(task, slot, ctx = {}) {
+  /** Feature vector for a (task, slot). slot defaults to the task's own time. */
+  featureVector(task, slot) {
     const start = slot ? slot.start : task.startTime;
     const durationMin = slot ? Math.round((slot.end - slot.start) / 60000) : task.getDuration();
-    const ri = roleIndex(ctx.role || 'neutral');
     const ti = timeBucket(start.getHours());
     const dow = start.getDay(); // 0=Sun … 6=Sat
-    const weekend = dow === 0 || dow === 6 ? 1 : 0;
 
     const tagInd = this.vocab.map((tag) => (task.tags.includes(tag) ? 1 : 0));
     const time = oneHot(ti, TIME_BUCKETS.length);
     const day = oneHot((dow + 6) % 7, 7); // Mon=0 … Sun=6
     const dur = oneHot(durationBucket(durationMin), DURATION_EDGES.length + 1);
-    const roleTime = oneHot(ri * TIME_BUCKETS.length + ti, ROLES.length * TIME_BUCKETS.length); // 36
-    const roleWeekend = new Array(ROLES.length).fill(0);
-    roleWeekend[ri] = weekend; // 6
     const priorityNorm = task.priority / 5;
     const dayFill = task._dayFillAtCompletion ?? 0; // dead until Phase D.2 wires it
     const placedByUser = task.placedBy === 'user' ? 1 : 0;
     const moveNorm = Math.min(task.history.moveCount, 10) / 10;
     return [
-      ...tagInd, ...time, ...day, ...dur, ...roleTime, ...roleWeekend,
+      ...tagInd, ...time, ...day, ...dur,
       priorityNorm, dayFill, placedByUser, moveNorm,
     ];
   }
@@ -101,21 +83,18 @@ export class LearningModule {
       ...TIME_BUCKETS.map((t) => `time:${t}`),
       ...['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].map((d) => `day:${d}`),
       ...['dur:<15', 'dur:15-30', 'dur:30-45', 'dur:45-90', 'dur:90-150', 'dur:150-240', 'dur:>240'],
-      ...ROLES.flatMap((r) => TIME_BUCKETS.map((tb) => `role×time:${r}·${tb}`)),
-      ...ROLES.map((r) => `role×weekend:${r}`),
       'priority', 'dayFill', 'placedByUser', 'moveCount',
     ];
+    // No interaction terms in the base model (role rip-out). Kept as an empty set
+    // so the grouped-ridge / gating machinery below simply no-ops.
     this.interactionIdx = [];
-    for (let i = 0; i < this.labels.length; i += 1) if (this.labels[i].startsWith('role×')) this.interactionIdx.push(i);
   }
 
   /**
    * Train on rated tasks (each a Task with satisfaction set; its startTime is
-   * the slot). timingFit ≠ 0 doubles the sample weight (SPEC §5). `opts.roleOf`
-   * resolves each task's bucket role (the module has no bucket access itself).
+   * the slot). timingFit ≠ 0 doubles the sample weight (SPEC §5).
    */
   train(ratedTasks, opts = {}) {
-    const roleOf = opts.roleOf || (() => 'neutral');
     const rated = ratedTasks.filter((t) => t.satisfaction && typeof t.satisfaction.overall === 'number');
     this.sampleCount = rated.length;
     // Build tag vocabulary (top-N by frequency, deterministic tiebreak by name).
@@ -130,7 +109,7 @@ export class LearningModule {
     this.needsRetrain = false;
 
     const samples = rated.map((t) => ({
-      x: this.featureVector(t, null, { role: roleOf(t) }),
+      x: this.featureVector(t, null),
       y: clamp((t.satisfaction.overall - 1) / 4, 0, 1),
       weight: t.satisfaction.timingFit && t.satisfaction.timingFit !== 0 ? 2 : 1,
     }));
@@ -202,10 +181,10 @@ export class LearningModule {
     return this;
   }
 
-  /** modelScore(task, slot, ctx) ∈ [0,1]. 0 when untrained / below cold start. */
-  modelScore(task, slot, ctx = {}) {
+  /** modelScore(task, slot) ∈ [0,1]. 0 when untrained / below cold start. */
+  modelScore(task, slot) {
     if (!this.trained || this.sampleCount < this.config.coldStartRatings) return 0;
-    const x = this.featureVector(task, slot, ctx);
+    const x = this.featureVector(task, slot);
     let pred = this.bias;
     for (let j = 0; j < x.length; j += 1) pred += (this.weights[j] || 0) * x[j] * (this.gates[j] ?? 1);
     // Belt and braces: never let a NaN escape into the scoring function.
@@ -252,8 +231,7 @@ export class LearningModule {
       m.trained = json.trained || false;
       m.labels = json.labels || [];
       m.layoutVersion = json.layoutVersion;
-      m.interactionIdx = [];
-      for (let i = 0; i < m.labels.length; i += 1) if (m.labels[i].startsWith('role×')) m.interactionIdx.push(i);
+      m.interactionIdx = []; // no interaction terms in the base model (role rip-out)
     }
     return m;
   }

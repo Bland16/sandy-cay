@@ -11,24 +11,23 @@ const fresh = () => new Schedule({ config: defaultConfig });
 describe('Bucket', () => {
   beforeEach(() => resetIds());
 
-  it('constructs with a stable id, defaults, and a validated role', () => {
-    const b = new Bucket({ label: 'Rest', role: 'rest', tags: ['rest', 'nap'] });
+  it('constructs with a stable id, tags, a colour, and neutral load (no role)', () => {
+    const b = new Bucket({ label: 'Rest', tags: ['rest', 'nap'] });
     expect(b.id).toBe('rest-bucket');
-    expect(b.role).toBe('rest');
     expect(b.tags).toEqual(['rest', 'nap']);
-    // An unknown role falls back to neutral rather than persisting garbage.
-    expect(new Bucket({ label: 'X', role: 'bogus' }).role).toBe('neutral');
+    expect(b.load).toEqual({ mental: 0, physical: 0, social: 0, creative: 0 });
+    expect(b.role).toBeUndefined(); // the role enum is gone (reconciliation)
   });
 
   it('matches a task by tag intersection', () => {
-    const b = new Bucket({ label: 'Work', role: 'work', tags: ['work', 'study'] });
+    const b = new Bucket({ label: 'Work', tags: ['work', 'study'] });
     expect(b.matches({ tags: ['study'] })).toBe(true);
     expect(b.matches({ tags: ['rest'] })).toBe(false);
     expect(b.matches({})).toBe(false);
   });
 
   it('round-trips through JSON', () => {
-    const b = new Bucket({ label: 'Creative', role: 'creative', tags: ['art'], color: '#123456' });
+    const b = new Bucket({ label: 'Creative', tags: ['art'], color: '#123456', load: { creative: 2 } });
     const back = Bucket.fromJSON(JSON.parse(JSON.stringify(b.toJSON())));
     expect(back).toEqual(b);
   });
@@ -70,10 +69,10 @@ describe('Schedule — activity-library CRUD', () => {
 
   it('adds / updates / removes buckets and activities', () => {
     const s = fresh();
-    const b = s.addBucket({ label: 'Rest', role: 'rest', tags: ['rest'] });
+    const b = s.addBucket({ label: 'Rest', tags: ['rest'] });
     expect(s.buckets).toHaveLength(1);
-    s.updateBucket(b.id, { role: 'neutral' });
-    expect(s.buckets[0].role).toBe('neutral');
+    s.updateBucket(b.id, { label: 'Downtime' });
+    expect(s.buckets[0].label).toBe('Downtime');
 
     const a = s.addActivity({ label: 'Read', bucketId: b.id, tags: ['leisure'], durationMin: 15, durationMax: 90 });
     expect(s.activities).toHaveLength(1);
@@ -85,9 +84,34 @@ describe('Schedule — activity-library CRUD', () => {
     expect(s.removeActivity('nope')).toBeNull();
   });
 
+  it('gives each added bucket/activity a unique id even with the same label (two-in-a-row bug)', () => {
+    const s = fresh();
+    const b1 = s.addBucket({ label: 'New bucket', tags: [] });
+    const b2 = s.addBucket({ label: 'New bucket', tags: [] });
+    expect(b1.id).not.toBe(b2.id); // ids don't collide
+    s.updateBucket(b1.id, { label: 'First' });
+    expect(s.buckets.find((x) => x.id === b2.id).label).toBe('New bucket'); // editing one leaves the other
+
+    const a1 = s.addActivity({ label: 'New activity' });
+    const a2 = s.addActivity({ label: 'New activity' });
+    expect(a1.id).not.toBe(a2.id);
+  });
+
+  it('repairs duplicate ids already present in a save (load-time dedupe)', () => {
+    // Two buckets sharing an id, as a pre-fix save could contain.
+    const s = Schedule.fromJSON({
+      schemaVersion: 1, tasks: [], zones: [], config: defaultConfig,
+      buckets: [
+        { id: 'dup-bucket', label: 'A', tags: [] },
+        { id: 'dup-bucket', label: 'B', tags: [] },
+      ],
+    });
+    expect(s.buckets[0].id).not.toBe(s.buckets[1].id);
+  });
+
   it('removing a bucket orphans its activities rather than deleting them', () => {
     const s = fresh();
-    const b = s.addBucket({ label: 'Home', role: 'work', tags: ['chores'] });
+    const b = s.addBucket({ label: 'Home', tags: ['chores'] });
     const a = s.addActivity({ label: 'Dishes', bucketId: b.id, tags: ['chores'] });
     s.removeBucket(b.id);
     expect(s.buckets).toHaveLength(0);
@@ -105,11 +129,11 @@ describe('Schedule — activity-library CRUD', () => {
     expect(s.isTagRetired('deadline-crunch')).toBe(false);
   });
 
-  it('resolves a task to its bucket role (first match, else neutral)', () => {
+  it('resolves a task to its bucket by tag (first match, else null)', () => {
     const s = fresh();
-    s.addBucket({ label: 'Work', role: 'work', tags: ['work', 'study'] });
-    expect(s.roleOf(new Task({ title: 'Essay', tags: ['study'] }))).toBe('work');
-    expect(s.roleOf(new Task({ title: 'Walk', tags: ['outdoors'] }))).toBe('neutral');
+    const work = s.addBucket({ label: 'Work', tags: ['work', 'study'] });
+    expect(s.bucketForTask(new Task({ title: 'Essay', tags: ['study'] }))).toBe(work);
+    expect(s.bucketForTask(new Task({ title: 'Walk', tags: ['outdoors'] }))).toBeNull();
   });
 });
 
@@ -118,13 +142,13 @@ describe('Schedule — persistence', () => {
 
   it('round-trips buckets, activities and retired tags', () => {
     const s = fresh();
-    const b = s.addBucket({ label: 'Rest', role: 'rest', tags: ['rest'] });
+    const b = s.addBucket({ label: 'Rest', tags: ['rest'], load: { mental: -2 } });
     s.addActivity({ label: 'Read', bucketId: b.id, tags: ['leisure'], durationMin: 15, durationMax: 90 });
     s.retireTag('oldtag');
 
     const back = Schedule.fromJSON(JSON.parse(JSON.stringify(s.toJSON())));
     expect(back.buckets).toHaveLength(1);
-    expect(back.buckets[0].role).toBe('rest');
+    expect(back.buckets[0].load).toEqual({ mental: -2, physical: 0, social: 0, creative: 0 });
     expect(back.activities).toHaveLength(1);
     expect(back.activities[0].label).toBe('Read');
     expect(back.activities[0].durationMax).toBe(90);
@@ -141,7 +165,7 @@ describe('Schedule — persistence', () => {
 
   it('footlocker export includes them and re-imports (replace path, sharp edge #15)', () => {
     const s = fresh();
-    s.addBucket({ label: 'Rest', role: 'rest', tags: ['rest'] });
+    s.addBucket({ label: 'Rest', tags: ['rest'] });
     s.addActivity({ label: 'Read' });
     s.retireTag('x');
 
@@ -166,8 +190,8 @@ describe('seedStarterBuckets', () => {
     const added = seedStarterBuckets(s);
     expect(added).toHaveLength(STARTER_BUCKETS.length);
     expect(s.buckets).toHaveLength(6);
-    expect(s.buckets.map((b) => b.role)).toEqual(
-      expect.arrayContaining(['rest', 'work', 'creative', 'social', 'health']),
+    expect(s.buckets.map((b) => b.label)).toEqual(
+      expect.arrayContaining(['Rest', 'Work / School', 'Creative', 'Social', 'Health']),
     );
     // A second call never clobbers an edited set.
     expect(seedStarterBuckets(s)).toEqual([]);

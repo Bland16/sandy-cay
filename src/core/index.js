@@ -8,7 +8,7 @@ import { weekStart as weekStartOf, addDays, atTime, dateKey } from './time.js';
 
 export { Task } from './Task.js';
 export { Zone } from './Zone.js';
-export { Bucket, BUCKET_ROLES } from './Bucket.js';
+export { Bucket } from './Bucket.js';
 export { Activity } from './Activity.js';
 export { Schedule } from './Schedule.js';
 export { LearningModule } from './learning.js';
@@ -35,7 +35,7 @@ export {
 } from './queries.js';
 export { whatToDo, currentOpening, openingLabel } from './whatToDo.js';
 export { suggestActivities, placeActivity, steerBias, priorityPressure } from './suggest.js';
-export { energyBudget, loadForTask, normalizeLoad, defaultLoadForRole, LOAD_AXES, DEFAULT_LOAD_BY_ROLE } from './energy.js';
+export { energyBudget, energyCalibration, learnedCapacity, loadForTask, normalizeLoad, LOAD_AXES } from './energy.js';
 export {
   toICS, parseICS, importEvents, eventToTask, deriveTags,
   toRRULE, fromRRULE, toICSDate, fromICSDate,
@@ -53,15 +53,16 @@ export { findBestSlot, placeTask, dayWindowBounds, intervalsOf } from './placeme
 export { resetIds } from './ids.js';
 
 // Starter buckets (design/ACTIVITY-LIBRARY.md): a proposed set the user edits.
-// Roles map 1:1 so passive rest and active creative stay distinct. The `tags`
-// are the ones each bucket grabs if they're already in use.
+// Load defaults to neutral (0) — the user authors each bucket's character on the
+// wave control; we never fabricate it. The `tags` are the ones each bucket grabs
+// if they're already in use.
 export const STARTER_BUCKETS = [
-  { label: 'Rest', role: 'rest', tags: ['rest', 'leisure', 'nap'] },
-  { label: 'Work / School', role: 'work', tags: ['work', 'study', 'thesis', 'admin'] },
-  { label: 'Creative', role: 'creative', tags: ['creative', 'music', 'art', 'personal-project'] },
-  { label: 'Home', role: 'work', tags: ['chores', 'errand', 'home'] },
-  { label: 'Social', role: 'social', tags: ['social', 'family', 'friends'] },
-  { label: 'Health', role: 'health', tags: ['health', 'sports', 'exercise', 'gym'] },
+  { label: 'Rest', tags: ['rest', 'leisure', 'nap'] },
+  { label: 'Work / School', tags: ['work', 'study', 'thesis', 'admin'] },
+  { label: 'Creative', tags: ['creative', 'music', 'art', 'personal-project'] },
+  { label: 'Home', tags: ['chores', 'errand', 'home'] },
+  { label: 'Social', tags: ['social', 'family', 'friends'] },
+  { label: 'Health', tags: ['health', 'sports', 'exercise', 'gym'] },
 ];
 
 /**

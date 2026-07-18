@@ -7,14 +7,17 @@ const D = (d, h = 0, m = 0) => new Date(2026, 6, d, h, m, 0, 0);
 const wideCfg = () => ({ ...defaultConfig, windows: { ...defaultConfig.windows, monFri: { start: '06:00', end: '23:00' } } });
 const NOW = D(15, 14, 0);
 
+// A bucket's character IS its load vector now (no role): Work demanding-mental,
+// Rest restorative, Creative creative, Health mentally-restful, Social social.
 function withBuckets(s) {
-  s.addBucket({ label: 'Work', role: 'work', tags: ['work'] });
-  s.addBucket({ label: 'Rest', role: 'rest', tags: ['rest'] });
-  s.addBucket({ label: 'Creative', role: 'creative', tags: ['art'] });
-  s.addBucket({ label: 'Health', role: 'health', tags: ['gym'] });
-  s.addBucket({ label: 'Social', role: 'social', tags: ['friends'] });
+  s.addBucket({ label: 'Work', tags: ['work'], load: { mental: 2 } });
+  s.addBucket({ label: 'Rest', tags: ['rest'], load: { mental: -2, physical: -1 } });
+  s.addBucket({ label: 'Creative', tags: ['art'], load: { creative: 2, mental: 1 } });
+  s.addBucket({ label: 'Health', tags: ['gym'], load: { mental: -1, physical: 2 } });
+  s.addBucket({ label: 'Social', tags: ['friends'], load: { social: 2 } });
   return s;
 }
+const loadOfLabel = (s, label) => s.buckets.find((b) => b.label === label).load;
 // Add `n` recent rated tasks carrying `tag`, each overall/energy.
 function rate(s, n, tag, overall, energy) {
   for (let i = 0; i < n; i += 1) {
@@ -33,30 +36,32 @@ describe('steerBias', () => {
     rate(s, 3, 'work', 4, 1);
     const sb = steerBias(s, NOW);
     expect(sb.trained).toBe(false);
-    expect(Object.values(sb.biases).every((v) => v === 0)).toBe(true);
+    expect(sb.biasFor(loadOfLabel(s, 'Rest')).bias).toBe(0);
   });
 
-  it('running down → biases rest and health', () => {
+  it('running down → favours restful loads (rest and health), not demanding ones', () => {
     const s = withBuckets(new Schedule({ config: wideCfg() }));
     rate(s, 12, 'work', 3, -1); // draining
     const sb = steerBias(s, NOW);
     expect(sb.trained).toBe(true);
     expect(sb.energyBalance).toBeLessThan(0);
-    expect(sb.biases.rest).toBeGreaterThan(0);
-    expect(sb.biases.health).toBeGreaterThan(0);
-    expect(sb.reasons.rest).toMatch(/running down/i);
+    expect(sb.biasFor(loadOfLabel(s, 'Rest')).bias).toBeGreaterThan(0);
+    expect(sb.biasFor(loadOfLabel(s, 'Health')).bias).toBeGreaterThan(0);
+    expect(sb.biasFor(loadOfLabel(s, 'Work')).bias).toBeLessThanOrEqual(0);
+    expect(sb.biasFor(loadOfLabel(s, 'Rest')).reason).toMatch(/running down/i);
   });
 
-  it('rest rated flat → shifts the lean to creative', () => {
+  it('restful time rated flat → shifts the lean to creative loads', () => {
     const s = withBuckets(new Schedule({ config: wideCfg() }));
-    rate(s, 12, 'rest', 2, 0); // lots of rest, low overall, energy neutral
+    rate(s, 12, 'rest', 2, 0); // lots of (restorative) rest, low overall, energy neutral
     const sb = steerBias(s, NOW);
-    expect(sb.biases.creative).toBeGreaterThan(0);
-    expect(sb.biases.rest).toBeLessThanOrEqual(0);
-    expect(sb.reasons.creative).toMatch(/flat/i);
+    expect(sb.restorativeFlat).toBe(true);
+    expect(sb.biasFor(loadOfLabel(s, 'Creative')).bias).toBeGreaterThan(0);
+    expect(sb.biasFor(loadOfLabel(s, 'Rest')).bias).toBeLessThanOrEqual(0);
+    expect(sb.biasFor(loadOfLabel(s, 'Creative')).reason).toMatch(/flat/i);
   });
 
-  it('charged + important work looming → biases work', () => {
+  it('charged + important work looming → favours mentally-demanding loads', () => {
     const s = withBuckets(new Schedule({ config: wideCfg() }));
     rate(s, 12, 'work', 4, 1); // charged
     // Incomplete P5 work due within the lookahead → high priority pressure. The
@@ -67,17 +72,17 @@ describe('steerBias', () => {
     }
     const sb = steerBias(s, NOW);
     expect(sb.pressure).toBeGreaterThan(0.15);
-    expect(sb.biases.work).toBeGreaterThan(0);
-    expect(sb.reasons.work).toMatch(/looms|due|momentum/i);
+    expect(sb.biasFor(loadOfLabel(s, 'Work')).bias).toBeGreaterThan(0);
+    expect(sb.biasFor(loadOfLabel(s, 'Work')).reason).toMatch(/looms|due|momentum/i);
   });
 
-  it('charged + nothing pressing → biases creative and social', () => {
+  it('charged + nothing pressing → favours creative and social loads', () => {
     const s = withBuckets(new Schedule({ config: wideCfg() }));
     rate(s, 12, 'work', 4, 1); // charged, no looming deadlines
     const sb = steerBias(s, NOW);
     expect(sb.pressure).toBeLessThanOrEqual(0.15);
-    expect(sb.biases.creative).toBeGreaterThan(0);
-    expect(sb.biases.social).toBeGreaterThan(0);
+    expect(sb.biasFor(loadOfLabel(s, 'Creative')).bias).toBeGreaterThan(0);
+    expect(sb.biasFor(loadOfLabel(s, 'Social')).bias).toBeGreaterThan(0);
   });
 });
 
@@ -98,7 +103,7 @@ describe('suggestActivities', () => {
 
   it('offers only activities that fit the opening, fit-only at cold start', () => {
     const s = withBuckets(new Schedule({ config: wideCfg() }));
-    const rest = s.buckets.find((b) => b.role === 'rest');
+    const rest = s.buckets.find((b) => b.label === 'Rest');
     s.addActivity({ bucketId: rest.id, label: 'Read', tags: ['rest'], durationMin: 15, durationMax: 90 });
     s.addActivity({ bucketId: rest.id, label: 'Long project', tags: ['rest'], durationMin: 240, durationMax: 300 });
 
@@ -108,20 +113,20 @@ describe('suggestActivities', () => {
     expect(out[0].reasons[0]).toMatch(/opening/);
   });
 
-  it('steers the fitting activities: draining work floats rest/health up', () => {
+  it('steers the fitting activities: draining work floats restful loads up', () => {
     const s = withBuckets(new Schedule({ config: wideCfg() }));
     rate(s, 12, 'work', 3, -1); // running down
-    const rest = s.buckets.find((b) => b.role === 'rest');
-    const health = s.buckets.find((b) => b.role === 'health');
-    const work = s.buckets.find((b) => b.role === 'work');
+    const rest = s.buckets.find((b) => b.label === 'Rest');
+    const health = s.buckets.find((b) => b.label === 'Health');
+    const work = s.buckets.find((b) => b.label === 'Work');
     s.addActivity({ bucketId: rest.id, label: 'Read', tags: ['rest'], durationMin: 15, durationMax: 60 });
     s.addActivity({ bucketId: health.id, label: 'Walk', tags: ['gym'], durationMin: 15, durationMax: 60 });
     s.addActivity({ bucketId: work.id, label: 'Email', tags: ['work'], durationMin: 15, durationMax: 60 });
 
     const opening = { start: D(15, 14), end: D(15, 15), minutes: 60 };
     const out = s.suggestActivities(NOW, { opening });
-    expect(['rest', 'health']).toContain(out[0].role);
-    expect(out[out.length - 1].activity.label).toBe('Email'); // work sinks
+    expect(['Read', 'Walk']).toContain(out[0].activity.label); // a restful load leads
+    expect(out[out.length - 1].activity.label).toBe('Email'); // demanding work sinks
   });
 
   it('returns nothing when there is no opening', () => {

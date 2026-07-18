@@ -290,16 +290,20 @@ body {
 .wave { top: 0; }
 .sand { bottom: 0; }
 .card.compact .wave, .card.compact .sand { height: 6px; }
-.wave::after, .sand::after { content: ""; position: absolute; left: 0; right: 0; transition: opacity .12s, filter .12s; }
+.wave::after, .sand::after { content: ""; position: absolute; left: 0; right: 0; transition: height .14s, opacity .14s, filter .14s, background-size .14s; }
+/* Swell (chosen): a fuller ribbon of water — a crest over a translucent body —
+   that rises a touch on hover so it reads as a grabbable handle, not a hairline.
+   Band kept low at rest so it clears the top badges and short (compact) cards. */
 .wave::after {
-  top: 0; height: 4px; opacity: .8;
-  background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='4' viewBox='0 0 12 4'><path d='M0 3.2 Q3 0.3 6 3.2 T12 3.2' fill='none' stroke='%232E8C99' stroke-width='1.3'/></svg>") repeat-x left top / 12px 4px;
+  top: 0; height: 4px; opacity: .9;
+  background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='4' viewBox='0 0 24 4'><path d='M0 2.4 Q6 0.6 12 2.4 T24 2.4 V4 H0 Z' fill='%235FB8B0' fill-opacity='0.34'/><path d='M0 2.4 Q6 0.6 12 2.4 T24 2.4' fill='none' stroke='%232E8C99' stroke-width='1.2' stroke-linecap='round'/></svg>") repeat-x left top / 24px 4px;
 }
+.wave:hover::after { height: 6px; background-size: 24px 6px; opacity: 1; filter: brightness(1.1) saturate(1.15); }
 .sand::after {
-  bottom: 0; height: 3px; opacity: .85;
-  background: linear-gradient(180deg, rgba(232,185,77,.25), var(--cta) 60%, var(--pinned));
+  bottom: 0; height: 3px; opacity: .9;
+  background: linear-gradient(180deg, rgba(232,185,77,0), rgba(232,185,77,.5) 55%, var(--pinned));
 }
-.wave:hover::after, .sand:hover::after { opacity: 1; filter: brightness(1.15) saturate(1.2); }
+.sand:hover::after { height: 5px; opacity: 1; filter: brightness(1.1) saturate(1.15); }
 
 /* top: 5px clears the 4px wave band. The strips sit above the badges on the
    z-scale, so they still win the hit test inside their own 8px band. */
@@ -674,6 +678,55 @@ body.sc-dragging { user-select: none; }
 .insight b { color: var(--cab-accent); }
 .insight .bar2 { height: 7px; background: rgba(0,0,0,.35); border-radius: 4px; overflow: hidden; margin: 3px 0 7px; }
 .insight .bar2 i { display: block; height: 100%; background: var(--cab-accent); }
+
+/* ---------- EnergyControl: the tube-float on a wave (EDITOR-REDESIGN §5) ----------
+   One wave per axis, tinted blue (water); drag the life-ring. The axis critter
+   rides IN the tube in its natural colour. A text label names the axis. No
+   numerals — position is the value (a continuous float). */
+.energyctl { display: flex; flex-direction: column; gap: 8px; margin: 2px 0; }
+.enends {
+  display: flex; justify-content: space-between; padding: 0 14px 0 66px;
+  font-family: var(--font-type); font-size: 9px; letter-spacing: .06em;
+  text-transform: uppercase; color: #d8c6a5; opacity: .7;
+}
+.enrow { display: flex; align-items: center; gap: 8px; }
+.enlabel {
+  flex: none; width: 54px; text-align: right;
+  font-family: var(--font-type); font-size: 10.5px; color: #d8c6a5; opacity: .85;
+}
+.entrack {
+  position: relative; flex: 1; height: 28px; border-radius: 9px; cursor: ew-resize;
+  border: 1.5px solid var(--cab-trim); background-color: rgba(0, 0, 0, .30);
+  overflow: hidden; touch-action: none;
+}
+.entrack:focus-visible { outline: 2px solid var(--cab-accent); outline-offset: 2px; }
+/* the water: the wave sprite, tinted blue on its own layer so the tube stays true colour */
+.entrack::before {
+  content: ""; position: absolute; inset: 0; z-index: 0; opacity: .78;
+  background-image: var(--wave); background-repeat: repeat-x;
+  background-size: auto 20px; background-position: left center;
+  filter: sepia(.85) saturate(1.3) hue-rotate(158deg) brightness(1);
+}
+/* the calm-water centre (neutral) detent */
+.entrack::after {
+  content: ""; position: absolute; left: 50%; top: 3px; bottom: 3px; width: 1.5px;
+  transform: translateX(-50%); background: rgba(255, 255, 255, .28); z-index: 1;
+}
+/* the tube: a life-ring float with the axis critter riding centred inside it */
+.enfloat {
+  position: absolute; top: 50%; left: 50%; width: 32px; height: 32px;
+  transform: translate(-50%, -50%); display: grid; place-items: center; z-index: 2;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .45)); pointer-events: none;
+}
+.entube { position: absolute; inset: 0; width: 100%; height: 100%; }
+.enrider { position: relative; z-index: 1; width: 15px; height: 15px; object-fit: contain; }
+/* inline text-button (e.g. "↺ inherit") in the Cabana's warm palette */
+.linklike { background: none; border: none; color: var(--cab-accent); cursor: pointer; font: inherit; padding: 0; text-decoration: underline; }
+/* per-critter colour (source sprites are muted; these push toward the target) */
+.en-mental   { filter: grayscale(1) brightness(1.7) contrast(.85); }            /* seagull — soft white, feathery */
+.en-physical { filter: sepia(1) saturate(1.8) hue-rotate(-12deg) brightness(.8); } /* surfboard — warm brown */
+.en-social   { filter: grayscale(1) brightness(1.55) contrast(1.25); }          /* beach ball — bright white, plasticky */
+.en-creative { filter: sepia(1) saturate(7) hue-rotate(-20deg) brightness(.95); } /* crab — red */
 
 /* ---------- persistence status + toast ---------- */
 .statusdot { display: inline-flex; align-items: center; gap: 5px; font-family: var(--font-type); font-size: 9px; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); }

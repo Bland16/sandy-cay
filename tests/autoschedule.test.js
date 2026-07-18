@@ -131,3 +131,33 @@ describe('autoSchedule never places into the past', () => {
     expect(t.startTime.getTime()).toBeGreaterThanOrEqual(MON.getTime());
   });
 });
+
+describe('re-optimize leaves finished work where it happened', () => {
+  let s;
+  beforeEach(() => { resetIds(); s = new Schedule({ config: defaultConfig }); });
+
+  it('a completed task is NOT relocated into the present/future by re-optimize', () => {
+    const done = s.addFlexible({ title: 'Done Mon', startTime: D(0, 10), endTime: D(0, 11) });
+    done.completion = 'done';
+    const before = done.startTime.getTime();
+    s.autoSchedule({ now: D(2, 9), weekStart: MON }); // re-optimize on Wednesday
+    expect(done.startTime.getTime()).toBe(before); // stayed on Monday, untouched
+    expect(done.getDayIndex(MON)).toBe(0);
+  });
+
+  it('a partially-done task also stays put', () => {
+    const part = s.addFlexible({ title: 'Partial Mon', startTime: D(0, 10), endTime: D(0, 11) });
+    part.completion = 'partial';
+    const before = part.startTime.getTime();
+    s.autoSchedule({ now: D(2, 9), weekStart: MON });
+    expect(part.startTime.getTime()).toBe(before);
+  });
+
+  it('a skipped task is not relocated (it is resolved as not-done)', () => {
+    const skip = s.addFlexible({ title: 'Skipped Mon', startTime: D(0, 10), endTime: D(0, 11) });
+    skip.completion = 'skipped';
+    const before = skip.startTime.getTime();
+    s.autoSchedule({ now: D(2, 9), weekStart: MON });
+    expect(skip.startTime.getTime()).toBe(before);
+  });
+});

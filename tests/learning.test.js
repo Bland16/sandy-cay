@@ -103,60 +103,33 @@ describe('Phase D.1 — per-bucket position learning', () => {
     t.satisfaction = { overall, timingFit: 0, durationFit: 0, energy: 0 };
     return t;
   };
-  const withRoles = () => {
+  const withBuckets = () => {
     const s = new Schedule({ config: defaultConfig });
-    s.addBucket({ label: 'Work', role: 'work', tags: ['work'] });
-    s.addBucket({ label: 'Rest', role: 'rest', tags: ['rest'] });
+    s.addBucket({ label: 'Work', tags: ['work'] });
+    s.addBucket({ label: 'Rest', tags: ['rest'] });
     return s;
   };
 
-  it('learns opposite per-role time patterns a base-time model cannot represent', () => {
-    const s = withRoles();
-    // Work rates high in the morning, low in the evening; rest is the reverse. A
-    // single global time weight can't hold both — the role×time interaction can.
-    for (let i = 0; i < 6; i += 1) {
-      rate(s, 'work', 13 + i, 9, 5); rate(s, 'work', 13 + i, 19, 1);
-      rate(s, 'rest', 13 + i, 9, 1); rate(s, 'rest', 13 + i, 19, 5);
-    }
-    s.retrain();
-    const wp = s.addFlexible({ title: 'wp', tags: ['work'], startTime: D(20, 9), endTime: D(20, 10) });
-    const rp = s.addFlexible({ title: 'rp', tags: ['rest'], startTime: D(20, 9), endTime: D(20, 10) });
-    const wMorn = s._modelScore(wp, { start: D(20, 9), end: D(20, 10) });
-    const wEve = s._modelScore(wp, { start: D(20, 19), end: D(20, 20) });
-    const rMorn = s._modelScore(rp, { start: D(20, 9), end: D(20, 10) });
-    const rEve = s._modelScore(rp, { start: D(20, 19), end: D(20, 20) });
-    expect(wMorn).toBeGreaterThan(wEve); // work prefers the morning
-    expect(rEve).toBeGreaterThan(rMorn); // rest prefers the evening
-  });
-
-  it('gates an interaction cell until it has enough ratings — one sample cannot mint a pattern', () => {
-    const s = withRoles();
-    for (let i = 0; i < 8; i += 1) rate(s, 'rest', 13 + i, 19, 5); // rest·evening ×8 → gated on
-    for (let i = 0; i < 4; i += 1) rate(s, 'work', 13 + i, 19, 1); // work·evening ×4 → gated on (contrast)
-    rate(s, 'work', 13, 9, 5); // work·morning ×1 → gated OFF
-    s.retrain();
-    const ins = s.learning.inspect();
-    const at = (label) => ins.find((x) => x.label === label).weight;
-    expect(at('role×time:work·morning')).toBe(0); // 1 rating: silent
-    expect(Math.abs(at('role×time:work·evening'))).toBeGreaterThan(0); // 4 ratings: it learns — so the 0 above is gating, not absence of signal
-  });
+  // (The role×time / role×weekend interaction tests were removed with the role
+  //  rip-out — see design/RECONCILIATION.md. Per-position learning returns in L-2
+  //  keyed off load, not an enum.)
 
   it('retrains from ratings when a saved model has an older layout (migration)', () => {
-    const s = withRoles();
+    const s = withBuckets();
     for (let i = 0; i < 12; i += 1) rate(s, 'work', 13 + (i % 6), 9, 5);
     s.retrain();
     const json = JSON.parse(JSON.stringify(s.toJSON()));
-    expect(json.model.layoutVersion).toBe(2);
+    expect(json.model.layoutVersion).toBe(3);
     json.model.layoutVersion = 1; // pretend an older build wrote it
     json.model.weights = [1, 2, 3]; // stale, wrong-length garbage
     const back = Schedule.fromJSON(json);
-    expect(back.learning.layoutVersion).toBe(2);
+    expect(back.learning.layoutVersion).toBe(3);
     expect(back.learning.trained).toBe(true);
     expect(back.learning.sampleCount).toBe(12);
   });
 
   it('duration buckets distinguish lengths below 45 minutes', () => {
-    const s = withRoles();
+    const s = withBuckets();
     rate(s, 'work', 13, 9, 5);
     s.retrain();
     const labels = s.learning.inspect().map((x) => x.label);

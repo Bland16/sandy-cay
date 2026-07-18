@@ -34,7 +34,7 @@ import { addProject as runAddProject } from './projects.js';
 import { getWeekLoad as runWeekLoad, getTagBreakdown as runTagBreakdown, snapshot as runSnapshot } from './queries.js';
 import { whatToDo as runWhatToDo } from './whatToDo.js';
 import { suggestActivities as runSuggest, placeActivity as runPlaceActivity } from './suggest.js';
-import { energyBudget as runEnergyBudget } from './energy.js';
+import { energyBudget as runEnergyBudget, energyCalibration as runEnergyCalibration } from './energy.js';
 import { overpackCheck } from './detectors.js';
 
 const UPDATE_WHITELIST = [
@@ -59,6 +59,11 @@ export class Schedule {
     // clean; schemaVersion stays 1.
     this.buckets = (init.buckets || []).map((b) => (b instanceof Bucket ? b : Bucket.fromJSON(b)));
     this.activities = (init.activities || []).map((a) => (a instanceof Activity ? a : Activity.fromJSON(a)));
+    // Same collision guard tasks get: slug(label) alone collides (two "New bucket"s
+    // → one id), so repair any duplicate zone/bucket/activity id from an old save.
+    this._dedupeIds(this.zones);
+    this._dedupeIds(this.buckets);
+    this._dedupeIds(this.activities);
     this.retiredTags = Array.isArray(init.retiredTags) ? [...init.retiredTags] : [];
     this.learning = init.model instanceof LearningModule
       ? init.model
@@ -85,8 +90,7 @@ export class Schedule {
 
   _modelScore(task, slot) {
     if (this.learning.sampleCount < this.config.coldStartRatings) return 0;
-    // Give the model the task's bucket role so its role×position terms fire.
-    return this.learning.modelScore(task, slot, { role: this.roleOf(task) });
+    return this.learning.modelScore(task, slot);
   }
 
   _expand(task, ws) {
@@ -127,6 +131,22 @@ export class Schedule {
     for (const t of this.tasks) {
       if (seen.has(t.id)) while (seen.has(t.id) || this.tasks.some((x) => x !== t && x.id === t.id)) t.id = makeId(t.title);
       seen.add(t.id);
+    }
+  }
+
+  /** The task collision guard, generalized to any {id,label} collection (Bucket/
+   *  Activity/Zone). On add, keep a new item's id unique; on load, repair dupes.
+   *  Fixes the two-new-buckets bug (design/RECONCILIATION.md, unique ids). */
+  _uniqueInColl(item, coll) {
+    while (coll.some((x) => x !== item && x.id === item.id)) item.id = makeId(item.label);
+    return item;
+  }
+
+  _dedupeIds(coll) {
+    const seen = new Set();
+    for (const it of coll) {
+      if (seen.has(it.id)) while (seen.has(it.id) || coll.some((x) => x !== it && x.id === it.id)) it.id = makeId(it.label);
+      seen.add(it.id);
     }
   }
 
@@ -185,6 +205,7 @@ export class Schedule {
 
   addZone(data) {
     const z = new Zone(data);
+    this._uniqueInColl(z, this.zones);
     this.zones.push(z);
     this._touch();
     return z;
@@ -209,6 +230,7 @@ export class Schedule {
   // ---- activity library (buckets / activities / retired tags) ------------
   addBucket(data) {
     const b = new Bucket(data);
+    this._uniqueInColl(b, this.buckets);
     this.buckets.push(b);
     this._touch();
     return b;
@@ -236,6 +258,7 @@ export class Schedule {
 
   addActivity(data) {
     const a = new Activity(data);
+    this._uniqueInColl(a, this.activities);
     this.activities.push(a);
     this._touch();
     return a;
@@ -284,12 +307,6 @@ export class Schedule {
   bucketForTask(task) {
     const tags = task && task.tags ? task.tags : [];
     return this.buckets.find((b) => tags.some((t) => b.tags.includes(t))) || null;
-  }
-
-  /** The task's bucket role for steering / learning features; 'neutral' if none. */
-  roleOf(task) {
-    const b = this.bucketForTask(task);
-    return b ? b.role : 'neutral';
   }
 
   // ---- queries -----------------------------------------------------------
@@ -363,6 +380,11 @@ export class Schedule {
   /** Deterministic energy budget for a day (design/ENERGY-MODEL.md, L-1). */
   energyBudget(date = new Date()) {
     return runEnergyBudget(this, date);
+  }
+
+  /** Whether the energy budget is calibrated yet (design/RECONCILIATION.md P-2). */
+  energyCalibration() {
+    return runEnergyCalibration(this);
   }
 
   // ---- engine ------------------------------------------------------------
@@ -468,9 +490,7 @@ export class Schedule {
   // ---- learning ----------------------------------------------------------
   retrain(opts = {}) {
     const rated = this.tasks.filter((t) => t.satisfaction && typeof t.satisfaction.overall === 'number');
-    // The model has no bucket access of its own — hand it a role resolver so its
-    // role×position features can be built (Phase D.1).
-    this.learning.train(rated, { roleOf: (t) => this.roleOf(t), ...opts });
+    this.learning.train(rated, opts);
     this._touch();
     return this.learning.sampleCount;
   }

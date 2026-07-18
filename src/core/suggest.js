@@ -12,8 +12,7 @@
 import { addMinutes, dayStart, addDays } from './time.js';
 import { dayCapacityMin } from './placement.js';
 import { openingLabel } from './whatToDo.js';
-
-const ROLES = ['rest', 'creative', 'work', 'social', 'health', 'neutral'];
+import { normalizeLoad, LOAD_AXES, loadForTask } from './energy.js';
 
 function suggestCfg(config) {
   const s = (config && config.suggest) || {};
@@ -21,12 +20,33 @@ function suggestCfg(config) {
     window: s.window ?? 10,
     recentDays: s.recentDays ?? 14,
     fitWeight: s.fitWeight ?? 1,
-    roleBias: s.roleBias ?? 0.35,
+    loadBias: s.loadBias ?? 0.35,
     varietyPenalty: s.varietyPenalty ?? 0.15,
     priorityPressureHigh: s.priorityPressureHigh ?? 0.15,
     restFlat: s.restFlat ?? 3,
     coldStart: (config && config.coldStartRatings) ?? 10,
   };
+}
+
+// A thing's character IS its load vector (design/RECONCILIATION.md — no `role`).
+const netLoad = (L) => L.mental + L.physical + L.social + L.creative;
+// Restorative: it gives energy back overall, or is mentally restful (rest, and
+// exercise/health, which is physically demanding but clears the head).
+const isRestful = (L) => netLoad(L) < 0 || L.mental < 0;
+function dominantAxis(L) {
+  let ax = null; let m = 0;
+  for (const a of LOAD_AXES) if (Math.abs(L[a]) > m) { m = Math.abs(L[a]); ax = a; }
+  return m > 0 ? ax : null;
+}
+/** The load a task/activity carries. An activity belongs to one bucket; a task
+ *  derives from ALL its tags' buckets (loadForTask), so both agree with the budget. */
+function loadOf(schedule, item) {
+  if (item && item.load) return normalizeLoad(item.load);
+  if (item && item.bucketId != null) { // an activity → its single bucket
+    const b = schedule.buckets.find((x) => x.id === item.bucketId);
+    return b && b.load ? normalizeLoad(b.load) : normalizeLoad({});
+  }
+  return loadForTask(schedule, item); // a task → averaged across its tags' buckets
 }
 
 /** Recent rated tasks: the trailing `recentDays`, or the last `window`, whichever
@@ -59,80 +79,71 @@ export function priorityPressure(schedule, now = new Date()) {
 }
 
 /**
- * The steering biases per role plus the invitation reason for each biased role.
- * Pure and read-only. Cold start (< coldStartRatings recent ratings) → all zero.
+ * The steering context, plus `biasFor(load)` → { bias, reason } that scores any
+ * activity's LOAD character (restorative vs demanding, and on which axis). Pure
+ * and read-only. Cold start (< coldStartRatings recent ratings) → no bias.
  */
 export function steerBias(schedule, now = new Date()) {
   const cfg = suggestCfg(schedule.config);
   const recent = recentRated(schedule, now, cfg);
-  const biases = Object.fromEntries(ROLES.map((r) => [r, 0]));
-  const reasons = {};
-  if (recent.length < cfg.coldStart) {
-    return { biases, reasons, trained: false, energyBalance: 0, pressure: 0 };
-  }
+  const none = {
+    trained: false, energyBalance: 0, pressure: 0, restorativeFlat: false,
+    biasFor: () => ({ bias: 0, reason: null }),
+  };
+  if (recent.length < cfg.coldStart) return none;
 
-  const agg = {}; // role → { n, overallSum, energySum }
   let energyBalance = 0;
+  const restorativeOveralls = []; // overalls of recent tasks that were restorative
   for (const t of recent) {
-    const role = schedule.roleOf(t);
-    const a = agg[role] || (agg[role] = { n: 0, overallSum: 0, energySum: 0 });
-    a.n += 1;
-    a.overallSum += t.satisfaction.overall;
-    const e = t.satisfaction.energy || 0;
-    a.energySum += e;
-    energyBalance += e;
+    energyBalance += t.satisfaction.energy || 0;
+    if (netLoad(loadOf(schedule, t)) < 0) restorativeOveralls.push(t.satisfaction.overall);
   }
-  const avgOverall = (role) => (agg[role] && agg[role].n ? agg[role].overallSum / agg[role].n : null);
   const pressure = priorityPressure(schedule, now);
-  const bias = cfg.roleBias;
+  const restAvg = restorativeOveralls.length
+    ? restorativeOveralls.reduce((a, b) => a + b, 0) / restorativeOveralls.length
+    : null;
+  const restorativeFlat = restAvg != null && restAvg <= cfg.restFlat;
+  const b = cfg.loadBias;
 
-  // 1) Running down → restful.
-  if (energyBalance < 0) {
-    biases.rest += bias; biases.health += bias;
-    reasons.rest = "You've been running down — something restful?";
-    reasons.health = reasons.rest;
-  }
-  // 2) Passive rest not landing → shift the rest lean to creative.
-  const restAvg = avgOverall('rest');
-  if (restAvg != null && restAvg <= cfg.restFlat) {
-    biases.rest -= bias;
-    biases.creative += bias;
-    reasons.creative = "Rest's felt flat lately — a creative project?";
-    delete reasons.rest;
-  }
-  // 3) Charged + important work looming → focused work.
-  if (energyBalance > 0 && pressure > cfg.priorityPressureHigh) {
-    biases.work += bias;
-    reasons.work = 'Momentum and things due — a focused block?';
-  }
-  // 4) Charged + nothing pressing → something you enjoy.
-  if (energyBalance > 0 && pressure <= cfg.priorityPressureHigh) {
-    biases.creative += bias; biases.social += bias;
-    reasons.creative = reasons.creative || 'Nothing pressing — time for something you enjoy?';
-    reasons.social = 'Nothing pressing — time for something you enjoy?';
-  }
-  return { biases, reasons, trained: true, energyBalance, pressure };
+  const biasFor = (load) => {
+    const L = normalizeLoad(load);
+    let bias = 0; let reason = null;
+    // 1) Running down → something restful (restorative overall, or mentally restful).
+    if (energyBalance < 0 && isRestful(L)) {
+      bias += b; reason = "You've been running down — something restful?";
+    }
+    // 2) Restful time hasn't been landing → shift the lean toward creative work.
+    if (restorativeFlat) {
+      if (L.creative > 0) { bias += b; reason = "Rest's felt flat lately — a creative project?"; }
+      else if (isRestful(L)) { bias -= b; }
+    }
+    // 3) Charged + important work looming → a mentally-demanding focused block.
+    if (energyBalance > 0 && pressure > cfg.priorityPressureHigh && L.mental > 0) {
+      bias += b; reason = 'Momentum and things due — a focused block?';
+    }
+    // 4) Charged + nothing pressing → something creative or social you enjoy.
+    if (energyBalance > 0 && pressure <= cfg.priorityPressureHigh && (L.creative > 0 || L.social > 0)) {
+      bias += b; reason = reason || 'Nothing pressing — time for something you enjoy?';
+    }
+    return { bias, reason };
+  };
+  return { trained: true, energyBalance, pressure, restorativeFlat, biasFor };
 }
 
-/** The role of the most recently finished thing — for the variety nudge. */
-function lastFinishedRole(schedule, now) {
+/** The load character of the most recently finished thing — for the variety nudge. */
+function lastFinishedLoad(schedule, now) {
   let last = null;
   for (const t of schedule.tasks) {
     if (t.completion === null || t.startTime.getTime() > now.getTime()) continue;
     if (!last || t.startTime > last.startTime) last = t;
   }
-  return last ? schedule.roleOf(last) : null;
-}
-
-function activityRole(schedule, activity) {
-  const b = schedule.buckets.find((x) => x.id === activity.bucketId)
-    || schedule.bucketForTask({ tags: activity.tags });
-  return b ? b.role : 'neutral';
+  return last ? loadOf(schedule, last) : null;
 }
 
 /**
- * Ranked library activities that fit `opts.opening`, gently steered. Read-only.
- * @returns [{ activity, role, duration, score, reasons: string[] }]
+ * Ranked library activities that fit `opts.opening`, gently steered by load
+ * character. Read-only.
+ * @returns [{ activity, load, duration, score, reasons: string[] }]
  */
 export function suggestActivities(schedule, now = new Date(), opts = {}) {
   const cfg = suggestCfg(schedule.config);
@@ -141,21 +152,23 @@ export function suggestActivities(schedule, now = new Date(), opts = {}) {
   if (!opening || opening.minutes <= 0) return [];
   const openMin = opening.minutes;
 
-  const { biases, reasons } = steerBias(schedule, now);
-  const vRole = lastFinishedRole(schedule, now);
+  const steer = steerBias(schedule, now);
+  const lastLoad = lastFinishedLoad(schedule, now);
+  const vAxis = lastLoad ? dominantAxis(lastLoad) : null;
 
   const ranked = schedule.activities
     .filter((a) => a.durationMin <= openMin) // fits the opening
     .map((a) => {
-      const role = activityRole(schedule, a);
+      const load = loadOf(schedule, a);
       const duration = a.durationFor(openMin);
       const fitScore = a.durationMax > 0 ? Math.min(1, duration / a.durationMax) : 1;
-      const roleBias = biases[role] || 0;
-      const variety = vRole && role === vRole ? -cfg.varietyPenalty : 0;
-      const score = cfg.fitWeight * fitScore + roleBias + variety;
+      const { bias, reason } = steer.biasFor(load);
+      const axis = dominantAxis(load);
+      const variety = vAxis && axis === vAxis ? -cfg.varietyPenalty : 0;
+      const score = cfg.fitWeight * fitScore + bias + variety;
       const rs = [`fills your ${openingLabel(openMin)} opening`];
-      if (roleBias > 0 && reasons[role]) rs.push(reasons[role]);
-      return { activity: a, role, duration, score, reasons: rs };
+      if (bias > 0 && reason) rs.push(reason);
+      return { activity: a, load, duration, score, reasons: rs };
     });
   ranked.sort((x, y) => y.score - x.score || x.activity.label.localeCompare(y.activity.label));
   return ranked.slice(0, limit);
@@ -169,10 +182,9 @@ export function suggestActivities(schedule, now = new Date(), opts = {}) {
  */
 export function placeActivity(schedule, activity, start, openingMin) {
   const duration = activity.durationFor(openingMin);
-  // Carry the activity's effective load onto the task so its energy budget is
-  // right: the activity's own override if set, else its bucket's default.
-  const bucket = schedule.buckets.find((b) => b.id === activity.bucketId);
-  const load = activity.load ?? (bucket ? bucket.load : null);
+  // Only carry an EXPLICIT activity override onto the task; otherwise leave load
+  // null so the task derives its energy from its tags (loadForTask) — that way the
+  // picker's prediction and the placed task can't disagree (design/RECONCILIATION.md).
   const task = schedule.addFlexible({
     title: activity.label,
     tags: [...activity.tags],
@@ -180,7 +192,7 @@ export function placeActivity(schedule, activity, start, openingMin) {
     startTime: new Date(start),
     endTime: addMinutes(new Date(start), duration),
     placedBy: 'user',
-    load,
+    load: activity.load ?? null,
   });
   const res = schedule.resolveDropConflicts(task);
   return { task, displaced: (res && res.displaced) || [] };
