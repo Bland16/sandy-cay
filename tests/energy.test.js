@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { Schedule, Bucket, Activity, Task, resetIds, normalizeLoad, loadForTask, learnedCapacity, LOAD_AXES } from '../src/core/index.js';
+import { Schedule, Bucket, Activity, Task, resetIds, normalizeLoad, loadForTask, learnedCapacity, energyTrajectory, reserveAt, LOAD_AXES } from '../src/core/index.js';
 import { defaultConfig } from '../src/core/config.js';
 
 const D = (d, h) => new Date(2026, 6, d, h, 0, 0, 0);
@@ -140,6 +140,28 @@ describe('energy calibration gate (no fabricated ceiling until learned)', () => 
     const cal = s.energyCalibration();
     expect(cal.weeksRated).toBe(3);
     expect(cal.calibrated).toBe(true);
+  });
+});
+
+describe('reserve trajectory & reserveAt (the time-points)', () => {
+  beforeEach(() => resetIds());
+  const s0 = () => { const s = new Schedule({ config: wide() }); s.addBucket({ label: 'Work', tags: ['work'], load: { mental: 2 } }); return s; };
+
+  it('energyTrajectory records a point per task with the running reserve', () => {
+    const s = s0();
+    s.addFixed({ title: 'W1', tags: ['work'], startTime: D(15, 9), endTime: D(15, 10) });
+    s.addFixed({ title: 'W2', tags: ['work'], startTime: D(15, 10), endTime: D(15, 11) });
+    const { points } = energyTrajectory(s, D(15, 12));
+    expect(points).toHaveLength(2);
+    expect(points[0].reserve.mental).toBe(-2);
+    expect(points[1].reserve.mental).toBe(-4);
+  });
+
+  it('reserveAt reflects only the tasks already under way', () => {
+    const s = s0();
+    s.addFixed({ title: 'Done', tags: ['work'], startTime: D(15, 9), endTime: D(15, 10) });
+    s.addFixed({ title: 'Later', tags: ['work'], startTime: D(15, 15), endTime: D(15, 16) });
+    expect(reserveAt(s, D(15, 12)).mental).toBe(-2); // only the 9–10 block has started by noon
   });
 });
 

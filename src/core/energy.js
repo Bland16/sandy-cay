@@ -73,14 +73,16 @@ export function energyCalibration(schedule) {
   return { calibrated: weeks.size >= need, weeksRated: weeks.size, weeksNeeded: need };
 }
 
-/** Walk a set of tasks in time order → per-axis `{ net, low }`. The reserve starts
- *  full (0), can't bank credit above full, drains on spend and repays on restore;
- *  `low` (≤ 0) is the deepest dip, `net` the signed total (both in load-hours). */
+/** Walk a set of tasks in time order → `{ net, low, reserve, points }`. The reserve
+ *  starts full (0), can't bank credit above full, drains on spend and repays on
+ *  restore; `low` (≤ 0) is the deepest dip, `net` the signed total, `reserve` the
+ *  final level, `points` the trajectory (reserve snapshot after each task). */
 function reserveWalk(schedule, tasks) {
   const sorted = tasks.slice().sort((a, b) => a.startTime - b.startTime);
   const net = zeroLoad();
   const low = zeroLoad();
   const reserve = zeroLoad();
+  const points = [];
   for (const t of sorted) {
     const l = loadForTask(schedule, t);
     const h = durationHours(t);
@@ -89,8 +91,26 @@ function reserveWalk(schedule, tasks) {
       reserve[a] = Math.min(0, reserve[a] - l[a] * h); // + spends (drains), − restores (repays)
       if (reserve[a] < low[a]) low[a] = reserve[a];
     }
+    points.push({ at: t.endTime, reserve: { ...reserve } });
   }
-  return { net, low };
+  return { net, low, reserve: { ...reserve }, points };
+}
+
+/** The day's reserve TRAJECTORY — per-axis reserve after each task, in time order.
+ *  The "time points" a future model can learn bottom-out patterns from, and the
+ *  basis for a when-you-dip read in the card. */
+export function energyTrajectory(schedule, date) {
+  const tasks = schedule.getTasksForDay(date).filter((t) => !t.chunking && t.completion !== 'skipped');
+  const { points, low } = reserveWalk(schedule, tasks);
+  return { points, low };
+}
+
+/** How depleted each axis is right now — the reserve after the tasks already under
+ *  way today (startTime ≤ now). Steers suggestions away from deepening a bottomed axis. */
+export function reserveAt(schedule, now = new Date()) {
+  const tasks = schedule.getTasksForDay(now)
+    .filter((t) => !t.chunking && t.completion !== 'skipped' && t.startTime.getTime() <= now.getTime());
+  return reserveWalk(schedule, tasks).reserve;
 }
 
 /**

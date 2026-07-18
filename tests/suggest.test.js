@@ -129,6 +129,19 @@ describe('suggestActivities', () => {
     expect(out[out.length - 1].activity.label).toBe('Email'); // demanding work sinks
   });
 
+  it('reserve-aware: when today has drained an axis, a restorative pick for it floats up', () => {
+    const s = withBuckets(new Schedule({ config: wideCfg() }));
+    // this morning drained mental (a 2h work block), before the 2pm opening
+    s.addFixed({ title: 'Morning work', tags: ['work'], startTime: D(15, 9), endTime: D(15, 11) });
+    const rest = s.buckets.find((b) => b.label === 'Rest');
+    const work = s.buckets.find((b) => b.label === 'Work');
+    s.addActivity({ bucketId: rest.id, label: 'Read', tags: ['rest'], durationMin: 15, durationMax: 60 });
+    s.addActivity({ bucketId: work.id, label: 'Email', tags: ['work'], durationMin: 15, durationMax: 60 });
+    const opening = { start: D(15, 14), end: D(15, 15), minutes: 60 };
+    const out = s.suggestActivities(NOW, { opening });
+    expect(out[0].activity.label).toBe('Read'); // restores the depleted mental reserve; work sinks
+  });
+
   it('returns nothing when there is no opening', () => {
     const s = withBuckets(new Schedule({ config: wideCfg() }));
     s.addActivity({ bucketId: s.buckets[0].id, label: 'Read', durationMin: 15, durationMax: 60 });

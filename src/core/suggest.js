@@ -12,7 +12,7 @@
 import { addMinutes, dayStart, addDays } from './time.js';
 import { dayCapacityMin } from './placement.js';
 import { openingLabel } from './whatToDo.js';
-import { normalizeLoad, LOAD_AXES, loadForTask } from './energy.js';
+import { normalizeLoad, LOAD_AXES, loadForTask, reserveAt } from './energy.js';
 
 function suggestCfg(config) {
   const s = (config && config.suggest) || {};
@@ -21,6 +21,7 @@ function suggestCfg(config) {
     recentDays: s.recentDays ?? 14,
     fitWeight: s.fitWeight ?? 1,
     loadBias: s.loadBias ?? 0.35,
+    reserveBias: s.reserveBias ?? 0.2, // nudge away from deepening a bottomed-out axis
     varietyPenalty: s.varietyPenalty ?? 0.15,
     priorityPressureHigh: s.priorityPressureHigh ?? 0.15,
     restFlat: s.restFlat ?? 3,
@@ -156,6 +157,13 @@ export function suggestActivities(schedule, now = new Date(), opts = {}) {
   const lastLoad = lastFinishedLoad(schedule, now);
   const vAxis = lastLoad ? dominantAxis(lastLoad) : null;
 
+  // Reserve-aware nudge: the axis you're most depleted on RIGHT NOW (today's battery
+  // up to `now`). Favour activities that give it back, avoid ones that deepen it —
+  // so the picker steers away from bottoming you out (design/RECONCILIATION.md).
+  const reserve = reserveAt(schedule, now);
+  let worst = null; let worstVal = 0;
+  for (const a of LOAD_AXES) if (reserve[a] < worstVal) { worstVal = reserve[a]; worst = a; }
+
   const ranked = schedule.activities
     .filter((a) => a.durationMin <= openMin) // fits the opening
     .map((a) => {
@@ -165,9 +173,15 @@ export function suggestActivities(schedule, now = new Date(), opts = {}) {
       const { bias, reason } = steer.biasFor(load);
       const axis = dominantAxis(load);
       const variety = vAxis && axis === vAxis ? -cfg.varietyPenalty : 0;
-      const score = cfg.fitWeight * fitScore + bias + variety;
+      let reserveBias = 0; let reserveReason = null;
+      if (worst) {
+        if (load[worst] < 0) { reserveBias = cfg.reserveBias; reserveReason = `Your ${worst} reserve is low — something that gives it back?`; }
+        else if (load[worst] > 0) { reserveBias = -cfg.reserveBias; }
+      }
+      const score = cfg.fitWeight * fitScore + bias + variety + reserveBias;
       const rs = [`fills your ${openingLabel(openMin)} opening`];
       if (bias > 0 && reason) rs.push(reason);
+      else if (reserveBias > 0 && reserveReason) rs.push(reserveReason);
       return { activity: a, load, duration, score, reasons: rs };
     });
   ranked.sort((x, y) => y.score - x.score || x.activity.label.localeCompare(y.activity.label));
