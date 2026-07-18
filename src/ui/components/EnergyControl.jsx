@@ -21,6 +21,25 @@ const clampF = (v) => Math.max(-2, Math.min(2, v));
 // extremes (drag still reads the full width → the whole [-2,2] range).
 const pctOf = (v) => 10 + ((v + 2) / 4) * 80; // −2→10%  0→50%  +2→90%
 
+// The social critter as a crisp SVG beach ball — the muted PNG couldn't CSS-tint
+// to anything but flat white, so it's drawn: coloured plastic wedges + a gloss
+// highlight, distinct from the seagull's feathery white.
+function BeachBall() {
+  const w = (a1, a2, fill) => {
+    const p = (deg) => `${(16 + 13 * Math.cos((deg * Math.PI) / 180)).toFixed(2)},${(16 + 13 * Math.sin((deg * Math.PI) / 180)).toFixed(2)}`;
+    return <path d={`M16,16 L${p(a1)} A13,13 0 0 1 ${p(a2)} Z`} fill={fill} />;
+  };
+  return (
+    <svg className="enrider enball" viewBox="0 0 32 32" aria-hidden="true">
+      <circle cx="16" cy="16" r="13" fill="#f4efe6" />
+      {w(0, 60, '#e2685f')}{w(120, 180, '#e8b94d')}{w(240, 300, '#2e8c99')}
+      <circle cx="16" cy="16" r="2.6" fill="#f4efe6" stroke="rgba(40,30,20,.4)" strokeWidth="0.8" />
+      <ellipse cx="12" cy="11.5" rx="3.2" ry="2" fill="#fff" opacity="0.55" />
+      <circle cx="16" cy="16" r="13" fill="none" stroke="rgba(40,30,20,.45)" strokeWidth="1" />
+    </svg>
+  );
+}
+
 function Axis({ axis, value, onChange }) {
   const trackRef = useRef(null);
   // continuous float, rounded to 2dp so the stored value is clean but smooth
@@ -72,7 +91,9 @@ function Axis({ axis, value, onChange }) {
             <circle cx="20" cy="20" r="21.5" fill="none" stroke="rgba(40,30,20,.35)" strokeWidth="1" />
             <circle cx="20" cy="20" r="10.5" fill="none" stroke="rgba(40,30,20,.35)" strokeWidth="1" />
           </svg>
-          <img className={`enrider en-${axis}`} src={CRITTER[axis]} alt="" aria-hidden="true" title={AXIS_META[axis].label} />
+          {axis === 'social'
+            ? <BeachBall />
+            : <img className={`enrider en-${axis}`} src={CRITTER[axis]} alt="" aria-hidden="true" title={AXIS_META[axis].label} />}
         </span>
       </div>
     </div>
