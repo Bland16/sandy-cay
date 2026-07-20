@@ -18,7 +18,7 @@ const clampMin = (v) => { const n = Number(v); return Math.max(15, Math.round(Nu
 const countActs = (n) => `${n} activit${n === 1 ? 'y' : 'ies'}`;
 // Below this many, a bucket needs no filter/sort machinery — showing it would be
 // clutter in service of a problem you don't have (EDITOR-REDESIGN §7.1).
-const SIMPLE_LIST_MAX = 5;
+const SIMPLE_LIST_MAX = 3;
 
 // One bulk line: "Name" | "min-max" | "tag, tag". Only the name is required.
 function parseBulkLine(line, bucket) {
