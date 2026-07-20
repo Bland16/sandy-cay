@@ -9,6 +9,7 @@ import { defaultConfig } from '../src/core/config.js';
 import { tagsInUse } from '../src/ui/components/TagEditor.jsx';
 import TagManager from '../src/ui/components/TagManager.jsx';
 import EnergyCard from '../src/ui/components/EnergyCard.jsx';
+import ZonesEditor from '../src/ui/components/ZonesEditor.jsx';
 
 afterEach(cleanup);
 
@@ -452,5 +453,59 @@ describe('L-1 energy UI', () => {
     expect(load.physical).toBe(1);     // inherited, preserved
     expect(load.social).toBe(-1);
     expect(load.creative).toBe(2);
+  });
+});
+
+describe('§8 — retire completes the pair', () => {
+  const bucketWithTags = () => {
+    resetIds();
+    const s = new Schedule({ config: { ...defaultConfig, protectedTags: [] } });
+    s.addBucket({ label: 'Rest', tags: ['rest', 'nap'] });
+    return s;
+  };
+  const openRest = () => fireEvent.click(screen.getByRole('button', { name: 'Edit bucket Rest' }));
+
+  it('a bucket tag can be retired, and comes back from the strip', () => {
+    const s = bucketWithTags();
+    render(<Harness sched={s} Comp={TagManager} />);
+    openRest();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retire nap' }));
+    expect(s.retiredTags).toContain('nap');
+    // Retire is an archive, NOT a removal: the bucket keeps the tag, so history
+    // and energy resolution are untouched.
+    expect(s.buckets[0].tags).toContain('nap');
+
+    fireEvent.click(screen.getByRole('button', { name: /All buckets/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Un-retire nap' }));
+    expect(s.retiredTags).not.toContain('nap');
+  });
+
+  it('remove-from-bucket and retire are different verbs, and say so', () => {
+    const s = bucketWithTags();
+    render(<Harness sched={s} Comp={TagManager} />);
+    openRest();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove nap from bucket' }));
+    expect(s.buckets[0].tags).not.toContain('nap'); // gone from the bucket…
+    expect(s.retiredTags).not.toContain('nap'); // …but not retired
+  });
+
+  it('an already-retired tag offers no second retire button', () => {
+    const s = bucketWithTags();
+    s.retireTag('nap');
+    render(<Harness sched={s} Comp={TagManager} />);
+    openRest();
+    expect(screen.queryByRole('button', { name: 'Retire nap' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Retire rest' })).toBeTruthy();
+  });
+
+  it('zones do not get the retire affordance — it belongs to the bucket editor', () => {
+    const s = bucketWithTags();
+    s.addZone({ label: 'Work', matchTags: ['work'], windows: [{ day: 'mon', start: '09:00', end: '17:00' }] });
+    render(<Harness sched={s} Comp={ZonesEditor} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit zone Work' }));
+    expect(screen.queryByRole('button', { name: 'Retire work' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Remove work' })).toBeTruthy();
   });
 });

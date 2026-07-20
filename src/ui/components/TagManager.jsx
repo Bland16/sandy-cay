@@ -97,6 +97,10 @@ export default function TagManager({ sched, mutate }) {
   const patchBucket = (id, changes) => mutate((s) => s.updateBucket(id, changes));
   const dropBucket = (id) => mutate((s) => s.removeBucket(id));
   const unretire = (tag) => mutate((s) => s.unretireTag(tag));
+  // The missing half of the pair: unretireTag had UI, retireTag had none
+  // (EDITOR-REDESIGN §8). Retire archives the tag from new work; it does NOT
+  // remove it from the bucket, so history and energy resolution are untouched.
+  const retire = (tag) => mutate((s) => s.retireTag(tag));
 
   // A tag lives in at most one bucket, so a newly-added tag leaves every other.
   const setBucketTags = (id, newTags) => mutate((s) => {
@@ -184,8 +188,18 @@ export default function TagManager({ sched, mutate }) {
             <Field label="energy" stack>
               <EnergyControl value={editing.load} onChange={(load) => setLoad(editing.id, load)} />
             </Field>
-            <Field label="tags" stack>
-              <TagEditor tags={editing.tags} onChange={(tags) => setBucketTags(editing.id, tags)} suggestions={suggestions} />
+            <Field
+              label="tags"
+              stack
+              help="× removes a tag from this bucket. “retire” archives it everywhere new work is made — history, zones and existing tasks keep it, and you can bring it back below."
+            >
+              <TagEditor
+                tags={editing.tags}
+                onChange={(tags) => setBucketTags(editing.id, tags)}
+                suggestions={suggestions}
+                onRetire={retire}
+                retired={retired}
+              />
             </Field>
             <label className="field checkfield">
               <input type="checkbox" checked={allProt} onChange={() => toggleBucketProtected(editing)} aria-label="Protect this bucket's tags" />

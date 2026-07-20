@@ -36,7 +36,9 @@ energy control, then a phased build plan to ship them in one chunked effort.
 > don't trust the commit messages here, check `styles.css`.)*
 > P1 ✅ · P2 ✅ (drill-in list + §5.3 inherit/ghost mode).
 > P3 ✅ (Zones on the shared idiom).
-> P4 ❌ cancelled · P5 ❌ not started.
+> P4 ❌ cancelled (see the amendment above).
+> P5 ✅ — `retireTag` has a control (§8); the `role` UI and the inline styles are
+> gone. **All phases are now closed.**
 > **D-3 is moot** — `<EnergyControl>` is already built, so there is nothing left
 > to prototype ahead of it.
 

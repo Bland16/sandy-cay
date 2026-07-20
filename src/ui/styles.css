@@ -751,6 +751,17 @@ body.sc-dragging { user-select: none; }
 .tagrow { display: flex; gap: 6px; flex-wrap: wrap; margin: 5px 0; }
 /* the bucket colour well, sized to sit as a swatch beside its name */
 .control.swatchinput { width: 30px; padding: 0; flex: none; }
+/* tag chip actions — "retire" and "remove from bucket" are different verbs and
+   must not look like the same button (EDITOR-REDESIGN §8) */
+.tagrm { background: none; border: none; color: inherit; cursor: pointer; margin-left: 4px; font-weight: 800; padding: 0; }
+.tagretire {
+  background: none; border: none; cursor: pointer; padding: 0 0 0 6px;
+  color: inherit; opacity: .65; font-family: var(--font-type); font-size: 9px;
+  text-transform: uppercase; letter-spacing: .04em; text-decoration: underline;
+}
+.tagretire:hover, .tagretire:focus-visible { opacity: 1; }
+.pill.tag.isretired { opacity: .55; }
+.retiredmark { font-family: var(--font-type); font-size: 9px; opacity: .7; margin-left: 5px; }
 /* the drill-in editor's back button, and its destructive action (kept at the
    bottom, ghost — never adjacent to a save-like affordance, §3) */
 /* filter + sort above a long collection list (EDITOR-REDESIGN §7.1) */
