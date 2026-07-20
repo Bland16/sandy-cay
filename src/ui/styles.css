@@ -731,6 +731,15 @@ body.sc-dragging { user-select: none; }
 .editrow .erchev { flex: none; opacity: .5; }
 /* the drill-in editor's back button, and its destructive action (kept at the
    bottom, ghost — never adjacent to a save-like affordance, §3) */
+/* filter + sort above a long collection list (EDITOR-REDESIGN §7.1) */
+.listtools { display: flex; gap: 6px; align-items: center; margin: 6px 0 4px; }
+.listtools .control { min-width: 0; }
+/* the pager — bounded pages keep a 100-activity bucket calm */
+.pager { display: flex; gap: 8px; align-items: center; justify-content: center; margin: 8px 0 2px; }
+.pager .btn2 { flex: none; min-width: 0; padding: 4px 10px; font-size: 10.5px; }
+.pager .btn2:disabled { opacity: .35; cursor: default; }
+.pagerat { font-family: var(--font-type); font-size: 10px; color: #d8c6a5; opacity: .75; }
+
 .editback { margin-bottom: 10px; padding: 5px 9px; }
 .cabcard > .btn2.ghost:last-child { margin-top: 8px; padding: 5px 9px; }
 
@@ -775,10 +784,10 @@ body.sc-dragging { user-select: none; }
 }
 /* inheriting: ghost tubes — the value is real and readable, but visibly not this
    thing's own. Touching one commits it (EDITOR-REDESIGN §5.3). */
-.energyctl.inheriting .enfloat { opacity: .42; filter: drop-shadow(0 1px 1px rgba(0,0,0,.3)) saturate(.35); }
+.energyctl.inheriting .enfloat { opacity: .5; filter: drop-shadow(0 1px 1px rgba(0,0,0,.3)) saturate(.35); }
 .energyctl.inheriting .entrack::before { opacity: .5; }
 .energyctl.inheriting .entrack:focus-visible .enfloat,
-.energyctl.inheriting .entrack:hover .enfloat { opacity: .72; }
+.energyctl.inheriting .entrack:hover .enfloat { opacity: .8; }
 .entube { position: absolute; inset: 0; width: 100%; height: 100%; }
 .enrider { position: relative; z-index: 1; width: 15px; height: 15px; object-fit: contain; }
 /* inline text-button (e.g. "↺ inherit") in the Cabana's warm palette */

@@ -58,6 +58,9 @@ export class Task {
 
     this.deadline = data.deadline ? zeroSeconds(new Date(data.deadline)) : null;
     this.placedBy = data.placedBy === 'user' ? 'user' : 'auto';
+    // Which Activity template this was instantiated from, if any (EDITOR-REDESIGN
+    // §7.1). Null for ordinary tasks. Feeds the "most used" sort only.
+    this.activityId = data.activityId ?? null;
     this.schedulingWarning = data.schedulingWarning ?? false;
     // Non-color info flag for the "placed outside zone — due Wed" badge (SPEC
     // §2.2). Distinct from schedulingWarning (physics failure). null | string.
@@ -183,6 +186,7 @@ export class Task {
       endTime: dateToJSON(this.endTime),
       deadline: dateToJSON(this.deadline),
       placedBy: this.placedBy,
+      activityId: this.activityId,
       schedulingWarning: this.schedulingWarning,
       schedulingInfo: this.schedulingInfo,
       missedDeadline: this.missedDeadline,

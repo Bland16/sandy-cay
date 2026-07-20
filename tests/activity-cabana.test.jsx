@@ -31,6 +31,98 @@ function schedWith(...tagLists) {
   return s;
 }
 
+describe('§7.1 — a long activity list stays navigable', () => {
+  // 12 activities in one bucket: enough to page at the default size of 8.
+  const bucketOf = (n) => {
+    resetIds();
+    const s = new Schedule({ config: { ...defaultConfig, protectedTags: [] } });
+    s.addBucket({ label: 'Rest', tags: ['rest'] });
+    for (let i = 0; i < n; i += 1) {
+      s.addActivity({ bucketId: s.buckets[0].id, label: `Act ${String(i).padStart(2, '0')}`, durationMin: 15, durationMax: 60 });
+    }
+    return s;
+  };
+  const openRest = () => fireEvent.click(screen.getByRole('button', { name: 'Edit bucket Rest' }));
+  const rows = () => screen.queryAllByRole('button', { name: /^Edit activity / });
+
+  it('a short list shows no filter, no sort and no pager — the calm case is untouched', () => {
+    render(<Harness sched={bucketOf(3)} Comp={TagManager} />);
+    openRest();
+    expect(rows()).toHaveLength(3);
+    expect(screen.queryByLabelText(/Filter activities/)).toBeNull();
+    expect(screen.queryByLabelText('Sort activities')).toBeNull();
+    expect(screen.queryByLabelText('Next page of activities')).toBeNull();
+  });
+
+  it('a long list pages at 8, and next/prev walk it', () => {
+    render(<Harness sched={bucketOf(12)} Comp={TagManager} />);
+    openRest();
+    expect(rows()).toHaveLength(8);
+    expect(screen.getByText('1 of 2')).toBeTruthy();
+
+    fireEvent.click(screen.getByLabelText('Next page of activities'));
+    expect(rows()).toHaveLength(4);
+    expect(screen.getByText('2 of 2')).toBeTruthy();
+    expect(screen.getByLabelText('Next page of activities').disabled).toBe(true);
+
+    fireEvent.click(screen.getByLabelText('Previous page of activities'));
+    expect(screen.getByText('1 of 2')).toBeTruthy();
+    expect(screen.getByLabelText('Previous page of activities').disabled).toBe(true);
+  });
+
+  it('filtering from a later page returns to page 1 instead of showing an empty list', () => {
+    // The specific hazard of having both controls: filter down to 1 result while
+    // sitting on page 2 and, without the reset, you see nothing at all.
+    render(<Harness sched={bucketOf(12)} Comp={TagManager} />);
+    openRest();
+    fireEvent.click(screen.getByLabelText('Next page of activities')); // → page 2
+    expect(screen.getByText('2 of 2')).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText(/Filter activities/), { target: { value: 'Act 03' } });
+    expect(rows()).toHaveLength(1);
+    expect(screen.queryByText(/^\d+ of \d+$/)).toBeNull(); // one page → pager hidden
+  });
+
+  it('a filter matching nothing says so, and offers a way back', () => {
+    render(<Harness sched={bucketOf(12)} Comp={TagManager} />);
+    openRest();
+    fireEvent.change(screen.getByLabelText(/Filter activities/), { target: { value: 'zzz' } });
+    expect(rows()).toHaveLength(0);
+    expect(screen.getByText(/Nothing matches/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'clear the filter' }));
+    expect(rows()).toHaveLength(8); // back to the full first page
+  });
+
+  it('Z–A reverses the order', () => {
+    render(<Harness sched={bucketOf(12)} Comp={TagManager} />);
+    openRest();
+    expect(rows()[0].getAttribute('aria-label')).toBe('Edit activity Act 00');
+
+    fireEvent.change(screen.getByLabelText('Sort activities'), { target: { value: 'za' } });
+    expect(rows()[0].getAttribute('aria-label')).toBe('Edit activity Act 11');
+  });
+
+  it('most-used ranks by instantiations in the window, and leaving the bucket clears the filter', () => {
+    const s = bucketOf(12);
+    const target = s.activities.find((a) => a.label === 'Act 07');
+    for (let i = 0; i < 3; i += 1) {
+      s.addFixed({ title: 'Act 07', startTime: new Date(2026, 6, 15 + i, 9), endTime: new Date(2026, 6, 15 + i, 10), activityId: target.id });
+    }
+    render(<Harness sched={s} Comp={TagManager} />);
+    openRest();
+    fireEvent.change(screen.getByLabelText('Sort activities'), { target: { value: 'used' } });
+    expect(rows()[0].getAttribute('aria-label')).toBe('Edit activity Act 07');
+
+    // A filter left behind in one bucket must not follow you into the next view.
+    fireEvent.change(screen.getByLabelText(/Filter activities/), { target: { value: 'Act 03' } });
+    expect(rows()).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: /All buckets/ }));
+    openRest();
+    expect(rows()).toHaveLength(8);
+  });
+});
+
 describe('TagManager', () => {
   it('seeds the six starter buckets', () => {
     const s = schedWith();

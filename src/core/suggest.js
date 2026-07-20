@@ -207,6 +207,11 @@ export function placeActivity(schedule, activity, start, openingMin) {
     endTime: addMinutes(new Date(start), duration),
     placedBy: 'user',
     load: activity.load ?? null,
+    // Back-link to the template this came from (EDITOR-REDESIGN §7.1). Read by
+    // activityUsage for the "most used" sort. It records that you CHOSE this
+    // activity — never that you skipped one (P-1, see the boundary note at the
+    // top of this file).
+    activityId: activity.id,
   });
   const res = schedule.resolveDropConflicts(task);
   return { task, displaced: (res && res.displaced) || [] };

@@ -249,6 +249,54 @@ energy *override* framing (P-1: an activity just carries a `load` like a task).
   (`<EnergyControl>` in **inherit** mode by default — see §5.3).
 - **Add:** per-group `＋ activity`; empty-state points at making a bucket first.
 
+### 7.1 Scale — filter, sort & pages (session 5)
+
+The drill-in fixed the *wall* for five activities. It does nothing for a hundred,
+and a single bucket can hold that many on its own. So a bucket's Activities
+section gains a **filter box, a sort control, and pages** — all three, applied
+**within each bucket** (and within the "Unbucketed activities" group).
+
+**Order of operations: filter → sort → paginate.** Getting this wrong produces
+the classic bug where page 2 shows items that don't match the filter.
+
+- **Filter** — a plain substring match (case-insensitive) on the activity label.
+  Typing **resets to page 1**; otherwise you can filter down to 3 results while
+  stranded on page 4 and see an empty list. This is the one real hazard of
+  having both controls, so it is a hard rule, not a nicety.
+- **Sort** — three orders: **A–Z** (default), **Z–A**, and **most used**.
+- **Pages** — `config.activities.pageSize` (default **8**). The pager is
+  **hidden entirely when there's only one page**, so a bucket with three
+  activities looks exactly as it does today. Pager reads `‹ prev · 1 of 3 · next ›`.
+- **Empty states are distinct:** "no activities yet" (make one) is not the same
+  message as "nothing matches *foo*" (clear the filter).
+
+**"Most used" needs data the model doesn't have.** Today `placeActivity` creates
+a Task and discards which activity it came from, so usage is unknowable. The fix:
+
+- **`Task.activityId`** — a nullable back-link stamped by `placeActivity`, and
+  carried through `toJSON`/`fromJSON`. Nothing else reads it yet.
+- **`activityUsage(schedule, { now, days })`** → `{ [activityId]: count }`,
+  counting tasks whose `activityId` matches and whose `startTime` falls in the
+  trailing window. `config.activities.frequencyDays` default **90** — the list
+  should track what you're doing *lately*, not what you did in 2024.
+- **Cold start:** with no history every count is 0, so "most used" would be
+  arbitrary. It **always tiebreaks on A–Z**, making it stable and sensible on a
+  fresh install rather than random.
+
+**⚠ P-1 boundary — this counts what you DID, never what you skipped.** `suggest.js`
+is explicit that *"cycling past a suggestion records NOTHING — it cannot infer
+procrastination because it never watches what you skip."* Usage counts
+**instantiations**: you chose the activity and it became a task. A future change
+must not "improve" this by counting dismissals, ignored suggestions, or
+placed-then-deleted tasks as signal — that would turn a convenience sort into
+exactly the surveillance P-1 forbids. Counting a task that was placed but later
+skipped is fine (you chose it; the skip is not recorded as a judgement).
+
+**Bonus:** the `activityId` back-link is also the missing prerequisite for the
+parked **activity time-of-day preference** learning (decided 2026-07-18: learn it
+from where instances actually get placed). That work is blocked on exactly this
+link, so it lands here.
+
 ## 8. Retire — completed (decision: complete it)
 
 Today `unretireTag` has UI (the recover strip) but `retireTag` has **none**

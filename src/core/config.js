@@ -34,6 +34,9 @@ export const defaultConfig = {
   // shape, never a fabricated ceiling. `capacity` here is only the PRIOR/fallback used for
   // an axis that lacks enough evidence days — in load-hours of reserve debt.
   energy: { capacity: { mental: 8, physical: 6, social: 5, creative: 5 }, calibrationWeeks: 3 },
+  // Activity library list ergonomics (EDITOR-REDESIGN §7.1). frequencyDays is the
+  // trailing window "most used" counts over — recent habits, not lifetime totals.
+  activities: { pageSize: 8, frequencyDays: 90 },
   stabilityBonus: 1, // raw bonus magnitude for a placedBy:'user' task (scaled by weight)
   learning: {
     lambda: 0.1, learningRate: 0.05, epochs: 400, topTags: 6,

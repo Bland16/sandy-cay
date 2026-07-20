@@ -6,8 +6,8 @@
 //       Activities (add / paste-many); plus an "Unbucketed activities" entry;
 //   2 — one activity's focused editor (ActivityEditor).
 // No `role` enum — a bucket's character is its load vector (design/RECONCILIATION.md).
-import { useState } from 'react';
-import { seedStarterBuckets } from '../../core/index.js';
+import { useState, useMemo } from 'react';
+import { seedStarterBuckets, activityUsage, activityPage, activityCfg, SORTS, SORT_LABELS } from '../../core/index.js';
 import TagEditor, { tagsInUse } from './TagEditor.jsx';
 import EnergyControl from './EnergyControl.jsx';
 import ActivityEditor from './ActivityEditor.jsx';
@@ -16,6 +16,9 @@ import Icon from '../Icon.jsx';
 const ORPHANS = '__orphans__';
 const clampMin = (v) => { const n = Number(v); return Math.max(15, Math.round(Number.isFinite(n) ? n : 15)); };
 const countActs = (n) => `${n} activit${n === 1 ? 'y' : 'ies'}`;
+// Below this many, a bucket needs no filter/sort machinery — showing it would be
+// clutter in service of a problem you don't have (EDITOR-REDESIGN §7.1).
+const SIMPLE_LIST_MAX = 5;
 
 // One bulk line: "Name" | "min-max" | "tag, tag". Only the name is required.
 function parseBulkLine(line, bucket) {
@@ -37,6 +40,10 @@ export default function TagManager({ sched, mutate }) {
   const [editingActivityId, setEditingActivityId] = useState(null);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkText, setBulkText] = useState('');
+  // Activity list ergonomics (EDITOR-REDESIGN §7.1)
+  const [query, setQuery] = useState('');
+  const [sort, setSort] = useState('az');
+  const [page, setPage] = useState(1);
   const buckets = sched.buckets;
   const activities = sched.activities;
   const retired = sched.retiredTags;
@@ -47,8 +54,16 @@ export default function TagManager({ sched, mutate }) {
   const orphans = activities.filter((a) => !a.bucketId || !buckets.some((b) => b.id === a.bucketId));
 
   // Enter/leave a bucket (or the orphans view). Always resets the paste-many sheet
-  // so a half-open bulk box never leaks from one bucket into the next.
-  const openBucket = (id) => { setEditingId(id); setBulkOpen(false); setBulkText(''); };
+  // so a half-open bulk box never leaks from one bucket into the next — and the
+  // filter/page with it, so you don't walk into a bucket already filtered to
+  // nothing by a query you typed somewhere else.
+  const openBucket = (id) => { setEditingId(id); setBulkOpen(false); setBulkText(''); setQuery(''); setPage(1); };
+  // Typing MUST reset to page 1: filtering down to 3 results while stranded on
+  // page 4 shows an empty list (EDITOR-REDESIGN §7.1, the one real hazard of
+  // having a filter and a pager together).
+  const onQuery = (v) => { setQuery(v); setPage(1); };
+  const onSort = (v) => { setSort(v); setPage(1); };
+  const usage = useMemo(() => activityUsage(sched), [sched, sched.rev]);
 
   // bucket ops
   const setLoad = (id, load) => mutate((s) => { const b = s.buckets.find((x) => x.id === id); if (b) b.load = load; });
@@ -113,6 +128,9 @@ export default function TagManager({ sched, mutate }) {
     if (!isOrphans && !editing) { setEditingId(null); return null; }
     const list = isOrphans ? orphans : inBucket(editingId);
     const name = isOrphans ? 'No bucket' : editing.label;
+    // filter → sort → paginate (§7.1). paginate clamps, so a filter that shrinks
+    // the list can't strand us on a page that no longer exists.
+    const shown = activityPage(list, { query, sort, page, usage, pageSize: activityCfg(sched.config).pageSize });
     const allProt = !isOrphans && editing.tags.length > 0 && editing.tags.every((t) => protectedTags.includes(t));
     return (
       <div className="cabcard">
@@ -150,8 +168,37 @@ export default function TagManager({ sched, mutate }) {
         <div className="insight" style={{ fontWeight: 700, color: 'var(--cab-accent)', marginTop: isOrphans ? 0 : 12 }}>
           Activities <span style={{ opacity: 0.6, fontWeight: 400 }}>· {countActs(list.length)}</span>
         </div>
+        {/* Filter + sort appear only once the list is long enough to need them —
+            a bucket with three activities stays as calm as it is today. */}
+        {list.length > SIMPLE_LIST_MAX && (
+          <div className="listtools">
+            <input
+              className="control grow"
+              type="search"
+              value={query}
+              onChange={(e) => onQuery(e.target.value)}
+              placeholder="filter…"
+              aria-label={`Filter activities in ${name}`}
+            />
+            <select className="control" value={sort} onChange={(e) => onSort(e.target.value)} aria-label="Sort activities">
+              {SORTS.map((s) => <option key={s} value={s}>{SORT_LABELS[s]}</option>)}
+            </select>
+          </div>
+        )}
         {list.length === 0 && <p className="insight">No activities here yet.</p>}
-        {list.map((a) => activityRow(a))}
+        {list.length > 0 && shown.total === 0 && (
+          <p className="insight">
+            Nothing matches “{query}”. <button className="linklike" onClick={() => onQuery('')}>clear the filter</button>
+          </p>
+        )}
+        {shown.items.map((a) => activityRow(a))}
+        {shown.pageCount > 1 && (
+          <div className="pager">
+            <button className="btn2 ghost" onClick={() => setPage(shown.page - 1)} disabled={shown.page <= 1} aria-label="Previous page of activities">‹ prev</button>
+            <span className="pagerat" aria-live="polite">{shown.page} of {shown.pageCount}</span>
+            <button className="btn2 ghost" onClick={() => setPage(shown.page + 1)} disabled={shown.page >= shown.pageCount} aria-label="Next page of activities">next ›</button>
+          </div>
+        )}
         {bulkOpen && !isOrphans ? (
           <div className="zonewin" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
             <textarea
