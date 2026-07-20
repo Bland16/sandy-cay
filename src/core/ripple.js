@@ -5,8 +5,29 @@
 // Fixed/pinned/protected downstream tasks are walls; the wall and everything
 // after it stay put.
 
-import { sameDay, addMinutes, minutesBetween, addDays } from './time.js';
+import { sameDay, addMinutes, minutesBetween, addDays, atTime, dayStart, dayKeyOf } from './time.js';
 import { dayWindowBounds, intervalsOf, placeTask, recurrenceIntervals } from './placement.js';
+
+/**
+ * Would a task occupying [start, end) intrude on an exclusive zone it doesn't
+ * belong to? Mirrors computeWindows' exclusive-hole rule (§1.2): a zone that
+ * claims the task routes it IN, so matching tasks are free to sit inside; an
+ * exclusive zone reserves its hours against everyone else. Only zones in force
+ * on that day count (§1.2 effectiveFrom/effectiveUntil).
+ */
+function entersExclusiveZone(schedule, task, start, end) {
+  const key = dayKeyOf(start);
+  const base = dayStart(start);
+  for (const z of schedule.zones) {
+    if (!z.exclusive || z.matches(task) || !z.activeOn(start)) continue;
+    for (const w of z.windowsForDay(key)) {
+      const ws = atTime(base, w.start);
+      const we = atTime(base, w.end);
+      if (start.getTime() < we.getTime() && ws.getTime() < end.getTime()) return true;
+    }
+  }
+  return false;
+}
 
 export function rippleShift(schedule, pivotTask, deltaMin) {
   const config = schedule.config;
@@ -64,8 +85,18 @@ export function rippleShift(schedule, pivotTask, deltaMin) {
     // warning if nothing fits (visible beats invisible).
     const breaksDeadline = t.deadline && newEnd.getTime() > t.deadline.getTime();
 
-    if (shift > 0 && (newEnd.getTime() > limit.getTime() || breaksDeadline)) {
-      // Overflow (past the wall, the day window, or its deadline) → evacuate.
+    // §2.2 binds ripple too: an exclusive zone reserves its hours for the work
+    // it claims, so a plain shift must not nudge a non-matching task into one.
+    // The overflow branch already routes around zones (it calls placeTask); the
+    // shift branch is pure arithmetic and used to slide a flexible straight into
+    // reserved time, silently. Treat it exactly like a broken deadline — hand it
+    // to placeTask, which honours the zone. The check lives in the engine on
+    // purpose; a fourth UI copy of zone geometry would drift (sharp edges
+    // #14/#17). Matching tasks are unaffected — the zone is theirs to sit in.
+    const entersZone = entersExclusiveZone(schedule, t, newStart, newEnd);
+
+    if (shift > 0 && (newEnd.getTime() > limit.getTime() || breaksDeadline || entersZone)) {
+      // Overflow (past the wall, the day window, its deadline, or into a zone) → evacuate.
       const from = new Date(pivotEnd.getTime()); // forward-only from the pivot
       const to = addDays(from, config.maxPlacementLookahead);
       const occupied = intervalsOf(

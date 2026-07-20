@@ -70,3 +70,49 @@ describe('§1.2 zones can expire', () => {
     expect(z.activeOn(D(25))).toBe(false);
   });
 });
+
+describe('§1.2 — exclusivity is symmetric across overlapping zones', () => {
+  // A task routed into the zone it matches must still stay out of a *different*
+  // exclusive zone it does not match, where the two overlap in time.
+  const wideCfg = { ...defaultConfig, windows: { ...defaultConfig.windows, monFri: { start: '06:00', end: '23:00' } } };
+
+  beforeEach(() => resetIds());
+
+  it('a matching task is not deposited inside an overlapping exclusive zone it does not match', () => {
+    const s = new Schedule({ config: wideCfg });
+    // Work claims 10:00–11:00 Mon; Study reserves 09:00–18:00 Mon and overlaps it.
+    s.addZone({ label: 'Work', matchTags: ['work'], windows: [{ day: 'mon', start: '10:00', end: '11:00' }], exclusive: true });
+    s.addZone({ label: 'Study', matchTags: ['study'], windows: [{ day: 'mon', start: '09:00', end: '18:00' }], exclusive: true });
+
+    const t = s.addFlexible({ title: 'Work task', tags: ['work'], durationMin: 60, from: D(13) });
+    const inStudy = (d) => d.getDay() === 1 && d.getHours() >= 9 && d.getHours() < 18;
+    // Work's only window sits inside exclusive Study, so the Work zone has no
+    // usable capacity Monday; the task relaxes to general windows — anywhere but
+    // the study block.
+    expect(inStudy(t.startTime)).toBe(false);
+  });
+
+  it('still routes a matching task into its own zone when there is no overlap conflict', () => {
+    const s = new Schedule({ config: wideCfg });
+    s.addZone({ label: 'Work', matchTags: ['work'], windows: [{ day: 'mon', start: '09:00', end: '18:00' }], exclusive: true });
+    const t = s.addFlexible({ title: 'Work task', tags: ['work'], durationMin: 60, from: D(13) });
+    const h = t.startTime.getHours();
+    expect(t.startTime.getDay()).toBe(1);
+    expect(h >= 9 && h < 18).toBe(true); // inside its own Work zone
+  });
+
+  it('autoSchedule keeps a matching task clear of an overlapping exclusive zone', () => {
+    const s = new Schedule({ config: wideCfg });
+    s.addZone({ label: 'Work', matchTags: ['work'], windows: [{ day: 'mon', start: '09:00', end: '18:00' }], exclusive: true });
+    s.addZone({ label: 'Gym', matchTags: ['gym'], windows: [{ day: 'mon', start: '12:00', end: '13:00' }], exclusive: true });
+    // Fill 09:00–12:00 so the greedy pass is tempted by the 12:00 Gym slot.
+    s.addFlexible({ title: 'W1', tags: ['work'], startTime: D(13, 9), endTime: D(13, 10) });
+    s.addFlexible({ title: 'W2', tags: ['work'], startTime: D(13, 10), endTime: D(13, 11) });
+    s.addFlexible({ title: 'W3', tags: ['work'], startTime: D(13, 11), endTime: D(13, 12) });
+    const target = s.addFlexible({ title: 'W4', tags: ['work'], durationMin: 60, from: D(13) });
+    s.autoSchedule({ now: D(13) });
+    const h = target.startTime.getHours();
+    const inGym = target.startTime.getDay() === 1 && h >= 12 && h < 13;
+    expect(inGym).toBe(false);
+  });
+});
