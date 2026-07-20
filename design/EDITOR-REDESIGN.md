@@ -330,6 +330,32 @@ The cross-bucket sheet lives at the **bucket list**, because that is the level i
 operates on; the in-bucket sheet keeps its own default but understands headings
 too.
 
+### 7.3 The 15-minute floor — DECIDED: no sub-grid activities (session 5)
+
+Real use surfaced activities that are genuinely a minute or two: *drink some
+water*, *phone break*, *drink some tea*. `Activity.js` clamps `durationMin` to
+**15** (OD-1: the grid snaps to 15 and the wave/sand resize borders can't cross),
+so these were silently becoming quarter-hour blocks.
+
+**Decision: the floor stays, and micro-activities do not get a sub-grid
+representation.** An Activity is a *template for a Task*, and a Task is a block on
+a 15-minute grid — so a 3-minute activity would still occupy 15 minutes once
+placed. Adding a sub-grid duration would let the library promise something the
+schedule cannot keep, which is worse than the floor.
+
+**What changes is honesty, not the number.** The clamp was silent: type 5, get 15,
+no explanation. Now:
+
+- `parseActivityLine` returns **`raisedToFloor`** when the written duration was
+  below the floor (as opposed to simply omitted — defaulting to 15 is not the
+  same as overriding what someone wrote).
+- The paste preview **names** the rows it raised.
+- The activity editor states the rule under the length field.
+
+*(If a real "moment" concept is ever wanted — something logged without occupying
+grid time — it is a new object, not a short Activity, and it belongs with the
+passive-wait work in `ROUTINES.md`. Not proposed now.)*
+
 **Bonus:** the `activityId` back-link is also the missing prerequisite for the
 parked **activity time-of-day preference** learning (decided 2026-07-18: learn it
 from where instances actually get placed). That work is blocked on exactly this

@@ -22,6 +22,7 @@ const countActs = (n) => `${n} activit${n === 1 ? 'y' : 'ies'}`;
 function BulkPreview({ draft, onCommit, onCancel }) {
   const { fresh, duplicates, unknownBuckets, unassigned } = draft;
   const buckets = new Set(fresh.map((d) => d.bucketId));
+  const raised = fresh.filter((d) => d.raisedToFloor);
   return (
     <>
       <div className="chest">
@@ -44,6 +45,11 @@ function BulkPreview({ draft, onCommit, onCancel }) {
       {unassigned.length > 0 && (
         <div className="field-help">
           {unassigned.length} row{unassigned.length === 1 ? '' : 's'} before the first “# bucket” heading, with no bucket to put them in — skipped.
+        </div>
+      )}
+      {raised.length > 0 && (
+        <div className="field-help">
+          raised to the 15-minute minimum: {raised.map((d) => d.label).join(', ')} — the grid can’t hold a shorter block.
         </div>
       )}
     </>

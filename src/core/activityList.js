@@ -131,15 +131,26 @@ const clampMin = (v) => { const n = Number(v); return Math.max(MIN_DURATION, Mat
 export function parseActivityLine(line, bucket) {
   const [namePart, durPart, tagPart] = String(line).split('|').map((s) => (s || '').trim());
   let durationMin = MIN_DURATION; let durationMax = 60;
+  // Track whether we RAISED what was written. The grid can't render a block
+  // shorter than 15 min (OD-1: the wave/sand borders can't cross), so a 3-minute
+  // activity is not representable — but clamping it silently means the library
+  // quietly disagrees with what you typed.
+  let raisedToFloor = false;
+  const below = (v) => Number(v) > 0 && Number(v) < MIN_DURATION;
   if (durPart) {
     const range = durPart.match(/(\d+)\s*[-–]\s*(\d+)/);
-    if (range) { durationMin = clampMin(range[1]); durationMax = Math.max(durationMin, clampMin(range[2])); }
-    else if (/^\d+$/.test(durPart)) { durationMin = clampMin(durPart); durationMax = durationMin; }
+    if (range) {
+      raisedToFloor = below(range[1]) || below(range[2]);
+      durationMin = clampMin(range[1]); durationMax = Math.max(durationMin, clampMin(range[2]));
+    } else if (/^\d+$/.test(durPart)) {
+      raisedToFloor = below(durPart);
+      durationMin = clampMin(durPart); durationMax = durationMin;
+    }
   }
   const tags = tagPart
     ? tagPart.split(',').map((t) => t.trim().toLowerCase()).filter(Boolean)
     : (bucket ? [...bucket.tags] : []);
-  return { label: namePart || 'Activity', bucketId: bucket ? bucket.id : null, tags, durationMin, durationMax };
+  return { label: namePart || 'Activity', bucketId: bucket ? bucket.id : null, tags, durationMin, durationMax, raisedToFloor };
 }
 
 /** A "# Bucket name" line retargets everything after it. */

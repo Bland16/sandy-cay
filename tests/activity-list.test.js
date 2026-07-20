@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { Schedule, resetIds } from '../src/core/index.js';
 import {
   activityUsage, activityPage, filterActivities, sortActivities, paginate,
-  dedupeDrafts, dedupeBulk, parseBulkBlock,
+  dedupeDrafts, dedupeBulk, parseBulkBlock, parseActivityLine,
 } from '../src/core/activityList.js';
 
 const D = (d, h = 9) => new Date(2026, 6, d, h, 0, 0, 0);
@@ -283,5 +283,30 @@ describe('§7.1 — a paste can span buckets via "# Bucket" headings', () => {
     const { drafts } = parseBulkBlock('# Rest\nCreative | 30-60', { buckets });
     expect(drafts[0].label).toBe('Creative');
     expect(drafts[0].durationMin).toBe(30);
+  });
+});
+
+describe('§7.3 — the 15-minute grid floor is reported, not silently applied', () => {
+  it('flags a row written shorter than the floor', () => {
+    const d = parseActivityLine('drink some water | 3', null);
+    expect(d.durationMin).toBe(15); // still clamped — the grid cannot hold less
+    expect(d.raisedToFloor).toBe(true); // ...but the UI can say so
+  });
+
+  it('flags a range whose low end is under the floor', () => {
+    const d = parseActivityLine('phone break | 5-20', null);
+    expect(d.durationMin).toBe(15);
+    expect(d.durationMax).toBe(20);
+    expect(d.raisedToFloor).toBe(true);
+  });
+
+  it('does not flag a row at or above the floor', () => {
+    expect(parseActivityLine('nap | 20-45', null).raisedToFloor).toBe(false);
+    expect(parseActivityLine('stretch | 15-25', null).raisedToFloor).toBe(false);
+  });
+
+  it('does not flag a row that named no duration at all', () => {
+    // Defaulting to 15 is not the same as overriding what someone wrote.
+    expect(parseActivityLine('meditate', null).raisedToFloor).toBe(false);
   });
 });

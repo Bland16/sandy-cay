@@ -40,7 +40,7 @@ export default function ActivityEditor({ sched, mutate, activityId, onBack, sugg
           </select>
         </div>
       </div>
-      <div className="field">
+      <div className="field stack">
         <span className="flabel">length</span>
         <div className="fctl rangefield">
           <input className="control num" type="number" min="15" step="5" value={a.durationMin} onChange={(e) => { const min = clampMin(e.target.value); patch({ durationMin: min, durationMax: Math.max(min, a.durationMax) }); }} aria-label={`${a.label} minimum minutes`} />
@@ -48,6 +48,9 @@ export default function ActivityEditor({ sched, mutate, activityId, onBack, sugg
           <input className="control num" type="number" min="15" step="5" value={a.durationMax} onChange={(e) => patch({ durationMax: Math.max(a.durationMin, clampMin(e.target.value)) })} aria-label={`${a.label} maximum minutes`} />
           <span className="runit">min · fills the opening</span>
         </div>
+        {/* The floor is a grid fact (OD-1), not a preference — say so rather than
+            silently rounding someone's 5 up to 15. */}
+        <div className="field-help">15 minutes is the shortest block the grid can hold.</div>
       </div>
       <div className="field">
         <span className="flabel">priority</span>
