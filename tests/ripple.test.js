@@ -88,3 +88,90 @@ describe('3B — rippleShift three-stage absorption', () => {
     expect(flex.overlaps(wall)).toBe(false);
   });
 });
+
+describe('§2.2 — ripple honours exclusive zones (the automatic guarantee)', () => {
+  // Wide day window so there's room outside the 09:00–18:30 work zone.
+  const cfg = {
+    ...defaultConfig,
+    windows: { ...defaultConfig.windows, monFri: { start: '06:00', end: '23:00' } },
+  };
+  const workZone = (extra = {}) => ({
+    label: 'Work',
+    matchTags: ['work'],
+    windows: ['mon', 'tue', 'wed', 'thu', 'fri'].map((day) => ({ day, start: '09:00', end: '18:30' })),
+    exclusive: true,
+    ...extra,
+  });
+  const inZone = (d) => {
+    const h = d.getHours() + d.getMinutes() / 60;
+    return d.getDay() >= 1 && d.getDay() <= 5 && h >= 9 && h < 18.5;
+  };
+
+  beforeEach(() => resetIds());
+
+  it('a plain shift never slides a non-matching task into an exclusive zone', () => {
+    const s = new Schedule({ config: cfg });
+    s.addZone(workZone());
+    const pivot = s.addFixed({ title: 'Pivot', tags: ['personal'], startTime: T(6), endTime: T(7) });
+    const errand = s.addFlexible({ title: 'Errand', tags: ['personal'], startTime: T(7, 30), endTime: T(8, 30) });
+
+    // The pivot grew by 90 min; the raw arithmetic would slide the errand to
+    // ~08:35–09:35, straddling the 09:00 work zone. Before the zone check the
+    // errand was merely *shifted* there, silently; now it must *evacuate* clear.
+    s.rippleShift(pivot, 90);
+
+    expect(s.tasks.find((t) => t.title === 'Errand')).toBe(errand);
+    // Evacuated, not shifted — and wherever it lands, not inside the zone.
+    expect(inZone(errand.startTime)).toBe(false);
+    expect(inZone(new Date(errand.endTime.getTime() - 1))).toBe(false);
+  });
+
+  it('reports the intruder as evacuated, not shifted', () => {
+    const s = new Schedule({ config: cfg });
+    s.addZone(workZone());
+    const pivot = s.addFixed({ title: 'Pivot', tags: ['personal'], startTime: T(6), endTime: T(7) });
+    const errand = s.addFlexible({ title: 'Errand', tags: ['personal'], startTime: T(7, 30), endTime: T(8, 30) });
+
+    const res = s.rippleShift(pivot, 90);
+    expect(res.evacuated.map((t) => t.id)).toContain(errand.id);
+    expect(res.shifted.map((t) => t.id)).not.toContain(errand.id);
+  });
+
+  it('leaves a matching task inside its own zone — it is shifted, not evicted', () => {
+    const s = new Schedule({ config: cfg });
+    s.addZone(workZone());
+    const pivot = s.addFixed({ title: 'WPivot', tags: ['work'], startTime: T(9), endTime: T(10) });
+    const wtask = s.addFlexible({ title: 'Wtask', tags: ['work'], startTime: T(10, 30), endTime: T(11, 30) });
+
+    const res = s.rippleShift(pivot, 60);
+    expect(res.evacuated.length).toBe(0);
+    expect(res.shifted.map((t) => t.id)).toContain(wtask.id);
+    // Still inside the work zone the task belongs to.
+    expect(inZone(wtask.startTime)).toBe(true);
+  });
+
+  it('a non-exclusive zone does not block a shift (it only routes matching work)', () => {
+    const s = new Schedule({ config: cfg });
+    s.addZone(workZone({ exclusive: false }));
+    const pivot = s.addFixed({ title: 'Pivot', tags: ['personal'], startTime: T(6), endTime: T(7) });
+    const errand = s.addFlexible({ title: 'Errand', tags: ['personal'], startTime: T(7, 30), endTime: T(8, 30) });
+
+    const res = s.rippleShift(pivot, 90);
+    // No exclusive reservation → the ordinary shift stands, no evacuation.
+    expect(res.evacuated.length).toBe(0);
+    expect(res.shifted.map((t) => t.id)).toContain(errand.id);
+  });
+
+  it('an expired zone no longer blocks a shift into its old hours', () => {
+    const s = new Schedule({ config: cfg });
+    // Zone ended before this Monday (effectiveUntil is exclusive: last day = Sun).
+    s.addZone(workZone({ effectiveUntil: new Date(2026, 6, 13) }));
+    const pivot = s.addFixed({ title: 'Pivot', tags: ['personal'], startTime: T(6), endTime: T(7) });
+    const errand = s.addFlexible({ title: 'Errand', tags: ['personal'], startTime: T(7, 30), endTime: T(8, 30) });
+
+    const res = s.rippleShift(pivot, 90);
+    // The zone isn't in force today, so its hours are ordinary time again.
+    expect(res.evacuated.length).toBe(0);
+    expect(res.shifted.map((t) => t.id)).toContain(errand.id);
+  });
+});

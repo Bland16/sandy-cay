@@ -6,6 +6,20 @@ model, and the one change that buys the most is giving activities a **load vecto
 instead of a tag soup.* Everything ambitious we're excited about — the energy
 budget, week-forecasting, the P-1-safe "read my day" — hangs off this one primitive.
 
+> ### ⚠ PARTLY SUPERSEDED — read [`RECONCILIATION.md`](RECONCILIATION.md) first
+>
+> The core idea (a four-axis load vector as the representation basis) stands and
+> is built. The *defaults* and the *accountant* described below do not:
+>
+> | In this doc | Superseded by |
+> |---|---|
+> | Role-derived bucket defaults ("Work → mental +2; Rest → mental −2") | RECONCILIATION P-2/P-3 — `role` is gone; bucket load defaults to **neutral 0**, user-authored. Fabricated per-role numbers were the dishonesty this reconciliation exists to fix. |
+> | "**Activity override.** An activity tweaks its bucket's default" | RECONCILIATION P-1 — wrong object. An activity carries a `load` like any task, not a bespoke override capability. |
+> | The order-blind accountant (`mentalLeft(day) = capacity.mental − Σ …`) | Replaced in code by the **time-ordered battery / deepest-dip** model (`energy.js`). |
+> | A hardcoded daily capacity | **Learned.** `learnedCapacity()` returns `null` until `config.energy.calibrationWeeks` (default 3) of `energy` ratings exist; until then the app shows a "still learning" shape with **no ceiling and no over/under verdict**. |
+>
+> The current tag→load resolution actually implemented is `energy.js#loadForTask`.
+
 ## The one idea
 
 Today the learning model represents a task by its **tags** (top-6 one-hot). That's

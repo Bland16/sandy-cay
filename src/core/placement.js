@@ -97,6 +97,17 @@ export function computeWindows(schedule, task, date, { ignoreZone = false } = {}
       if (e > s) clipped.push({ start: s, end: e });
     }
     windows = unionIntervals(clipped);
+    // Matching a zone routes the task IN, but exclusivity is symmetric: a *different*
+    // exclusive zone the task does NOT match still reserves its hours against
+    // everyone else, and a matching window can overlap it (Work 09:00–18:30 vs an
+    // evening Study block, both exclusive). Carve those out here too — the `else`
+    // branch already does for the non-matching case — or a work task lands inside
+    // the study block. If nothing survives, placeTask's relaxation (ignoreZone)
+    // is the deadline > zone escape hatch.
+    const otherHoles = schedule.zones
+      .filter((z) => z.exclusive && z.activeOn(date) && !z.matches(task))
+      .flatMap((z) => zoneIntervalsOnDay(z, date));
+    windows = subtractIntervals(windows, otherHoles);
   } else {
     const exclusiveHoles = ignoreZone
       ? []

@@ -107,6 +107,8 @@ class Schedule {
 ### 2.2 Constraint precedence
 **deadline > zone > general windows.** Deadline tasks may only occupy slots ending ≤ deadline. If a matching zone lacks pre-deadline capacity, the zone relaxes (info badge: "placed outside Study zone — due Wed"). No pre-deadline capacity at all → park in best pre-deadline gap, `schedulingWarning`, coral badge.
 
+**Who this binds — automatic placement only.** Precedence is a guarantee the *engine* keeps on every automatic move: first placement, `autoSchedule`/re-optimize, displacement, `carryOver`, **and both branches of ripple** (the plain shift as well as the overflow). No automatic move may land a task past its deadline or route a non-matching task into an exclusive zone; where the natural target would, the engine relocates the task clear of the violation (parking with `schedulingWarning` only when nothing pre-deadline fits). **Manual drag/drop is exempt (R-1): the user's hand always wins.** A person may drop a non-work task into the work zone, or place a work task there themselves — the zone constrains the scheduler, not the hand, and a manual placement is never silently re-routed or auto-corrected. (Ripple's shift branch honoured the deadline half of this but not the zone half until 2026-07-16 — it could nudge a flexible into an exclusive zone; see the decision record.)
+
 ### 2.3 Slot scoring (all placement flows share this)
 
 ```js

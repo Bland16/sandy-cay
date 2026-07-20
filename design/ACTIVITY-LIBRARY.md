@@ -1,7 +1,24 @@
 # Activity Library, Tag Buckets & a satisfaction-steered "What to do"
 
-**Status:** DRAFT spec (session 4, 2026-07-16). Not built yet. Open questions at
-the end. Sits alongside SPEC §6 (What To Do) and the Cabana.
+**Status:** DRAFT spec (session 4, 2026-07-16). Sits alongside SPEC §6 (What To
+Do) and the Cabana.
+
+> ### ⚠ PARTLY SUPERSEDED — read [`RECONCILIATION.md`](RECONCILIATION.md) first
+>
+> This doc predates the session-4 reconciliation. It is kept for the history and
+> for the parts still current (buckets, activities-as-templates, retire
+> semantics, the steered "what to do"). **These parts are dead and must not be
+> built from here:**
+>
+> | In this doc | Superseded by |
+> |---|---|
+> | The `role` enum, marked "(LOCKED)" (§ object model), the per-role steering table, and `roleOf(task)` | RECONCILIATION P-3 — `role` is **ripped out of the model entirely**; character derives from the load vector. Already done in code. |
+> | Role-derived load defaults | RECONCILIATION P-2 — load defaults to **neutral 0**, user-authored. |
+> | Per-activity energy **override** as a capability | RECONCILIATION P-1 — an activity is a *thin task template*; it may hold only what a task holds. |
+> | `role×time` / `role×weekend` learning interactions ("Phase D.1 (DONE)") | Removed; `MODEL_LAYOUT_VERSION` bumped to 3. Per-position learning returns in L-2 keyed off **load**. |
+>
+> Editor/UI shape for buckets and activities is specified in
+> [`EDITOR-REDESIGN.md`](EDITOR-REDESIGN.md), not here.
 
 ## The ask
 

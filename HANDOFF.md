@@ -1,23 +1,99 @@
 # Sandy Cay — handoff
 
-**Updated:** 2026-07-17, session 4 (reconciliation). Sessions 1–2 are on `main`
-(https://github.com/Bland16/sandy-cay), CI green. Session 3 (responsive) and
-session 4 (this pass) live on branches/worktrees, **not yet merged** — see "Where
-the work is" below.
+**Updated:** 2026-07-20, session 5. **`main` is now the trunk again** and is
+live on Pages (https://bland16.github.io/sandy-cay/). PRs #1, #2 and #4 are
+merged: the wrap report, recurrence/zones, responsive, the past-placement floor,
+unique task ids, the de-flaked suite, and ripple/zone exclusivity. 314 tests
+green on `main`.
+
+**The one branch still outstanding is `worktree-activity-library`** (PR #3,
+draft) — the Activity Library / Tag Buckets / energy work. It is *not* merged
+and it is where the session-4/5 respec was written. **You are on that branch.**
 
 ```bash
 npm install
 npm run dev      # http://localhost:5173/sandy-cay/
-npm run test:run # 299 tests — see the ⚠️ flaky-tests note below before trusting green
+npm run test:run # 308 tests, all green any day of the week (flaky tests fixed)
 npm run build
 npx eslint src
 ```
 
 ---
 
+## The design specs — read in this order
+
+`SPEC.md`, `FRONTEND-SPEC.md` and `design/UI-CONTROL-MAP.md` are the standing
+contract. The Activity Library / energy line of work is specified across five
+docs in `design/`, and **they are a stack of corrections — later docs overrule
+earlier ones**:
+
+1. `design/ACTIVITY-LIBRARY.md` (s4, 07-16) — buckets, activities, steered
+   what-to-do. ⚠ partly superseded (banner at top).
+2. `design/ENERGY-MODEL.md` (s4, 07-17) — the four-axis load basis. ⚠ partly
+   superseded (banner at top).
+3. `design/ROUTINES.md` (s4, 07-17) — routines, passive waits, travel. Unbuilt.
+4. **`design/RECONCILIATION.md` (s4, 07-17)** — corrects 1 and 2. The forks in
+   it are RESOLVED. Start here for the model.
+5. **`design/EDITOR-REDESIGN.md` (s5, 07-18)** — the current build spec: one
+   drill-in idiom, the form vocabulary, the wave `<EnergyControl>`, and the
+   **P0–P5 phased plan**. Build is *gated on sign-off*; D-1…D-5 are still open.
+
+The code for 1–5 lives on `worktree-activity-library`, not `main`. Roughly P0–P3
+are built (role rip-out done, `<EnergyControl>` built, Zones + Buckets + the
+Activities list on the drill-in idiom); **P2 is incomplete** (the per-activity
+energy override was never removed) and **P4–P5 are untouched**.
+
+---
+
 ## ⚠️ READ THIS FIRST
 
-### Session 4 was a RECONCILIATION. The master plan is `design/RECONCILIATION.md`.
+### The model was reconciled in session 4; session 5 respec'd the editors and reversed the energy-authoring call.
+
+Read `design/RECONCILIATION.md` (the corrected model) then
+`design/EDITOR-REDESIGN.md` (the current build spec, P0–P5). The reading order
+for all five design docs is in the section above.
+
+**Where the build actually stands on this branch (`worktree-activity-library`):**
+
+- ✅ **Role rip-out — done.** `role` is gone from `Bucket.js`, `energy.js`,
+  `index.js`, `Schedule.js` (`roleOf` removed, `bucketForTask` kept),
+  `learning.js` (role×time / role×weekend interactions removed,
+  `MODEL_LAYOUT_VERSION` → 3), `suggest.js` (steering keys off load character),
+  `TagManager.jsx`. The only `role` left in `src/` is DOM/ARIA.
+- ✅ **Unique ids** for Bucket/Activity/Zone (`_uniqueInColl` / `_dedupeIds`).
+- ✅ **Energy gating** — `config.energy.calibrationWeeks` (default 3);
+  `learnedCapacity()` returns `null` until calibrated; the card shows a "still
+  learning" shape with **no ceiling and no over/under verdict**.
+- ✅ **P0–P1, P3** — the form vocabulary, the drill-in idiom, the wave
+  `<EnergyControl>`, and the Zones + Buckets editors.
+- ⚠️ **P2 incomplete** — the Activities drill-in list shipped, but
+  `ActivityEditor.jsx` still renders the old "customise / inherit" text wall
+  instead of `<EnergyControl>`'s ghost-tube inherit mode (EDITOR-REDESIGN §9).
+- ❌ **P5 untouched** — `retireTag` is still orphaned (no UI caller; only
+  `unretireTag` is wired), dead inline styles remain.
+
+### ⛔ Session-5 decisions that OVERRULE the specs below — do not build the old way
+
+1. **Energy is autocalculated from tags. There is NO energy control on the task
+   UI.** The task page must not be crowded with dials. The live calculation is
+   `energy.js#loadForTask`: every bucket sharing ≥1 tag with the task
+   contributes, and per axis the *positive* contributions are averaged among
+   themselves, the *negative* ones averaged among themselves, and the two means
+   added — so spend and restore do **not** cancel before averaging.
+2. **`<EnergyControl>` keeps two homes, not three:** the bucket editor and the
+   activity editor (inherit mode). The activity's control is *correct* — only its
+   presentation is outstanding (P2 above).
+
+**This kills `EDITOR-REDESIGN.md` P4 and reverses `RECONCILIATION.md` P-1/P-2's
+"energy is authored on the task, on the schedule."** Both docs carry a banner
+saying so. Note `task.load` was never writable anyway — `load` is absent from
+`UPDATE_WHITELIST` (`Schedule.js`), so `updateTask` silently drops it.
+
+**Known divergence, unresolved:** `loadForTask` uses **all** matching buckets;
+`Schedule.bucketForTask` returns only the **first** match. Two different
+tag→bucket rules. Now that tags are the sole source of energy, this matters.
+
+### The original session-4 framing (kept for the reasoning)
 
 Real use exposed that the activity / energy / bucket features accrued design debt
 (a fix that wasn't generalised, a UI redesign applied to one editor not all, a
@@ -31,29 +107,27 @@ consolidated fix/redesign plan. **Read `design/RECONCILIATION.md` first.** State
   of ratings calibrate capacity (no fabricated ceiling before that); bucket/task
   load defaults to **neutral 0, user-set**.
 - **Task is the atom; Activity is a thin task template** (nothing a task lacks).
-  So energy becomes editable **on the task, on the schedule**; the per-activity
-  energy override is wrong-object and gets removed.
-- **⛔ NOTHING IS BUILT YET — deliberately.** The user's explicit call:
-  *spec it all, build nothing until the plan is reviewed.* Do **not** start
-  editing code until they've torn the spec apart and signed off. The rip-out is
-  fully spec'd (file-by-file table in RECONCILIATION.md §"The role rip-out"), but
-  it stays a plan until approved.
+  ~~So energy becomes editable **on the task, on the schedule**; the
+  per-activity energy override is wrong-object and gets removed.~~
+  **↑ REVERSED in session 5 — see the decisions box above.** Energy is derived
+  from tags; there is no task-level control, and the activity keeps its own.
 
-**Build order once approved** (RECONCILIATION.md §"Build order"):
-1. **Bug-fix PR** (off `wrap-report`): the cross-week double-book bugs — `conflicts.js`
-   silently books a displaced task onto next week's pinned recurring anchor
-   (proven 800/800 silent), `carryOver` double-books *and* places outside the
-   target week, `_occupiedExcluding` when `to` is omitted — all HIGH; the iCal
-   `UNTIL`/`EXDATE` bugs; **unique ids for Bucket/Activity/Zone** (the
-   two-new-buckets bug — the task-id fix was never generalised); and
-   **reproduce-then-fix the ripple bug** (a 5-min ripple flung the next task to
-   the next day — core `rippleShift` tests clean, so it's the UI commit path).
-2. **Reconciliation redesign** (feature branch): role rip-out, task energy on the
-   schedule, Activities → drill-in editor, energy "still learning" state, unify
-   the three editor idioms into drill-in + `TagEditor`.
-3. **Two product calls still open for the user:** retire (add a control, or drop
-   the half-wired feature — `unretireTag` has UI, `retireTag` has none) and
-   project management (build a surface for the chunk ops, or leave them internal).
+**Build order — step 1 is DONE and merged** (PRs #1/#2/#4 are on `main`; the
+cross-week `conflicts.js` double-book, `_occupiedExcluding`, the past-placement
+floor, unique ids and the de-flake all shipped). What remains:
+
+1. **Still open on `main`, from that bug list:** `carryOver` double-books *and*
+   places outside the target week (`carryOver.js:22` uses `toWs + lookahead + 6`
+   while `:43` filters occupied to days 0–6), and the iCal `EXDATE`/
+   `RECURRENCE-ID` wrong-time bug (`ical.js:174`'s `hhmmOf` reads `periods[0]`).
+   Also `recurrence.js` silently drops an `add` on a day the pattern fills, and
+   the `time.js` isoWeek comment example is still self-contradictory.
+2. **Finish the editor redesign** (this branch): P2's remainder, then P5.
+   **P4 is cancelled** — see the decisions box above.
+3. **One product call still open:** project management — build a surface for the
+   chunk ops (`growChunk`/`shrinkChunk`/`resizeChunk`/`deleteChunk`/
+   `finishProject`/`redistribute`, all unreachable from the UI today), or leave
+   them internal. *(Retire is decided: complete it, EDITOR-REDESIGN §8.)*
 
 **Same lesson as session 2, reinforced:** every HIGH bug this session found is in
 code the green suite "covers." The cross-week double-books are *proven* by probe
@@ -61,18 +135,20 @@ yet no test caught them. Drive the real app on real data; don't trust green.
 
 ---
 
-**Wrap report (§7.1 / R-7) and Responsive (§11) are DONE** (sessions 2–3). Two
-pre-reconciliation items remain, now sequenced *behind* the plan above: **verify
-touch drag on a real phone** (see PENDING section) and confirm the flaky-test fix
-landed on your branch.
+**Wrap report (§7.1 / R-7) and Responsive (§11) are DONE. The date-flaky tests
+are FIXED and ripple now honours zones (session 3).** Still unrun: **verify touch
+drag on a real phone**, and drive a ripple near the work zone.
 
-**✅ The date-flaky UI tests are FIXED.** `tests/ui-drag.test.jsx` and
-`tests/ui-bulk.test.jsx` now pin the clock with `vi.setSystemTime` (present in
-both), so `test:run` is deterministic again — no more red Thu–Sun / green Mon–Wed.
-*(The fix is in-tree here; confirm it's on whichever branch you build from.)*
-The old bug: they seeded with `new Date()` and hardcoded weekday placement, so a
-late-in-week wall clock floored auto-placement a day later and the hardcoded
-column missed. Kept as a cautionary tale — UI tests must inject fixed dates too.
+**✅ The 11 date-flaky UI tests are fixed (session 3).** `tests/ui-drag.test.jsx`
+and `tests/ui-bulk.test.jsx` seeded with `new Date()` and hardcoded weekday
+columns ("Read novel → Wed col 2"). A fresh flexible's placement origin is "now",
+so proximity lands the seed's flexibles on now's own weekday (Mon→col0, Tue→col1,
+Wed→col2). The columns assume **Wednesday** (also the day the seed skips the gym,
+freeing Wed morning) — so the suite was red Thu–Sun, green only mid-week. Both
+files now `vi.setSystemTime` a fixed **Wednesday** (2026-07-15) before the seed,
+faking only `Date` so async timers live. **Note: this handoff previously advised
+a fixed *Monday* — that's wrong, Monday lands Read novel on col0.** `test:run` is
+now trustworthy every day (299 → 308 with new tests, green on a Thursday).
 
 **Never trust an agent's "it passes" — run it yourself.** Every background agent
 in session 1 reported green: one genuinely was, one was 11 tests red mid-flight,
@@ -150,9 +226,27 @@ dragging a card (hold ~½s first) and scrolling the day (just swipe). Sharp
 edges #5/#6 still apply.
 
 ### Then, roughly in order
-1. **§2.2 precedence binds only automatic placement.** Ripple now honours
-   deadlines, but **displace and carryOver still don't inherit zones/deadlines**
-   — so a zone is a guarantee in one code path and a suggestion in two.
+1. **✅ §2.2 precedence — DONE (session 3).** The old claim that "displace and
+   carryOver don't inherit zones/deadlines" was **stale**: displace, carryOver,
+   autoSchedule and ripple-*overflow* all route through `placeTask`, which is
+   zone- and deadline-aware (proven by probe, not read). The one real leak was
+   ripple's plain-*shift* branch — pure arithmetic that could slide a non-work
+   flexible into an exclusive zone silently. Fixed: it now treats "enters a
+   forbidden exclusive zone" like a broken deadline and hands the task to
+   `placeTask`. Decision locked (per the user): **automatic re-optimizing carries
+   the guarantee; a manual drag/drop keeps its autonomy** (R-1 — a person may
+   drop a non-work task into the work zone and it stays). SPEC §2.2 + the
+   USE-CASE-ANALYSIS 2D-precedence note now say who the rule binds. Regression
+   tests lock displace/carryOver/ripple + manual autonomy.
+   **An adversarial sweep then caught a second, deeper leak (also fixed):**
+   `computeWindows`'s *matching* branch never subtracted *other* overlapping
+   exclusive zones, so a `work` task routed into the Work zone could be dropped
+   inside an overlapping exclusive Study block (reachable in the real config —
+   Work 09:00–18:30 and the seed Study zone Tue/Thu 18:00–21:00 overlap at
+   18:00–18:30). Fixed in `placement.js` (exclusivity is symmetric). A third,
+   *accepted* edge: when there's genuinely no non-zone time in the whole lookahead
+   a no-deadline task parks inside the zone with a warning — the §2.2
+   "visible beats invisible" last resort, left as-is. See the 2D-precedence note.
 2. **`history`/`occurrenceData` grow forever.** No retention policy → the
    starvation detector eventually becomes a permanent nag (a P-1 violation) and
    localStorage exhaustion is the designed end state. `_snapshots` and

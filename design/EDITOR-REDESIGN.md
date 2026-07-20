@@ -7,6 +7,30 @@ well first.* **Build is gated on sign-off** (working agreement). This spec cover
 **all three** collection editors (Zones, Buckets, Activities) plus the reused
 energy control, then a phased build plan to ship them in one chunked effort.
 
+> ### ⚠ AMENDED, session 5 (2026-07-20) — P4 is cancelled
+>
+> **§5.5 lists three homes for `<EnergyControl>`; there are two.** The user's
+> call: *a task's energy is autocalculated from its tags — no energy control on
+> the task UI, to keep the task page uncrowded.*
+>
+> - **P4 (Task energy on the schedule) is CANCELLED.** Do not add
+>   `<EnergyControl>` to `TaskPanel`. The derivation is `energy.js#loadForTask`
+>   (see the amendment banner in `RECONCILIATION.md` for the exact rule).
+> - **§5.5 reads: two homes** — the **bucket editor** (sets the default) and the
+>   **activity editor** (template default, inheritable). Not the task.
+> - **§7 and §9 are unchanged and still apply:** the activity keeps its energy
+>   control, but its old "customise / inherit" text wall must be folded into
+>   `<EnergyControl>`'s ghost-tube inherit mode (§5.3). That is the outstanding
+>   part of P2.
+>
+> Everything else in this spec — the drill-in idiom, the form vocabulary, the
+> wave control itself, the sprite decisions, P0–P3 and P5 — stands as written.
+>
+> **Phase status:** P0 ✅ · P1 ✅ · P2 ⚠️ (list done, inherit mode outstanding) ·
+> P3 ✅ · P4 ❌ cancelled · P5 ❌ not started.
+> **D-3 is moot** — `<EnergyControl>` is already built, so there is nothing left
+> to prototype ahead of it.
+
 ---
 
 ## 1. Why they feel poor (the diagnosis this remake answers)
