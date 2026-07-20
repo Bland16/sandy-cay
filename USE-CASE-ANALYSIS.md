@@ -989,7 +989,9 @@ At week rollover (same trigger as retraining and carryOver — one "week closes"
 
 **Delivery — RESOLVED (OD-15): PDF only.** Email is cut entirely — no stub, no config slot, no third-party service. All effort goes into making the PDF genuinely nice:
 - Rendered client-side from a dedicated print-styled report view; auto-offered at rollover, always available from the week `⋯` menu ("Wrap report").
-- **Design:** a real document, not a data dump — Playfair Display headings, Nunito body, the full ocean palette on white; shells render as the satisfaction glyphs; sprite accents (surfboard divider, seashell, palm) if Appendix A lands; per-day load drawn as a small sand-bar chart; one page if the week fits, never more than two.
+- **Design:** a real document, not a data dump — Playfair Display headings, Nunito body, the full ocean palette on white; shells render as the satisfaction glyphs; sprite accents (surfboard divider, seashell, palm) if Appendix A lands; per-day load drawn as a small sand-bar chart; ~~one page if the week fits, never more than two~~.
+  - **AMENDED 2026-07-15 (built & printed):** *no page budget.* The two-page rule had been implemented as silent content caps (top-8 tags, top-6 tag×time rows), which binned a busy week's quieter data precisely when there was most to report — so the rule was inverting its own purpose. Length is now a layout concern only; **the report never truncates to fit paper.** ~5 pages is unremarkable for a full week. Editorial limits that exist for signal (top-3 learned weights, in plain language) stand. See SPEC §7.1.
+  - **As built:** typography is Rye + Special Elite, not Playfair (FRONTEND-SPEC §6 supersedes SPEC §10). **No sprites** — type and existing SVG only; Appendix A stays unwired per the "don't bulk-wire" decision. Shells always print a **numeral** beside the glyphs: five shapes with two tinted reads as "5" to a real reader, and tint alone dies on a greyscale printer (§10: never meaning by colour alone).
 - Filename: `wrap-YYYY-'W'ww.pdf` (e.g., `wrap-2026-W29.pdf`) — sorts chronologically in the user's folder next to their `schedule-*.json` exports.
 
 ---

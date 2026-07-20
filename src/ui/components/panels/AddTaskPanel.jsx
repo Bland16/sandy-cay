@@ -22,6 +22,19 @@ function defaultDayIndex(weekStart) {
   return idx >= 0 && idx <= 6 ? idx : 0;
 }
 
+/**
+ * Where auto-placement should start looking: now, when the viewed week is the
+ * one we're living in — otherwise the week's own Monday.
+ *
+ * A break added on Wednesday belongs today, not in Monday's leftover gap. The
+ * search used to start at `weekStart` unconditionally, which offered up hours
+ * that had already happened.
+ */
+function placementFrom(weekStart, now = new Date()) {
+  const end = addDays(weekStart, 7);
+  return now >= weekStart && now < end ? now : weekStart;
+}
+
 /** The next quarter-hour — a sane "when", not 00:00. */
 function defaultStart() {
   const d = new Date();
@@ -55,7 +68,10 @@ export default function AddTaskPanel({ sched, mutate, weekStart, onClose, showTo
       tags,
       priority,
       pinned,
-      from: weekStart,
+      // Bound the scored search to the week you're looking at, starting from now
+      // if that week is the current one.
+      from: placementFrom(weekStart),
+      to: addDays(weekStart, 6),
       deadline: deadline ? dateFromKey(deadline) : null,
     };
     const rec = buildRecurrence(recModel, weekStart);
@@ -67,8 +83,14 @@ export default function AddTaskPanel({ sched, mutate, weekStart, onClose, showTo
       data.endTime = addMinutes(s, dur);
       data.placedBy = 'user'; // you chose it; don't let re-optimize wander it
     } else if (!rec) {
-      const slot = sched.findFreeSlot({ from: weekStart, to: addDays(weekStart, 6), durationMin: dur });
-      if (slot) { data.startTime = slot.start; data.endTime = slot.end; }
+      // Deliberately no slot pre-computation here. This used to call the
+      // UNSCORED findFreeSlot({from: weekStart}) and assign its result — which
+      // handed back the week's first gap (Monday 08:00, already two days gone)
+      // and, by setting startTime, made addFlexible skip scored placement
+      // altogether. 7A says a new task is "placed immediately via scored
+      // placement"; leaving startTime unset is what lets that actually happen.
+      // durationMin carries the length you chose without pinning a time.
+      data.durationMin = dur;
     }
 
     const added = mutate((s) => (type === 'fixed' ? s.addFixed(data) : s.addFlexible(data)));

@@ -14,7 +14,7 @@
 // `fixed` task — an event with a time is, by definition, an anchor.
 
 import { Task } from './Task.js';
-import { addMinutes } from './time.js';
+import { addMinutes, lastRunDay, untilAfterLastRun } from './time.js';
 
 const DAY_TO_BYDAY = { mon: 'MO', tue: 'TU', wed: 'WE', thu: 'TH', fri: 'FR', sat: 'SA', sun: 'SU' };
 const BYDAY_TO_DAY = Object.fromEntries(Object.entries(DAY_TO_BYDAY).map(([k, v]) => [v, k]));
@@ -65,7 +65,10 @@ export function toRRULE(task) {
   const interval = period.interval ?? 1;
   if (interval > 1) parts.push(`INTERVAL=${interval}`);
   parts.push(`BYDAY=${[...new Set(days)].join(',')}`);
-  if (period.effectiveUntil) parts.push(`UNTIL=${toICSDate(period.effectiveUntil)}`);
+  // RFC 5545: UNTIL is INCLUSIVE — the last occurrence may start on it. Our
+  // effectiveUntil is the exclusive bound, so it converts here. Handing the raw
+  // bound to Google told it the pattern ran one day longer than it does.
+  if (period.effectiveUntil) parts.push(`UNTIL=${toICSDate(lastRunDay(period.effectiveUntil))}`);
   return parts.join(';');
 }
 
@@ -87,7 +90,8 @@ export function fromRRULE(rrule, start, end) {
       windows: days.map((day) => ({ day, start: startHHMM, end: endHHMM })),
       interval: kv.INTERVAL ? Number(kv.INTERVAL) : 1,
       effectiveFrom: null,
-      effectiveUntil: kv.UNTIL ? fromICSDate(kv.UNTIL) : null,
+      // ...and back: an inclusive UNTIL from the wire becomes our exclusive bound.
+      effectiveUntil: kv.UNTIL ? untilAfterLastRun(fromICSDate(kv.UNTIL)) : null,
     }],
     anchorDate: new Date(start.getTime()),
     exceptions: [],

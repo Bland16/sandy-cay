@@ -54,3 +54,38 @@ describe('§9 round-trip serialization', () => {
     expect(reJson.schemaVersion).toBe(1);
   });
 });
+
+describe('task ids stay unique across reloads (duplicate-id bug)', () => {
+  const D = (d, h) => new Date(2026, 6, d, h, 0, 0, 0);
+
+  it('a same-titled task added after a reload does not collide with a saved one', () => {
+    resetIds();
+    const morning = new Schedule({ config: undefined });
+    const m = morning.addFixed({ title: 'Work on website', startTime: D(17, 9), endTime: D(17, 11) });
+    const saved = JSON.parse(JSON.stringify(morning.toJSON()));
+
+    resetIds(); // the id counter resets on every page load
+    const afternoon = Schedule.fromJSON(saved);
+    const a = afternoon.addFixed({ title: 'Work on website', startTime: D(17, 13), endTime: D(17, 14) });
+
+    expect(a.id).not.toBe(m.id);
+    expect(new Set(afternoon.tasks.map((t) => t.id)).size).toBe(afternoon.tasks.length);
+
+    // Editing the second must not touch the first.
+    afternoon.updateTask(a.id, { endTime: D(17, 15) });
+    expect(afternoon.tasks[0].endTime.getHours()).toBe(11); // morning untouched
+    expect(afternoon.tasks[1].endTime.getHours()).toBe(15); // afternoon extended
+  });
+
+  it('repairs a save that already has two tasks sharing an id', () => {
+    const corrupt = {
+      schemaVersion: 1,
+      tasks: [
+        { id: 'work-on-website-0001', title: 'Work on website', type: 'fixed', startTime: D(17, 9).getTime(), endTime: D(17, 11).getTime() },
+        { id: 'work-on-website-0001', title: 'Work on website', type: 'fixed', startTime: D(17, 13).getTime(), endTime: D(17, 14).getTime() },
+      ],
+    };
+    const s = Schedule.fromJSON(corrupt);
+    expect(new Set(s.tasks.map((t) => t.id)).size).toBe(2);
+  });
+});

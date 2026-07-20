@@ -137,7 +137,7 @@ Sheets are grid-regular with film borders; process per sheet: detect inner frame
 
 **Toasts & choosers:** plaque chassis; ripple/displace chooser shows wave icon vs. anchor-drop icon with the computed default pre-highlighted (OD-8); whistle icon on the overpack notice; crab appears on undo toasts.
 
-**Wrap report (PDF):** silent-film title-card opening — ornate scroll frame, "YOUR WEEK AT SANDY CAY", Rye + Special Elite; monochrome art (lighthouse for the suggestions header, sun-face for time-of-day chart glyphs) with hand-tint used exactly where the app uses it (shells tinted, warnings coral); sand-bar day-load chart; ≤2 pages; `wrap-YYYY-'W'ww.pdf`.
+**Wrap report (PDF):** silent-film title-card opening — ornate scroll frame, "YOUR WEEK AT SANDY CAY", Rye + Special Elite; monochrome art (lighthouse for the suggestions header, sun-face for time-of-day chart glyphs) with hand-tint used exactly where the app uses it (shells tinted, warnings coral); sand-bar day-load chart; `wrap-YYYY-'W'ww.pdf`. **Length: no hard budget (amended 2026-07-15, was ≤2 pages — see SPEC §7.1); the report never drops rows to fit paper.** Shells always print their numeral beside the glyphs: five shapes with only two tinted reads as five, and a greyscale printer flattens the tint away entirely (§9 — never meaning by colour alone).
 
 ## 7. OD-11 — What To Do placement (proposed resolution)
 

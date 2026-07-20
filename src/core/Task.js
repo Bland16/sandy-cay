@@ -34,8 +34,14 @@ export class Task {
 
     // Time. startTime defaults to "now-ish" only when omitted; callers that care
     // about determinism always pass explicit dates.
+    //
+    // `durationMin` is how you say "45 minutes, you pick when": it sets the span
+    // without pinning a start, so the task still goes through scored placement
+    // (7A) instead of a caller having to pre-compute a slot and, by handing over
+    // a startTime, accidentally opting out of placement altogether.
     const start = data.startTime ? zeroSeconds(new Date(data.startTime)) : zeroSeconds(new Date());
-    let end = data.endTime ? zeroSeconds(new Date(data.endTime)) : addMinutes(start, DEFAULT_DURATION);
+    const span = data.durationMin > 0 ? data.durationMin : DEFAULT_DURATION;
+    let end = data.endTime ? zeroSeconds(new Date(data.endTime)) : addMinutes(start, span);
     // Guard: end <= start → swap; equal → +defaultDuration (SPEC §1.1).
     if (end.getTime() < start.getTime()) {
       const tmp = start;

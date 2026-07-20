@@ -3,6 +3,7 @@
 // interval (4D), "from now on / including past" scope (4B), and a bounded
 // "temporary from…until" period (4E). Used in both Add-task and edit panels.
 import { DAY_NAMES, DAY_KEYS } from '../format.js';
+import { isWeekdayPattern, toWeekdayWindows } from '../recurrenceModel.js';
 
 export default function RecurrenceEditor({ model, onChange, allowScope = false }) {
   const patch = (delta) => onChange({ ...model, ...delta });
@@ -12,6 +13,16 @@ export default function RecurrenceEditor({ model, onChange, allowScope = false }
   };
   const addWindow = () => patch({ windows: [...model.windows, { day: 'mon', start: '09:00', end: '10:00' }] });
   const removeWindow = (i) => patch({ windows: model.windows.filter((_, idx) => idx !== i) });
+
+  // The frequency control reads the pattern back rather than storing a mode, so
+  // hand-editing one day out of a weekday set is honestly no longer "weekdays".
+  const repeatValue = Number(model.interval) === 1 && isWeekdayPattern(model.windows)
+    ? 'weekday'
+    : String(model.interval);
+  const setRepeat = (v) => {
+    if (v === 'weekday') patch({ interval: 1, windows: toWeekdayWindows(model.windows) });
+    else patch({ interval: Number(v) });
+  };
 
   return (
     <div className="recbox">
@@ -53,11 +64,16 @@ export default function RecurrenceEditor({ model, onChange, allowScope = false }
 
           <div className="fieldrow">
             <div className="flabel">Every</div>
-            <select className="input" value={model.interval} onChange={(e) => patch({ interval: Number(e.target.value) })}>
-              <option value={1}>every week</option>
-              <option value={2}>every 2nd week</option>
-              <option value={3}>every 3rd week</option>
-              <option value={4}>every 4th week</option>
+            {/* "every weekday" is a preset, not a stored mode: picking it writes
+                the five Mon–Fri windows at the time already on the first row.
+                Saying "lunch at noon, every weekday" used to mean adding four
+                more rows by hand, each one resetting to mon 09:00–10:00. */}
+            <select className="input" value={repeatValue} onChange={(e) => setRepeat(e.target.value)} aria-label="Repeat frequency">
+              <option value="1">every week</option>
+              <option value="weekday">every weekday (Mon–Fri)</option>
+              <option value="2">every 2nd week</option>
+              <option value="3">every 3rd week</option>
+              <option value="4">every 4th week</option>
             </select>
           </div>
 
@@ -87,10 +103,13 @@ export default function RecurrenceEditor({ model, onChange, allowScope = false }
             </label>
             {model.temporary && (
               <div className="winrow" style={{ marginTop: 6 }}>
-                <span className="flabel" style={{ margin: 0 }}>from</span>
-                <input className="timein" style={{ width: 128 }} type="date" value={model.temporary.from} onChange={(e) => patch({ temporary: { ...model.temporary, from: e.target.value } })} aria-label="From date" />
-                <span className="flabel" style={{ margin: 0 }}>until</span>
-                <input className="timein" style={{ width: 128 }} type="date" value={model.temporary.until} onChange={(e) => patch({ temporary: { ...model.temporary, until: e.target.value } })} aria-label="Until date" />
+                <span className="flabel" style={{ margin: 0 }}>first day</span>
+                <input className="timein" style={{ width: 128 }} type="date" value={model.temporary.from} onChange={(e) => patch({ temporary: { ...model.temporary, from: e.target.value } })} aria-label="First day" />
+                {/* "until" invites the exact off-by-one this now avoids: people
+                    read it as inclusive, half-open ranges mean it exclusively.
+                    Naming the field for what you'd say out loud settles it. */}
+                <span className="flabel" style={{ margin: 0 }}>last day</span>
+                <input className="timein" style={{ width: 128 }} type="date" value={model.temporary.until} onChange={(e) => patch({ temporary: { ...model.temporary, until: e.target.value } })} aria-label="Last day" />
               </div>
             )}
           </div>

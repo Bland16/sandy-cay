@@ -3,6 +3,7 @@
 
 import { Task } from './Task.js';
 import { Zone } from './Zone.js';
+import { makeId } from './ids.js';
 import { makeConfig } from './config.js';
 import { normalizeWeights } from './scoring.js';
 import { LearningModule } from './learning.js';
@@ -41,11 +42,22 @@ export class Schedule {
   constructor(init = {}) {
     this.config = makeConfig(init.config);
     this.tasks = (init.tasks || []).map((t) => (t instanceof Task ? t : Task.fromJSON(t)));
+    // The id counter (ids.js) resets every page load, so a task created after a
+    // reload can be handed the same slug+suffix as one already saved with the same
+    // title — e.g. two "Work on website" tasks colliding on `work-on-website-0001`.
+    // A shared id makes `tasks.find(id===…)` return the WRONG task, so resizing the
+    // second silently edited the first. Repair any collision already in the save.
+    this._dedupeTaskIds();
     this.zones = (init.zones || []).map((z) => (z instanceof Zone ? z : Zone.fromJSON(z)));
     this.learning = init.model instanceof LearningModule
       ? init.model
       : LearningModule.fromJSON(init.model, this.config);
-    this._snapshots = {};
+    this._snapshots = init.snapshots ? { ...init.snapshots } : {};
+    // Week-rollover bookkeeping (R-7): the dateKey of the last week the user was
+    // seen in, or null on a first-ever run. Persisted, because a rollover the
+    // app can't remember is a rollover it fires again on every reload.
+    this._lastSeenWeek = init.lastSeenWeek || null;
+    this._dismissed = init.dismissed ? { ...init.dismissed } : {};
     this._changeCount = 0;
   }
 
@@ -84,19 +96,41 @@ export class Schedule {
   }
 
   // ---- CRUD --------------------------------------------------------------
+  /** Guarantee `task.id` is unique among the current tasks (regenerate on clash).
+   *  Call before pushing a freshly-created task — the id counter resets per load,
+   *  so a new id can collide with one restored from storage. */
+  _uniqueId(task) {
+    while (this.tasks.some((x) => x !== task && x.id === task.id)) task.id = makeId(task.title);
+    return task;
+  }
+
+  /** Repair any duplicate task ids already present (e.g. from a save written
+   *  before the collision was fixed) by reissuing the later duplicate a fresh id. */
+  _dedupeTaskIds() {
+    const seen = new Set();
+    for (const t of this.tasks) {
+      if (seen.has(t.id)) while (seen.has(t.id) || this.tasks.some((x) => x !== t && x.id === t.id)) t.id = makeId(t.title);
+      seen.add(t.id);
+    }
+  }
+
   addFixed(data) {
     const t = new Task({ ...data, type: 'fixed' });
+    this._uniqueId(t);
     this.tasks.push(t);
-    if (!data.startTime) this._place(t, { from: data.from });
+    if (!data.startTime) this._place(t, { from: data.from, to: data.to });
     this._touch();
     return t;
   }
 
   addFlexible(data) {
     const t = new Task({ ...data, type: 'flexible' });
+    this._uniqueId(t);
     this.tasks.push(t);
-    // 7A defaults cascade: placed immediately via scored placement.
-    if (!data.startTime) this._place(t, { from: data.from });
+    // 7A defaults cascade: placed immediately via scored placement. `to` bounds
+    // the search when the caller has a week in mind; without it the search runs
+    // from..from+maxPlacementLookahead and can leak into the next week.
+    if (!data.startTime) this._place(t, { from: data.from, to: data.to });
     this._touch();
     return t;
   }
@@ -219,8 +253,21 @@ export class Schedule {
     const res = runAutoSchedule(this, opts);
     const ws = opts.weekStart ? weekStartOf(opts.weekStart) : weekStartOf(opts.now || new Date());
     res.overpack = overpackCheck(this, ws, this.config);
+    // §6J — capture "planned" at a week's FIRST autoSchedule, after the run, so
+    // the baseline is the plan the engine actually made. Later runs (an explicit
+    // Re-optimize on Thursday) must not overwrite it: the whole point of the
+    // report's planned-vs-actual is that it remembers the original intent.
+    const key = dateKey(ws);
+    if (!this._snapshots[key]) this.snapshot(ws);
     this._touch();
     return res;
+  }
+
+  /** The stored "planned" baseline for a week, or null if none was captured
+   *  (weeks that predate the snapshot wiring, or a week never auto-scheduled).
+   *  The report omits planned-vs-actual entirely rather than inventing zeros. */
+  plannedSnapshot(weekStartDate) {
+    return this._snapshots[dateKey(weekStartOf(weekStartDate))] || null;
   }
 
   resolveDropConflicts(dropped, opts = {}) {
@@ -264,6 +311,43 @@ export class Schedule {
     return rec;
   }
 
+  // ---- week rollover (R-7) -----------------------------------------------
+  /** dateKey of the last week the user was seen in, or null on a first run. */
+  get lastSeenWeek() {
+    return this._lastSeenWeek;
+  }
+
+  /** Record that the user has been present in the week containing `date`. */
+  markWeekSeen(date) {
+    const key = dateKey(weekStartOf(date));
+    if (this._lastSeenWeek === key) return this._lastSeenWeek;
+    this._lastSeenWeek = key;
+    this._touch();
+    return this._lastSeenWeek;
+  }
+
+  // ---- report suggestions (§7.2) -----------------------------------------
+  /**
+   * Suggestions the user has answered, by id. Persisted, because P-1 turns on
+   * this: a "Let it go" that only hid the card would raise the identical
+   * observation next Monday, and an app that asks the same question every week
+   * until you say yes is nagging with extra steps.
+   */
+  get dismissedSuggestions() {
+    return this._dismissed;
+  }
+
+  isSuggestionDismissed(id) {
+    return Object.prototype.hasOwnProperty.call(this._dismissed, id);
+  }
+
+  /** Record that a suggestion was answered (either way) in a given week. */
+  dismissSuggestion(id, atDate = null) {
+    this._dismissed[id] = atDate ? dateKey(weekStartOf(atDate)) : true;
+    this._touch();
+    return this._dismissed[id];
+  }
+
   // ---- learning ----------------------------------------------------------
   retrain(opts = {}) {
     const rated = this.tasks.filter((t) => t.satisfaction && typeof t.satisfaction.overall === 'number');
@@ -289,6 +373,11 @@ export class Schedule {
       zones: this.zones.map((z) => z.toJSON()),
       config: this.config,
       model: this.learning.toJSON(),
+      // The planned baseline has to survive a reload or the Wrap report can
+      // only ever diff a week against itself. Already JSON-safe (epoch ms).
+      snapshots: this._snapshots,
+      lastSeenWeek: this._lastSeenWeek,
+      dismissed: this._dismissed,
     };
   }
 
@@ -298,6 +387,12 @@ export class Schedule {
       tasks: (json.tasks || []).map((t) => Task.fromJSON(t)),
       zones: (json.zones || []).map((z) => Zone.fromJSON(z)),
       model: json.model,
+      // Absent on every save written before this shipped — an old file loads as
+      // a schedule with no baselines, which is exactly right. schemaVersion
+      // stays 1: this is an additive key, not a migration.
+      snapshots: json.snapshots,
+      lastSeenWeek: json.lastSeenWeek,
+      dismissed: json.dismissed,
     });
   }
 }

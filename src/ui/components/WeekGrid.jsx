@@ -21,9 +21,20 @@ function offWindowBands(config, dayKey, startHour, endHour) {
   return bands;
 }
 
-function zoneBands(zones, dayKey, startHour) {
+/**
+ * Zone bands for one day column.
+ *
+ * `date` is not optional bookkeeping: a zone can be bounded (a summer job, a
+ * term) via effectiveFrom/effectiveUntil, and this used to take no date at all —
+ * so it painted every zone into every week, past and future, however narrow the
+ * zone's actual run. The engine has always honoured the bounds when PLACING
+ * (placement.js checks `activeOn`), which made it worse than cosmetic: the grid
+ * showed reserved time in weeks where the scheduler correctly saw none.
+ */
+function zoneBands(zones, dayKey, startHour, date) {
   const bands = [];
   for (const z of zones) {
+    if (date && !z.activeOn(date)) continue;
     for (const w of z.windowsForDay(dayKey)) {
       const s = hhmmToMinutes(w.start) / 60;
       const e = hhmmToMinutes(w.end) / 60;
@@ -38,9 +49,20 @@ function zoneBands(zones, dayKey, startHour) {
   return bands;
 }
 
+/**
+ * The week grid, or any slice of it.
+ *
+ * `days` is which day indices to render (0=Mon … 6=Sun), defaulting to all
+ * seven. The tablet layout (SPEC §11) draws Mon–Fri here and Sat–Sun in the
+ * weekend drawer — two instances of THIS component, not a second grid
+ * implementation. A day column carries a drop-geometry contract
+ * (`data-dropzone`/`data-day-index`/…) that `useCardInteraction` reads at
+ * pointer-down; a reimplementation would silently drift out of that contract and
+ * drags into the weekend would land on the wrong day.
+ */
 export default function WeekGrid({
   sched, weekStart, today, onOpenTask, onToggleComplete, onOpenDay, onDayMenu,
-  interaction, truncations, notice,
+  interaction, truncations, notice, days = [0, 1, 2, 3, 4, 5, 6], compactHeads = false,
 }) {
   const weekTasks = sched.getTasksForWeek(weekStart);
   const { start, end } = gridBounds();
@@ -61,15 +83,19 @@ export default function WeekGrid({
           construction rather than by z-index, so it cannot overlap anything. */}
       {notice}
       <div className="gridwrap" ref={wrapRef}>
-      <div className="grid">
+      {/* The column count drives the template, so a five-day grid isn't a
+          seven-day grid with two columns hidden — the remaining days share the
+          full width instead of leaving a gap where the weekend was. */}
+      <div className="grid" style={{ '--cols': days.length }}>
         <div className="axis-head" />
-        {DAY_NAMES.map((dn, i) => {
+        {days.map((i) => {
+          const dn = DAY_NAMES[i];
           const date = addDays(weekStart, i);
           const isToday = today && sameDay(date, today);
           return (
             /* Two controls, so two buttons — a ⋯ nested inside the open-day
                button would be invalid HTML and unreachable by keyboard. */
-            <div key={dn} className={`dayhead${i >= 5 ? ' wknd' : ''}${isToday ? ' today' : ''}`}>
+            <div key={dn} className={`dayhead${i >= 5 ? ' wknd' : ''}${isToday ? ' today' : ''}${compactHeads ? ' compact' : ''}`}>
               <button className="dhopen" onClick={() => onOpenDay(i)}>
                 <div className="dn">{dn}</div>
                 <div className="dd">{date.getDate()}</div>
@@ -95,11 +121,12 @@ export default function WeekGrid({
           ))}
         </div>
 
-        {DAY_NAMES.map((dn, i) => {
+        {days.map((i) => {
+          const dn = DAY_NAMES[i];
           const date = addDays(weekStart, i);
           // Grid-day, not calendar-day: a 02:00 task belongs to the night before.
           const dayTasks = weekTasks.filter((t) => sameDay(gridDayOf(t.startTime), date));
-          const bands = zoneBands(sched.zones, DAY_KEYS[i], start);
+          const bands = zoneBands(sched.zones, DAY_KEYS[i], start, date);
           const laid = layoutDay(dayTasks, start, PXH);
           return (
             <div
@@ -139,6 +166,7 @@ export default function WeekGrid({
                   onOpen={onOpenTask}
                   onToggleComplete={onToggleComplete}
                   dragging={interaction ? interaction.hiddenId === task.id : false}
+                  pressing={interaction ? interaction.pressingId === task.id : false}
                   onMoveStart={interaction ? interaction.onMoveStart : undefined}
                   onResizeStart={interaction ? interaction.onResizeStart : undefined}
                 />

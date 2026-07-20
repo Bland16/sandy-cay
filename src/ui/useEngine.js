@@ -78,6 +78,11 @@ export function useEngine() {
         s.zones = next.zones;
         s.config = next.config;
         s.learning = next.learning;
+        // The imported week's planned baselines and rollover mark come too —
+        // an import that dropped them would silently cost the Wrap report its
+        // planned-vs-actual and re-fire a rollover the export had already seen.
+        s._snapshots = next._snapshots;
+        s._lastSeenWeek = next._lastSeenWeek;
       });
     }, [mutate]),
   };

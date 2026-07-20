@@ -6,9 +6,8 @@ import {
   dayKeyOf,
   hhmmToMinutes,
   addDays,
-  sameDay,
-  minutesBetween,
 } from './time.js';
+import { dayGaps } from './queries.js';
 
 /** Pattern start (minutes-since-midnight) for a task's window on a day key. */
 function patternStartMin(task, dayKeyStr, date) {
@@ -106,21 +105,10 @@ export function overpackCheck(schedule, weekStartDate, config) {
   const perDay = [];
   for (let i = 0; i < 7; i += 1) {
     const date = addDays(weekStartDate, i);
-    const dayTasks = schedule
-      .getTasksForWeek(weekStartDate)
-      .filter((t) => sameDay(t.startTime, date))
-      .sort((a, b) => a.startTime - b.startTime);
-    if (dayTasks.length < 2) {
-      perDay.push({ date: dayKeyOf(date), avgBreak: null });
-      continue;
-    }
-    let gapSum = 0;
-    let gapCount = 0;
-    for (let k = 1; k < dayTasks.length; k += 1) {
-      gapSum += Math.max(0, minutesBetween(dayTasks[k - 1].endTime, dayTasks[k].startTime));
-      gapCount += 1;
-    }
-    const avgBreak = gapCount > 0 ? gapSum / gapCount : null;
+    // Shared with the report's break-compression stats (§7.1) so the grid
+    // notice and the report can never disagree about the same day.
+    const gaps = dayGaps(schedule, date, weekStartDate);
+    const avgBreak = gaps.length > 0 ? gaps.reduce((a, b) => a + b, 0) / gaps.length : null;
     perDay.push({ date: dayKeyOf(date), avgBreak });
     if (avgBreak !== null && avgBreak <= threshold) packedDays += 1;
   }
