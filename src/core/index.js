@@ -35,7 +35,10 @@ export {
 } from './queries.js';
 export { whatToDo, currentOpening, openingLabel } from './whatToDo.js';
 export { suggestActivities, placeActivity, steerBias, priorityPressure } from './suggest.js';
-export { activityUsage, activityPage, filterActivities, sortActivities, paginate, activityCfg, SORTS, SORT_LABELS } from './activityList.js';
+export {
+  activityUsage, activityPage, filterActivities, sortActivities, paginate, activityCfg,
+  dedupeDrafts, dedupeBulk, parseActivityLine, parseBulkBlock, SORTS, SORT_LABELS,
+} from './activityList.js';
 export { energyBudget, energyCalibration, learnedCapacity, energyTrajectory, reserveAt, loadForTask, normalizeLoad, LOAD_AXES } from './energy.js';
 export {
   toICS, parseICS, importEvents, eventToTask, deriveTags,

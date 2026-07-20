@@ -7,33 +7,51 @@
 //   2 — one activity's focused editor (ActivityEditor).
 // No `role` enum — a bucket's character is its load vector (design/RECONCILIATION.md).
 import { useState, useMemo } from 'react';
-import { seedStarterBuckets, activityUsage, activityPage, activityCfg, SORTS, SORT_LABELS } from '../../core/index.js';
+import { seedStarterBuckets, activityUsage, activityPage, activityCfg, parseBulkBlock, dedupeBulk, SORTS, SORT_LABELS } from '../../core/index.js';
 import TagEditor, { tagsInUse } from './TagEditor.jsx';
 import EnergyControl from './EnergyControl.jsx';
 import ActivityEditor from './ActivityEditor.jsx';
 import Icon from '../Icon.jsx';
 
 const ORPHANS = '__orphans__';
-const clampMin = (v) => { const n = Number(v); return Math.max(15, Math.round(Number.isFinite(n) ? n : 15)); };
 const countActs = (n) => `${n} activit${n === 1 ? 'y' : 'ies'}`;
+
+/** Commit bar for the paste sheet. Everything that will NOT land is named before
+ *  you press the button — a bulk import that silently drops rows is how you end
+ *  up trusting a library that isn't what you pasted. */
+function BulkPreview({ draft, onCommit, onCancel }) {
+  const { fresh, duplicates, unknownBuckets, unassigned } = draft;
+  const buckets = new Set(fresh.map((d) => d.bucketId));
+  return (
+    <>
+      <div className="chest">
+        <button className="btn2 bulkbtn" onClick={onCommit} disabled={fresh.length === 0}>
+          Add {fresh.length || ''} activit{fresh.length === 1 ? 'y' : 'ies'}
+          {buckets.size > 1 ? ` to ${buckets.size} buckets` : ''}
+        </button>
+        <button className="btn2 ghost bulkbtn" onClick={onCancel}>Cancel</button>
+      </div>
+      {duplicates.length > 0 && (
+        <div className="field-help">
+          skipping {duplicates.length} duplicate{duplicates.length === 1 ? '' : 's'}: {duplicates.map((d) => d.label).join(', ')}
+        </div>
+      )}
+      {unknownBuckets.length > 0 && (
+        <div className="field-help">
+          no bucket named {unknownBuckets.map((b) => `“${b}”`).join(', ')} — those rows are skipped. Rename the heading or make the bucket first.
+        </div>
+      )}
+      {unassigned.length > 0 && (
+        <div className="field-help">
+          {unassigned.length} row{unassigned.length === 1 ? '' : 's'} before the first “# bucket” heading, with no bucket to put them in — skipped.
+        </div>
+      )}
+    </>
+  );
+}
 // Below this many, a bucket needs no filter/sort machinery — showing it would be
 // clutter in service of a problem you don't have (EDITOR-REDESIGN §7.1).
 const SIMPLE_LIST_MAX = 3;
-
-// One bulk line: "Name" | "min-max" | "tag, tag". Only the name is required.
-function parseBulkLine(line, bucket) {
-  const [namePart, durPart, tagPart] = line.split('|').map((s) => (s || '').trim());
-  let durationMin = 15; let durationMax = 60;
-  if (durPart) {
-    const range = durPart.match(/(\d+)\s*[-–]\s*(\d+)/);
-    if (range) { durationMin = clampMin(range[1]); durationMax = Math.max(durationMin, clampMin(range[2])); }
-    else if (/^\d+$/.test(durPart)) { durationMin = clampMin(durPart); durationMax = durationMin; }
-  }
-  const tags = tagPart
-    ? tagPart.split(',').map((t) => t.trim().toLowerCase()).filter(Boolean)
-    : (bucket ? [...bucket.tags] : []);
-  return { label: namePart || 'Activity', bucketId: bucket ? bucket.id : null, tags, durationMin, durationMax };
-}
 
 export default function TagManager({ sched, mutate }) {
   const [editingId, setEditingId] = useState(null); // bucket id or ORPHANS
@@ -99,9 +117,21 @@ export default function TagManager({ sched, mutate }) {
     }));
     if (a) setEditingActivityId(a.id);
   };
+  // Parse the paste sheet, honouring "# Bucket" headers, then drop duplicates —
+  // repeats within the paste AND things a bucket already has, so pasting the same
+  // block twice is idempotent. Dedupe is scoped per bucket: the same label in two
+  // different buckets is legitimate.
+  const bulkDrafts = (bucket) => {
+    const parsed = parseBulkBlock(bulkText, { buckets, defaultBucket: bucket });
+    const existingByBucket = {};
+    for (const b of buckets) existingByBucket[b.id] = inBucket(b.id);
+    existingByBucket[''] = orphans;
+    const { fresh, duplicates } = dedupeBulk(parsed.drafts, existingByBucket);
+    return { ...parsed, fresh, duplicates };
+  };
   const commitBulk = (bucket) => {
-    const lines = bulkText.split('\n').map((l) => l.trim()).filter(Boolean);
-    mutate((s) => { for (const line of lines) s.addActivity(parseBulkLine(line, bucket)); });
+    const { fresh } = bulkDrafts(bucket);
+    mutate((s) => { for (const d of fresh) s.addActivity(d); });
     setBulkText(''); setBulkOpen(false);
   };
 
@@ -207,14 +237,13 @@ export default function TagManager({ sched, mutate }) {
               autoFocus
               value={bulkText}
               onChange={(e) => setBulkText(e.target.value)}
-              placeholder={'One activity per line, e.g.\nRead\nSketch | 30-90 | art, calm'}
+              placeholder={`One activity per line, e.g.\nRead\nSketch | 30-90 | art, calm\n\n# Creative\n…starts a run for another bucket`}
               aria-label={`Bulk add activities to ${name}`}
               style={{ resize: 'vertical', minHeight: 74 }}
             />
-            <div className="chest">
-              <button className="btn2" style={{ padding: '5px 9px' }} onClick={() => commitBulk(editing)} disabled={!bulkText.trim()}>Add {bulkText.split('\n').map((l) => l.trim()).filter(Boolean).length || ''} activities</button>
-              <button className="btn2 ghost" style={{ padding: '5px 9px' }} onClick={() => { setBulkText(''); setBulkOpen(false); }}>Cancel</button>
-            </div>
+            {/* Live count of what will actually land, and what won't — the skip is
+                stated before you commit, never silently swallowed. */}
+            <BulkPreview draft={bulkDrafts(isOrphans ? null : editing)} onCommit={() => commitBulk(isOrphans ? null : editing)} onCancel={() => { setBulkText(''); setBulkOpen(false); }} />
           </div>
         ) : (
           <div className="chest" style={{ marginTop: 4 }}>
@@ -258,12 +287,33 @@ export default function TagManager({ sched, mutate }) {
         </button>
       )}
 
-      <div className="chest" style={{ marginTop: 4 }}>
-        <button className="btn2 ghost" style={{ padding: '5px 9px' }} onClick={addBucket} aria-label="Add bucket">＋ bucket</button>
-        {buckets.length === 0 && (
-          <button className="btn2" style={{ padding: '5px 9px' }} onClick={seed} aria-label="Seed starter buckets">＋ starter buckets</button>
-        )}
-      </div>
+      {/* Cross-bucket paste lives HERE, at the list, because that's the level it
+          operates on — seeding a whole library in one go rather than six. */}
+      {bulkOpen ? (
+        <div className="zonewin" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
+          <textarea
+            className="cabinput"
+            rows={6}
+            autoFocus
+            value={bulkText}
+            onChange={(e) => setBulkText(e.target.value)}
+            placeholder={'# Rest\nnap | 20-45\nread a book | 15-90\n\n# Creative\nwrite poetry | 15-60'}
+            aria-label="Bulk add activities across buckets"
+            style={{ resize: 'vertical', minHeight: 110 }}
+          />
+          <BulkPreview draft={bulkDrafts(null)} onCommit={() => commitBulk(null)} onCancel={() => { setBulkText(''); setBulkOpen(false); }} />
+        </div>
+      ) : (
+        <div className="chest" style={{ marginTop: 4 }}>
+          <button className="btn2 ghost" style={{ padding: '5px 9px' }} onClick={addBucket} aria-label="Add bucket">＋ bucket</button>
+          {buckets.length > 0 && (
+            <button className="btn2 ghost" style={{ padding: '5px 9px' }} onClick={() => { setBulkText(''); setBulkOpen(true); }} aria-label="Paste many activities across buckets">⤓ paste many</button>
+          )}
+          {buckets.length === 0 && (
+            <button className="btn2" style={{ padding: '5px 9px' }} onClick={seed} aria-label="Seed starter buckets">＋ starter buckets</button>
+          )}
+        </div>
+      )}
 
       {retired.length > 0 && (
         <div style={{ marginTop: 12 }}>

@@ -740,6 +740,7 @@ body.sc-dragging { user-select: none; }
 .pager .btn2:disabled { opacity: .35; cursor: default; }
 .pagerat { font-family: var(--font-type); font-size: 10px; color: #d8c6a5; opacity: .75; }
 
+.bulkbtn { padding: 5px 9px; }
 .editback { margin-bottom: 10px; padding: 5px 9px; }
 .cabcard > .btn2.ghost:last-child { margin-top: 8px; padding: 5px 9px; }
 

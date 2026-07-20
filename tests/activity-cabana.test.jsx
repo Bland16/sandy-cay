@@ -123,6 +123,56 @@ describe('§7.1 — a long activity list stays navigable', () => {
   });
 });
 
+describe('§7.1 — pasting duplicates', () => {
+  const emptyBucket = () => {
+    resetIds();
+    const s = new Schedule({ config: { ...defaultConfig, protectedTags: [] } });
+    s.addBucket({ label: 'Rest', tags: ['rest'] });
+    return s;
+  };
+  const openPaste = () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Edit bucket Rest' }));
+    fireEvent.click(screen.getByRole('button', { name: /Paste many activities/ }));
+  };
+  const type = (text) => fireEvent.change(screen.getByLabelText(/Bulk add activities/), { target: { value: text } });
+
+  it('the same line twice in one paste creates one activity', () => {
+    const s = emptyBucket();
+    render(<Harness sched={s} Comp={TagManager} />);
+    openPaste();
+    type('meditate | 15-30\nmeditate | 15-30\nnap | 20-45');
+
+    expect(screen.getByText(/skipping 1 duplicate/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^Add 2 activities$/ }));
+    expect(s.activities.map((a) => a.label)).toEqual(['meditate', 'nap']);
+  });
+
+  it('pasting the same block twice is idempotent', () => {
+    const s = emptyBucket();
+    render(<Harness sched={s} Comp={TagManager} />);
+    openPaste();
+    type('meditate | 15-30\nnap | 20-45');
+    fireEvent.click(screen.getByRole('button', { name: /^Add 2 activities$/ }));
+    expect(s.activities).toHaveLength(2);
+
+    // Committing leaves you inside the bucket editor, so reopen the sheet only.
+    fireEvent.click(screen.getByRole('button', { name: /Paste many activities/ }));
+    type('meditate | 15-30\nnap | 20-45');
+    // Everything is already here, so there is nothing to add — and the button says so.
+    expect(screen.getByText(/skipping 2 duplicates/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Add activities$/ }).disabled).toBe(true);
+    expect(s.activities).toHaveLength(2);
+  });
+
+  it('names what it is skipping rather than silently swallowing it', () => {
+    const s = emptyBucket();
+    render(<Harness sched={s} Comp={TagManager} />);
+    openPaste();
+    type('meditate | 15-30\nMEDITATE | 20-45'); // case-insensitive match
+    expect(screen.getByText(/skipping 1 duplicate: MEDITATE/)).toBeTruthy();
+  });
+});
+
 describe('TagManager', () => {
   it('seeds the six starter buckets', () => {
     const s = schedWith();

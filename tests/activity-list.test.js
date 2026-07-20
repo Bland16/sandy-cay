@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { Schedule, resetIds } from '../src/core/index.js';
 import {
   activityUsage, activityPage, filterActivities, sortActivities, paginate,
+  dedupeDrafts, dedupeBulk, parseBulkBlock,
 } from '../src/core/activityList.js';
 
 const D = (d, h = 9) => new Date(2026, 6, d, h, 0, 0, 0);
@@ -166,5 +167,121 @@ describe('§7.1 — the back-link survives a save/load round trip', () => {
     const loaded = round.tasks.find((x) => x.title === 'Read');
     expect(loaded.activityId).toBe(a.id);
     expect(activityUsage(round, { now: NOW })[a.id]).toBe(1);
+  });
+});
+
+describe('§7.1 — bulk paste never lands the same activity twice', () => {
+  const draft = (label) => ({ label, durationMin: 15, durationMax: 30 });
+
+  it('a repeated line in one paste yields one activity', () => {
+    const { fresh, duplicates } = dedupeDrafts([draft('meditate'), draft('meditate')], []);
+    expect(fresh.map((d) => d.label)).toEqual(['meditate']);
+    expect(duplicates).toHaveLength(1);
+  });
+
+  it('identity is the label, not label+duration — a differing range is still a duplicate', () => {
+    // Two "meditate" rows in one bucket are a mistake whether or not their
+    // ranges agree; the second is unreachable noise in the list.
+    const a = { label: 'meditate', durationMin: 15, durationMax: 30 };
+    const b = { label: 'meditate', durationMin: 20, durationMax: 45 };
+    const { fresh } = dedupeDrafts([a, b], []);
+    expect(fresh).toHaveLength(1);
+    expect(fresh[0].durationMax).toBe(30); // first occurrence wins
+  });
+
+  it('matching is case- and whitespace-insensitive', () => {
+    const { fresh } = dedupeDrafts([draft('Meditate'), draft('  meditate  '), draft('MEDITATE')], []);
+    expect(fresh).toHaveLength(1);
+  });
+
+  it('skips what the bucket already holds, so pasting the same block twice is idempotent', () => {
+    const existing = [{ label: 'meditate' }, { label: 'nap' }];
+    const { fresh, duplicates } = dedupeDrafts([draft('meditate'), draft('nap'), draft('stretch')], existing);
+    expect(fresh.map((d) => d.label)).toEqual(['stretch']);
+    expect(duplicates.map((d) => d.label)).toEqual(['meditate', 'nap']);
+  });
+
+  it('reports the dropped rows rather than swallowing them', () => {
+    const { duplicates } = dedupeDrafts([draft('a'), draft('a'), draft('b'), draft('b')], []);
+    expect(duplicates.map((d) => d.label)).toEqual(['a', 'b']); // the UI names these
+  });
+
+  it('a blank label is dropped, not added as an empty row', () => {
+    const { fresh } = dedupeDrafts([draft('  '), draft('real')], []);
+    expect(fresh.map((d) => d.label)).toEqual(['real']);
+  });
+});
+
+describe('§7.1 — a paste can span buckets via "# Bucket" headings', () => {
+  const buckets = [{ id: 'rest', label: 'Rest', tags: ['rest'] }, { id: 'cre', label: 'Creative', tags: ['art'] }];
+
+  it('routes each run of lines to the bucket named above it', () => {
+    const { drafts } = parseBulkBlock(
+      '# Rest\nnap | 20-45\nread a book\n\n# Creative\nwrite poetry | 15-60',
+      { buckets },
+    );
+    expect(drafts.map((d) => [d.label, d.bucketId])).toEqual([
+      ['nap', 'rest'], ['read a book', 'rest'], ['write poetry', 'cre'],
+    ]);
+  });
+
+  it('inherits the heading bucket\'s tags when a row omits them', () => {
+    const { drafts } = parseBulkBlock('# Creative\nwrite poetry', { buckets });
+    expect(drafts[0].tags).toEqual(['art']); // not Rest's, and not empty
+  });
+
+  it('an explicit tag column still wins over the bucket default', () => {
+    const { drafts } = parseBulkBlock('# Creative\nwrite poetry | 15-60 | poetry, slow', { buckets });
+    expect(drafts[0].tags).toEqual(['poetry', 'slow']);
+  });
+
+  it('heading matching is case- and whitespace-insensitive', () => {
+    const { drafts, unknownBuckets } = parseBulkBlock('#   rEsT  \nnap', { buckets });
+    expect(unknownBuckets).toEqual([]);
+    expect(drafts[0].bucketId).toBe('rest');
+  });
+
+  it('rows before the first heading go to the bucket you are standing in', () => {
+    const { drafts, unassigned } = parseBulkBlock('nap | 20-45\n# Creative\nwrite poetry', {
+      buckets, defaultBucket: buckets[0],
+    });
+    expect(unassigned).toEqual([]);
+    expect(drafts.map((d) => d.bucketId)).toEqual(['rest', 'cre']);
+  });
+
+  it('with no bucket to default to, those rows are REPORTED, not silently dropped', () => {
+    const { drafts, unassigned } = parseBulkBlock('nap | 20-45\n# Creative\nwrite poetry', { buckets });
+    expect(unassigned.map((d) => d.label)).toEqual(['nap']);
+    expect(drafts.map((d) => d.label)).toEqual(['write poetry']);
+  });
+
+  it('an unknown heading is named, and its rows are skipped rather than guessed at', () => {
+    // Creating a bucket from what might be a typo is worse than saying so.
+    const { drafts, unknownBuckets } = parseBulkBlock('# Maintenence\nvacuum\n# Rest\nnap', { buckets });
+    expect(unknownBuckets).toEqual(['Maintenence']);
+    expect(drafts.map((d) => d.label)).toEqual(['nap']);
+  });
+
+  it('dedupes per bucket — the same label in two buckets is legitimate', () => {
+    const { drafts } = parseBulkBlock('# Rest\nread\n# Creative\nread', { buckets });
+    const { fresh, duplicates } = dedupeBulk(drafts, { rest: [], cre: [] });
+    expect(fresh).toHaveLength(2); // "read" survives in BOTH
+    expect(duplicates).toHaveLength(0);
+  });
+
+  it('still dedupes within one bucket across a multi-bucket paste', () => {
+    const { drafts } = parseBulkBlock('# Rest\nread\nread\n# Creative\nread', { buckets });
+    const { fresh, duplicates } = dedupeBulk(drafts, { rest: [], cre: [] });
+    expect(fresh.map((d) => [d.label, d.bucketId])).toEqual([['read', 'rest'], ['read', 'cre']]);
+    expect(duplicates).toHaveLength(1);
+  });
+
+  it('a duration-less two-field row is not mistaken for a bucket column', () => {
+    // The reason headings exist: "Creative | write poetry" and "write poetry |
+    // 15-60" are both two fields, so an inline bucket column could not be told
+    // apart from a duration. Here the first field is always the label.
+    const { drafts } = parseBulkBlock('# Rest\nCreative | 30-60', { buckets });
+    expect(drafts[0].label).toBe('Creative');
+    expect(drafts[0].durationMin).toBe(30);
   });
 });

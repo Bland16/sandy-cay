@@ -292,6 +292,44 @@ placed-then-deleted tasks as signal — that would turn a convenience sort into
 exactly the surveillance P-1 forbids. Counting a task that was placed but later
 skipped is fine (you chose it; the skip is not recorded as a judgement).
 
+### 7.2 Bulk paste — duplicates and multiple buckets (session 5)
+
+**A pasted activity never lands twice.** Identity is the **trimmed,
+case-insensitive label**, not label+duration: two activities both called
+"meditate" in one bucket are a mistake whether or not their ranges agree, and the
+second is unreachable noise. Dedupe runs on both axes — repeats *within* the
+paste (first occurrence wins, so the durations written first are kept) and
+against what the bucket *already holds*, which makes pasting the same block twice
+idempotent instead of doubling everything. Dedupe is scoped **per bucket**: the
+same label in two different buckets is legitimate.
+
+**A paste may span buckets, via `# Bucket name` heading lines.** Everything after
+a heading targets that bucket until the next one.
+
+> The obvious design — an inline leading column, `Creative | write poetry | 15-60`
+> — is **ambiguous and was rejected**: `Creative | write poetry` and
+> `write poetry | 15-60` are both two fields, so a bucket name and a
+> duration-less activity cannot be told apart. Headings remove the guess, and
+> match the shape people already write lists in.
+
+- Heading matching is case- and whitespace-insensitive.
+- Rows **before** the first heading go to the bucket you're standing in. Pasted
+  from the bucket *list*, where there is no such default, they are **reported as
+  unassigned**, not silently dropped.
+- A heading naming **no known bucket** is reported and its rows skipped.
+  Auto-creating a bucket from what might be a typo is worse than saying so.
+- A row that omits tags inherits **its heading's** bucket tags — which is what
+  drives its energy (§7.1 / the tag-derived model).
+
+**Nothing is dropped silently.** The commit bar states, before you press it, how
+many rows will land and in how many buckets, and names every duplicate, unknown
+heading and unassigned row. A bulk import that quietly discards rows is how you
+end up trusting a library that isn't what you pasted.
+
+The cross-bucket sheet lives at the **bucket list**, because that is the level it
+operates on; the in-bucket sheet keeps its own default but understands headings
+too.
+
 **Bonus:** the `activityId` back-link is also the missing prerequisite for the
 parked **activity time-of-day preference** learning (decided 2026-07-18: learn it
 from where instances actually get placed). That work is blocked on exactly this
