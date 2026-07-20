@@ -273,11 +273,42 @@ describe('L-1 energy UI', () => {
     // The wave starts on the inherited bucket load (mental −2); moving it sets an override.
     const wave = screen.getByLabelText('mental energy');
     expect(Number(wave.getAttribute('aria-valuenow'))).toBe(-2);
+    // Inheriting: ghost tubes, the source named, and the state announced (§5.3).
+    expect(document.querySelector('.energyctl.inheriting')).toBeTruthy();
+    expect(document.querySelector('.enfloat.ghost')).toBeTruthy();
+    expect(wave.getAttribute('aria-valuetext')).toMatch(/inherited/);
+    expect(screen.getByText(/inheriting from/)).toBeTruthy();
+
     fireEvent.keyDown(wave, { key: 'ArrowRight' }); // one stop toward spend → −1
     expect(s.activities[0].load).not.toBeNull();
     expect(s.activities[0].load.mental).toBe(-1);
+    // Committed: solid tubes, no "inherited" in the announcement.
+    expect(document.querySelector('.energyctl.inheriting')).toBeNull();
+    expect(document.querySelector('.enfloat.ghost')).toBeNull();
+    expect(screen.getByLabelText('mental energy').getAttribute('aria-valuetext')).not.toMatch(/inherited/);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Read inherit bucket energy' }));
+    fireEvent.click(screen.getByRole('button', { name: '↺ inherit Rest' }));
     expect(s.activities[0].load).toBeNull(); // back to inheriting
+    expect(document.querySelector('.energyctl.inheriting')).toBeTruthy();
+  });
+
+  it('committing one axis keeps the other three at their inherited values', () => {
+    // The trap in a "touch to commit" control: writing only the touched axis
+    // would snap the other three to zero the moment you nudge one, silently
+    // discarding the bucket's character. onChange sends the whole vector.
+    resetIds();
+    const s = new Schedule({ config: wide() });
+    s.addBucket({ label: 'Rest', tags: ['rest'], load: { mental: -2, physical: 1, social: -1, creative: 2 } });
+    s.addActivity({ bucketId: s.buckets[0].id, label: 'Read', durationMin: 15, durationMax: 60 });
+    render(<Harness sched={s} Comp={TagManager} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit bucket Rest' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit activity Read' }));
+
+    fireEvent.keyDown(screen.getByLabelText('mental energy'), { key: 'ArrowRight' }); // −2 → −1
+    const load = s.activities[0].load;
+    expect(load.mental).toBe(-1);      // the one we moved
+    expect(load.physical).toBe(1);     // inherited, preserved
+    expect(load.social).toBe(-1);
+    expect(load.creative).toBe(2);
   });
 });

@@ -40,7 +40,7 @@ function BeachBall() {
   );
 }
 
-function Axis({ axis, value, onChange }) {
+function Axis({ axis, value, onChange, ghost = false }) {
   const trackRef = useRef(null);
   // continuous float, rounded to 2dp so the stored value is clean but smooth
   const set = (raw) => { const v = Math.round(clampF(raw) * 100) / 100; if (v !== value) onChange(v); };
@@ -78,12 +78,12 @@ function Axis({ axis, value, onChange }) {
         aria-valuemin={-2}
         aria-valuemax={2}
         aria-valuenow={value}
-        aria-valuetext={WORDS[Math.round(value) + 2]}
+        aria-valuetext={ghost ? `${WORDS[Math.round(value) + 2]} (inherited)` : WORDS[Math.round(value) + 2]}
         onPointerDown={onPointerDown}
         onKeyDown={onKeyDown}
         style={{ '--wave': `url(${WAVE})` }}
       >
-        <span className="enfloat" style={{ left: `${pctOf(value)}%` }}>
+        <span className={ghost ? 'enfloat ghost' : 'enfloat'} style={{ left: `${pctOf(value)}%` }}>
           {/* the tube: a crisp SVG life-ring (pink + white) — no PNG segmentation residue */}
           <svg className="entube" viewBox="0 0 40 40" aria-hidden="true">
             <circle cx="20" cy="20" r="16" fill="none" stroke="#f4efe6" strokeWidth="11" />
@@ -101,16 +101,41 @@ function Axis({ axis, value, onChange }) {
 }
 
 /** value: a load object {mental,physical,social,creative} (or null → neutral).
- *  onChange: (nextLoad) => void. Loads are continuous floats in [-2, 2]. */
-export default function EnergyControl({ value, onChange }) {
+ *  onChange: (nextLoad) => void. Loads are continuous floats in [-2, 2].
+ *
+ *  Inherit mode (EDITOR-REDESIGN §5.3). Load resolves own → bucket → neutral, so
+ *  the control has two looks:
+ *    - inheriting: ghost tubes sitting at the INHERITED position, with a
+ *      `.field-help` naming the source. Touching a float commits an explicit
+ *      value (onChange fires with the full vector, so the untouched axes keep
+ *      what they were showing rather than snapping to zero).
+ *    - explicit: solid tubes + a "↺ inherit" link (onInherit) back to null.
+ *  inheritedFrom: source label (e.g. a bucket name) or null.
+ *  inheriting: whether `value` is currently the inherited vector.
+ *  onInherit: () => void — revert to inheriting; omit if there's nothing to
+ *  revert to. (Spelled out rather than inferred from the §5.5 prop list, so a
+ *  caller can't land in an ambiguous half-state.) */
+export default function EnergyControl({
+  value, onChange, inheritedFrom = null, inheriting = false, onInherit = null,
+}) {
   const load = value || { mental: 0, physical: 0, social: 0, creative: 0 };
   const setAxis = (axis, v) => onChange({ ...load, [axis]: v });
+  const source = inheritedFrom || 'its bucket';
   return (
-    <div className="energyctl">
+    <div className={inheriting ? 'energyctl inheriting' : 'energyctl'}>
       <div className="enends"><span>restore</span><span>spend</span></div>
       {AXES.map((a) => (
-        <Axis key={a} axis={a} value={load[a] ?? 0} onChange={(v) => setAxis(a, v)} />
+        <Axis key={a} axis={a} value={load[a] ?? 0} onChange={(v) => setAxis(a, v)} ghost={inheriting} />
       ))}
+      {inheriting ? (
+        <div className="field-help">
+          inheriting from <strong>{source}</strong> — move a float to set its own
+        </div>
+      ) : onInherit ? (
+        <div className="field-help">
+          its own energy · <button type="button" className="linklike" onClick={onInherit}>↺ inherit {source}</button>
+        </div>
+      ) : null}
     </div>
   );
 }

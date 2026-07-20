@@ -26,8 +26,17 @@ energy control, then a phased build plan to ship them in one chunked effort.
 > Everything else in this spec — the drill-in idiom, the form vocabulary, the
 > wave control itself, the sprite decisions, P0–P3 and P5 — stands as written.
 >
-> **Phase status:** P0 ✅ · P1 ✅ · P2 ⚠️ (list done, inherit mode outstanding) ·
-> P3 ✅ · P4 ❌ cancelled · P5 ❌ not started.
+> **Phase status (verified against the code, 2026-07-20):**
+> P0 ⚠️ — the drill-in *navigation* shipped, but neither half of P0's actual
+> content did: there is no `<DrillList>`/`<DrillEditor>` extraction, and none of
+> §4's vocabulary (`.field`, `.field.stack`, `.field-help`, `.control`,
+> `.rangefield`, `.editrow`) exists in `styles.css`. The editors still use the
+> zone-borrowed classes and **67 inline `style={{…}}` blocks** (ActivityEditor 22,
+> TagManager 30, ZonesEditor 15) — the soup §1.1 diagnoses and §4 bans.
+> P1 ✅ (`<EnergyControl>` built — though **without §5.3's inherit/ghost mode**).
+> P2 ⚠️ (list done; inherit mode outstanding).
+> P3 ⚠️ (Zones moved to the drill-in shape, on the old classes).
+> P4 ❌ cancelled · P5 ❌ not started.
 > **D-3 is moot** — `<EnergyControl>` is already built, so there is nothing left
 > to prototype ahead of it.
 

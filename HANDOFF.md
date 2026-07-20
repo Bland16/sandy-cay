@@ -64,11 +64,17 @@ for all five design docs is in the section above.
 - ✅ **Energy gating** — `config.energy.calibrationWeeks` (default 3);
   `learnedCapacity()` returns `null` until calibrated; the card shows a "still
   learning" shape with **no ceiling and no over/under verdict**.
-- ✅ **P0–P1, P3** — the form vocabulary, the drill-in idiom, the wave
-  `<EnergyControl>`, and the Zones + Buckets editors.
-- ⚠️ **P2 incomplete** — the Activities drill-in list shipped, but
-  `ActivityEditor.jsx` still renders the old "customise / inherit" text wall
-  instead of `<EnergyControl>`'s ghost-tube inherit mode (EDITOR-REDESIGN §9).
+- ⚠️ **P0 barely started.** The drill-in *navigation* works, but there is **no**
+  `<DrillList>`/`<DrillEditor>` extraction and **none** of EDITOR-REDESIGN §4's
+  CSS vocabulary (`.field`, `.field.stack`, `.field-help`, `.control`,
+  `.rangefield`, `.editrow`). The editors still borrow zone classes and carry
+  **67 inline `style={{…}}` blocks** (ActivityEditor 22, TagManager 30,
+  ZonesEditor 15) — exactly the soup §1.1 diagnoses. *Don't trust the commit
+  messages here; check `styles.css` yourself.*
+- ✅ **P1** — the wave `<EnergyControl>` is built and good… but **without §5.3's
+  inherit/ghost mode**; `ActivityEditor` fakes it with a text wall.
+- ⚠️ **P2 / P3** — the Activities and Zones lists have the drill-in shape, on
+  the old classes.
 - ❌ **P5 untouched** — `retireTag` is still orphaned (no UI caller; only
   `unretireTag` is wired), dead inline styles remain.
 

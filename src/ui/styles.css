@@ -679,6 +679,61 @@ body.sc-dragging { user-select: none; }
 .insight .bar2 { height: 7px; background: rgba(0,0,0,.35); border-radius: 4px; overflow: hidden; margin: 3px 0 7px; }
 .insight .bar2 i { display: block; height: 100%; background: var(--cab-accent); }
 
+/* ---------- Form-field vocabulary (EDITOR-REDESIGN §4) ----------
+   The fix for "nothing lines up": a fixed label column + a control area, so
+   editors stop hand-styling every element. Components must not set per-element
+   style={{…}} for LAYOUT once they're on these — data-driven bits (colour
+   swatches) stay inline. Replaces the .zonewin-as-generic-row borrowing. */
+.field {
+  display: flex; gap: 8px; align-items: center; margin: 7px 0;
+  font-family: var(--font-type); font-size: 11px; color: #e9dcc4;
+}
+/* the label column — one width everywhere, so controls form a true column */
+.field > .flabel {
+  flex: none; width: 54px; text-align: right;
+  font-size: 10.5px; color: #d8c6a5; opacity: .85;
+}
+/* the control area: flexes, wraps predictably, never overflows its card */
+.field > .fctl { flex: 1; min-width: 0; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+/* label ABOVE control — for full-width controls (tags, the energy control) */
+.field.stack { flex-direction: column; align-items: stretch; gap: 4px; }
+.field.stack > .flabel { width: auto; text-align: left; }
+.field.stack > .fctl { flex-wrap: wrap; }
+/* help text beneath a field — the calm alternative to a wall of explanation */
+.field-help { font-size: 10.5px; line-height: 1.45; color: #d8c6a5; opacity: .75; margin-top: 3px; }
+.field-help strong { color: var(--cab-accent); font-weight: 700; }
+
+/* one input/select skin (was .zonewin input + .cabinput, which disagreed) */
+.control {
+  background: rgba(0,0,0,.28); border: 1.5px solid var(--cab-trim); border-radius: 7px;
+  padding: 5px 8px; color: var(--cab-text);
+  font-family: var(--font-type); font-size: 11px; min-width: 0;
+}
+.control:focus-visible { outline: 2px solid var(--cab-accent); outline-offset: 1px; }
+.control.grow { flex: 1; }
+.control.num { width: 58px; }
+
+/* the elastic duration control — reads "15 – 60 min", not two naked boxes */
+.rangefield { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.rangefield .rdash { opacity: .6; }
+.rangefield .runit { font-size: 10.5px; opacity: .65; }
+
+/* a collection list row (the neutral name for .zonerow — not zone-specific) */
+.editrow {
+  display: flex; gap: 8px; align-items: center; width: 100%; text-align: left;
+  background: rgba(0,0,0,.22); border: 1.5px solid var(--cab-trim); border-radius: 9px;
+  padding: 8px 10px; margin: 5px 0; cursor: pointer; color: var(--cab-text);
+  font-family: var(--font-body); font-size: 12.5px;
+}
+.editrow:hover, .editrow:focus-visible { border-color: var(--cab-accent); outline: none; }
+.editrow .ername { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.editrow .ermeta { flex: none; font-family: var(--font-type); font-size: 9.5px; opacity: .6; }
+.editrow .erchev { flex: none; opacity: .5; }
+/* the drill-in editor's back button, and its destructive action (kept at the
+   bottom, ghost — never adjacent to a save-like affordance, §3) */
+.editback { margin-bottom: 10px; padding: 5px 9px; }
+.cabcard > .btn2.ghost:last-child { margin-top: 8px; padding: 5px 9px; }
+
 /* ---------- EnergyControl: the tube-float on a wave (EDITOR-REDESIGN §5) ----------
    One wave per axis, tinted blue (water); drag the life-ring. The axis critter
    rides IN the tube in its natural colour. A text label names the axis. No
@@ -718,6 +773,12 @@ body.sc-dragging { user-select: none; }
   transform: translate(-50%, -50%); display: grid; place-items: center; z-index: 2;
   filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .45)); pointer-events: none;
 }
+/* inheriting: ghost tubes — the value is real and readable, but visibly not this
+   thing's own. Touching one commits it (EDITOR-REDESIGN §5.3). */
+.energyctl.inheriting .enfloat { opacity: .42; filter: drop-shadow(0 1px 1px rgba(0,0,0,.3)) saturate(.35); }
+.energyctl.inheriting .entrack::before { opacity: .5; }
+.energyctl.inheriting .entrack:focus-visible .enfloat,
+.energyctl.inheriting .entrack:hover .enfloat { opacity: .72; }
 .entube { position: absolute; inset: 0; width: 100%; height: 100%; }
 .enrider { position: relative; z-index: 1; width: 15px; height: 15px; object-fit: contain; }
 /* inline text-button (e.g. "↺ inherit") in the Cabana's warm palette */
