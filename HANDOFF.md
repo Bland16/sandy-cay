@@ -1,10 +1,14 @@
 # Sandy Cay — handoff
 
-**Updated:** 2026-07-16, third session. **The active line of work is the
-`wrap-report` branch, NOT `main`** (https://github.com/Bland16/sandy-cay):
-wrap-report is ~5 commits ahead of main (wrap report, recurrence/zones,
-responsive) and was never merged. Session 3's precedence + de-flake work stacks
-on top of it. Don't assume `main` has any of this.
+**Updated:** 2026-07-20, session 5. **`main` is now the trunk again** and is
+live on Pages (https://bland16.github.io/sandy-cay/). PRs #1, #2 and #4 are
+merged: the wrap report, recurrence/zones, responsive, the past-placement floor,
+unique task ids, the de-flaked suite, and ripple/zone exclusivity. 314 tests
+green on `main`.
+
+**The one branch still outstanding is `worktree-activity-library`** (PR #3,
+draft) — the Activity Library / Tag Buckets / energy work. It is *not* merged
+and it is where the session-4/5 respec was written.
 
 ```bash
 npm install
@@ -13,6 +17,31 @@ npm run test:run # 308 tests, all green any day of the week (flaky tests fixed)
 npm run build
 npx eslint src
 ```
+
+---
+
+## The design specs — read in this order
+
+`SPEC.md`, `FRONTEND-SPEC.md` and `design/UI-CONTROL-MAP.md` are the standing
+contract. The Activity Library / energy line of work is specified across five
+docs in `design/`, and **they are a stack of corrections — later docs overrule
+earlier ones**:
+
+1. `design/ACTIVITY-LIBRARY.md` (s4, 07-16) — buckets, activities, steered
+   what-to-do. ⚠ partly superseded (banner at top).
+2. `design/ENERGY-MODEL.md` (s4, 07-17) — the four-axis load basis. ⚠ partly
+   superseded (banner at top).
+3. `design/ROUTINES.md` (s4, 07-17) — routines, passive waits, travel. Unbuilt.
+4. **`design/RECONCILIATION.md` (s4, 07-17)** — corrects 1 and 2. The forks in
+   it are RESOLVED. Start here for the model.
+5. **`design/EDITOR-REDESIGN.md` (s5, 07-18)** — the current build spec: one
+   drill-in idiom, the form vocabulary, the wave `<EnergyControl>`, and the
+   **P0–P5 phased plan**. Build is *gated on sign-off*; D-1…D-5 are still open.
+
+The code for 1–5 lives on `worktree-activity-library`, not `main`. Roughly P0–P3
+are built (role rip-out done, `<EnergyControl>` built, Zones + Buckets + the
+Activities list on the drill-in idiom); **P2 is incomplete** (the per-activity
+energy override was never removed) and **P4–P5 are untouched**.
 
 ---
 
