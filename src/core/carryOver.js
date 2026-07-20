@@ -19,7 +19,15 @@ export function carryOver(schedule, fromWeekStart, toWeekStart, opts = {}) {
   const missedDeadline = [];
   const dropped = [];
 
-  const to = addDays(toWs, schedule.config.maxPlacementLookahead + 6);
+  // The search window must be exactly the target week, because that is the only
+  // span `occupied` below covers (getDayIndex(toWs) 0..6). This previously ran to
+  // toWs + maxPlacementLookahead + 6 — and since findBestSlot treats `to` as
+  // INCLUSIVE of its day, that searched ten days against seven days of occupancy.
+  // Days 7–9 were placeable but invisible, so a carried task could be dropped on
+  // top of the following week's anchors, silently, and outside the week it was
+  // carried into. If the target week is genuinely full, placeTask parks it with
+  // schedulingWarning — visible and flagged beats silent and wrong.
+  const to = addDays(toWs, 6);
 
   for (const t of schedule.tasks) {
     if (t.chunking) continue;
