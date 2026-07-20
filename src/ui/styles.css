@@ -729,6 +729,28 @@ body.sc-dragging { user-select: none; }
 .editrow .ername { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .editrow .ermeta { flex: none; font-family: var(--font-type); font-size: 9.5px; opacity: .6; }
 .editrow .erchev { flex: none; opacity: .5; }
+.editrow .erswatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; flex: none; }
+.editrow .ername { color: var(--cab-accent); }
+.drillactions { margin-top: 4px; }
+.drillactions .btn2 { padding: 5px 9px; }
+/* destructive action: bottom, ghost, and set apart from the rest */
+.editremove { margin-top: 12px; padding: 5px 9px; }
+/* a stack of day/time rows inside one field (zone windows) */
+.winrows { display: flex; flex-direction: column; gap: 5px; width: 100%; }
+.winrow { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+/* a checkbox + its sentence, sharing the field rhythm without a label column */
+.checkfield { gap: 8px; cursor: pointer; align-items: center; }
+/* a section heading inside a card (Activities, Retired tags) */
+.subhead { font-family: var(--font-body); font-size: 11.5px; font-weight: 700; color: var(--cab-accent); line-height: 1.5; }
+.subhead.spaced { margin-top: 12px; }
+.subhead .subcount { opacity: .6; font-weight: 400; }
+/* the paste-many sheet */
+.bulksheet { display: flex; flex-direction: column; align-items: stretch; gap: 6px; margin: 5px 0; }
+.bulksheet textarea { resize: vertical; min-height: 74px; }
+.retiredstrip { margin-top: 12px; }
+.tagrow { display: flex; gap: 6px; flex-wrap: wrap; margin: 5px 0; }
+/* the bucket colour well, sized to sit as a swatch beside its name */
+.control.swatchinput { width: 30px; padding: 0; flex: none; }
 /* the drill-in editor's back button, and its destructive action (kept at the
    bottom, ghost — never adjacent to a save-like affordance, §3) */
 /* filter + sort above a long collection list (EDITOR-REDESIGN §7.1) */

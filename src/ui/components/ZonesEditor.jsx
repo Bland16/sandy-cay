@@ -7,7 +7,7 @@ import { useState } from 'react';
 import { dateKey, dateFromKey, lastRunDay, untilAfterLastRun } from '../../core/index.js';
 import { DAY_NAMES, DAY_KEYS } from '../format.js';
 import TagEditor, { tagsInUse } from './TagEditor.jsx';
-import Icon from '../Icon.jsx';
+import { DrillList, DrillEditor, DrillRow, Field } from './Drill.jsx';
 
 export default function ZonesEditor({ sched, mutate }) {
   const [editingId, setEditingId] = useState(null);
@@ -38,84 +38,90 @@ export default function ZonesEditor({ sched, mutate }) {
   if (editing) {
     const z = editing;
     return (
-      <div className="cabcard">
-        <div className="cabsign">Edit zone</div>
-        <button className="btn2 ghost" style={{ marginBottom: 10, padding: '5px 9px' }} onClick={() => setEditingId(null)}>
-          <Icon name="back" /> All zones
-        </button>
-        <div className="zonewin" style={{ gap: 6 }}>
-          <span style={{ opacity: 0.6, fontSize: 12, minWidth: 44 }}>name</span>
-          <input defaultValue={z.label} onBlur={(e) => patchZone(z.id, { label: e.target.value.trim() || z.label })} style={{ flex: 1 }} aria-label="Zone name" />
-        </div>
-        <div className="zonewin" style={{ gap: 6, alignItems: 'flex-start' }}>
-          <span style={{ opacity: 0.6, fontSize: 12, minWidth: 44, paddingTop: 6 }}>tags</span>
-          <div style={{ flex: 1 }}>
-            <TagEditor tags={z.matchTags} onChange={(tags) => patchZone(z.id, { matchTags: tags })} suggestions={suggestions} />
+      <DrillEditor
+        title="Edit zone"
+        backLabel="All zones"
+        onBack={() => setEditingId(null)}
+        onRemove={() => { removeZone(z.id); setEditingId(null); }}
+        removeLabel="remove zone"
+        removeAria={`Remove zone ${z.label}`}
+      >
+        <Field label="name">
+          <input className="control grow" defaultValue={z.label} onBlur={(e) => patchZone(z.id, { label: e.target.value.trim() || z.label })} aria-label="Zone name" />
+        </Field>
+        <Field label="tags" stack>
+          <TagEditor tags={z.matchTags} onChange={(tags) => patchZone(z.id, { matchTags: tags })} suggestions={suggestions} />
+        </Field>
+        <Field label="windows" stack>
+          <div className="winrows">
+            {z.windows.map((w, i) => (
+              <div className="winrow" key={i}>
+                <select className="control" value={w.day} onChange={(e) => patchWindow(z, i, { day: e.target.value })} aria-label="Zone day">
+                  {DAY_KEYS.map((k, idx) => <option key={k} value={k}>{DAY_NAMES[idx]}</option>)}
+                </select>
+                <input className="control" type="time" value={w.start} onChange={(e) => patchWindow(z, i, { start: e.target.value })} aria-label="Zone start" />
+                <span className="rdash">→</span>
+                <input className="control" type="time" value={w.end} onChange={(e) => patchWindow(z, i, { end: e.target.value })} aria-label="Zone end" />
+                <button className="rm" onClick={() => removeWindow(z, i)} aria-label="Remove window">×</button>
+              </div>
+            ))}
+            <div className="chest drillactions">
+              <button className="btn2 ghost" onClick={() => addWindow(z)}>＋ window</button>
+              <button className="btn2 ghost" onClick={() => addWeekdayWindows(z)} title="Add Mon–Fri at the first window's hours">＋ every weekday</button>
+            </div>
           </div>
-        </div>
-        {z.windows.map((w, i) => (
-          <div className="zonewin" key={i}>
-            <select value={w.day} onChange={(e) => patchWindow(z, i, { day: e.target.value })} aria-label="Zone day">
-              {DAY_KEYS.map((k, idx) => <option key={k} value={k}>{DAY_NAMES[idx]}</option>)}
-            </select>
-            <input type="time" value={w.start} onChange={(e) => patchWindow(z, i, { start: e.target.value })} aria-label="Zone start" />
-            →
-            <input type="time" value={w.end} onChange={(e) => patchWindow(z, i, { end: e.target.value })} aria-label="Zone end" />
-            <button className="rm" onClick={() => removeWindow(z, i)} aria-label="Remove window">×</button>
-          </div>
-        ))}
-        <div className="chest" style={{ marginTop: 4 }}>
-          <button className="btn2 ghost" style={{ padding: '5px 8px' }} onClick={() => addWindow(z)}>＋ window</button>
-          <button className="btn2 ghost" style={{ padding: '5px 8px' }} onClick={() => addWeekdayWindows(z)} title="Add Mon–Fri at the first window's hours">＋ every weekday</button>
-        </div>
-        <label className="zonewin" style={{ gap: 8, cursor: 'pointer' }}>
+        </Field>
+        <label className="field checkfield">
           <input type="checkbox" checked={z.exclusive} onChange={(e) => patchZone(z.id, { exclusive: e.target.checked })} aria-label="Exclusive · reserve this time" />
           exclusive · reserve this time
         </label>
 
         {/* A zone can be temporary — a summer job, a term. Blank = always. */}
-        <div className="zonewin">
-          <span>runs:</span>
+        <Field
+          label="runs"
+          stack
+          help="Leave blank for always. Both dates are days it runs — a summer job ending Fri the 24th ends on the 24th."
+        >
           <input
+            className="control"
             type="date"
             value={z.effectiveFrom ? dateKey(z.effectiveFrom) : ''}
             onChange={(e) => patchZone(z.id, { effectiveFrom: e.target.value ? dateFromKey(e.target.value) : null })}
             aria-label="Zone start date"
           />
-          →
+          <span className="rdash">→</span>
           {/* Shown and read as the LAST DAY IT RUNS. The engine stores a half-open
               bound, so the edge converts — see time.js (sharp edge #11). */}
           <input
+            className="control"
             type="date"
             value={z.effectiveUntil ? dateKey(lastRunDay(z.effectiveUntil)) : ''}
             onChange={(e) => patchZone(z.id, { effectiveUntil: e.target.value ? untilAfterLastRun(dateFromKey(e.target.value)) : null })}
             aria-label="Zone end date"
           />
-        </div>
-        <p className="insight" style={{ opacity: 0.7 }}>
-          Leave blank for always. Both dates are days it runs — a summer job ending Fri the 24th ends on the 24th.
-        </p>
-        <button className="btn2 ghost" style={{ marginTop: 8, padding: '5px 9px' }} onClick={() => { removeZone(z.id); setEditingId(null); }} aria-label={`Remove zone ${z.label}`}>
-          remove zone
-        </button>
-      </div>
+        </Field>
+      </DrillEditor>
     );
   }
 
   // ---- zone list --------------------------------------------------------
   return (
-    <div className="cabcard">
-      <div className="cabsign">Zones</div>
-      <p>Route tagged work into set windows.</p>
-      {zones.length === 0 && <p className="insight">No zones yet.</p>}
+    <DrillList
+      title="Zones"
+      blurb="Route tagged work into set windows."
+      isEmpty={zones.length === 0}
+      empty="No zones yet."
+      actions={<button className="btn2" onClick={addZone} aria-label="Add zone">＋ Add zone</button>}
+    >
       {zones.map((z) => (
-        <button key={z.id} className="zonerow" onClick={() => setEditingId(z.id)} aria-label={`Edit zone ${z.label}`}>
-          <b style={{ color: 'var(--cab-accent)' }}>{z.label}</b>
-          <span className="zmeta">{z.matchTags.join(', ') || 'no tags'} · {z.windows.length} window{z.windows.length === 1 ? '' : 's'}</span>
-          <span aria-hidden="true">edit ›</span>
-        </button>
+        <DrillRow
+          key={z.id}
+          label={z.label}
+          meta={`${z.matchTags.join(', ') || 'no tags'} · ${z.windows.length} window${z.windows.length === 1 ? '' : 's'}`}
+          onOpen={() => setEditingId(z.id)}
+          ariaLabel={`Edit zone ${z.label}`}
+        />
       ))}
-      <button className="btn2" style={{ marginTop: 8 }} onClick={addZone} aria-label="Add zone">＋ Add zone</button>
-    </div>
+    </DrillList>
   );
 }

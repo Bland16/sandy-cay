@@ -11,6 +11,7 @@ import { seedStarterBuckets, activityUsage, activityPage, activityCfg, parseBulk
 import TagEditor, { tagsInUse } from './TagEditor.jsx';
 import EnergyControl from './EnergyControl.jsx';
 import ActivityEditor from './ActivityEditor.jsx';
+import { DrillRow, Field } from './Drill.jsx';
 import Icon from '../Icon.jsx';
 
 const ORPHANS = '__orphans__';
@@ -142,14 +143,13 @@ export default function TagManager({ sched, mutate }) {
   };
 
   const activityRow = (a) => (
-    <button key={a.id} className="zonerow" onClick={() => setEditingActivityId(a.id)} aria-label={`Edit activity ${a.label}`}>
-      <b style={{ color: 'var(--cab-accent)' }}>{a.label}</b>
-      <span className="zmeta">
-        {a.durationMin === a.durationMax ? `${a.durationMin} min` : `${a.durationMin}–${a.durationMax} min`}
-        {a.priority ? ` · P${a.priority}` : ''}
-      </span>
-      <span aria-hidden="true">edit ›</span>
-    </button>
+    <DrillRow
+      key={a.id}
+      label={a.label}
+      meta={`${a.durationMin === a.durationMax ? `${a.durationMin} min` : `${a.durationMin}–${a.durationMax} min`}${a.priority ? ` · P${a.priority}` : ''}`}
+      onOpen={() => setEditingActivityId(a.id)}
+      ariaLabel={`Edit activity ${a.label}`}
+    />
   );
 
   // ---- level 2: focused activity editor ---------------------------------
@@ -171,29 +171,23 @@ export default function TagManager({ sched, mutate }) {
     return (
       <div className="cabcard">
         <div className="cabsign">{isOrphans ? 'Unbucketed activities' : 'Edit bucket'}</div>
-        <button className="btn2 ghost" style={{ marginBottom: 10, padding: '5px 9px' }} onClick={() => openBucket(null)}>
+        <button className="btn2 ghost editback" onClick={() => openBucket(null)}>
           <Icon name="back" /> All buckets
         </button>
 
         {!isOrphans && (
           <>
-            <div className="zonewin" style={{ gap: 6 }}>
-              <input type="color" value={editing.color} onChange={(e) => patchBucket(editing.id, { color: e.target.value })} aria-label="Bucket colour" style={{ width: 30, padding: 0 }} />
-              <input defaultValue={editing.label} onBlur={(e) => patchBucket(editing.id, { label: e.target.value.trim() || editing.label })} aria-label="Bucket name" style={{ flex: 1 }} />
-            </div>
-            <div className="zonewin" style={{ gap: 6, alignItems: 'flex-start' }}>
-              <span style={{ opacity: 0.6, fontSize: 12, minWidth: 44, paddingTop: 6 }}>energy</span>
-              <div style={{ flex: 1, minWidth: 180 }}>
-                <EnergyControl value={editing.load} onChange={(load) => setLoad(editing.id, load)} />
-              </div>
-            </div>
-            <div className="zonewin" style={{ gap: 6, alignItems: 'flex-start' }}>
-              <span style={{ opacity: 0.6, fontSize: 12, minWidth: 44, paddingTop: 6 }}>tags</span>
-              <div style={{ flex: 1 }}>
-                <TagEditor tags={editing.tags} onChange={(tags) => setBucketTags(editing.id, tags)} suggestions={suggestions} />
-              </div>
-            </div>
-            <label className="zonewin" style={{ gap: 8, cursor: 'pointer', fontSize: 13 }}>
+            <Field label="name">
+              <input className="control swatchinput" type="color" value={editing.color} onChange={(e) => patchBucket(editing.id, { color: e.target.value })} aria-label="Bucket colour" />
+              <input className="control grow" defaultValue={editing.label} onBlur={(e) => patchBucket(editing.id, { label: e.target.value.trim() || editing.label })} aria-label="Bucket name" />
+            </Field>
+            <Field label="energy" stack>
+              <EnergyControl value={editing.load} onChange={(load) => setLoad(editing.id, load)} />
+            </Field>
+            <Field label="tags" stack>
+              <TagEditor tags={editing.tags} onChange={(tags) => setBucketTags(editing.id, tags)} suggestions={suggestions} />
+            </Field>
+            <label className="field checkfield">
               <input type="checkbox" checked={allProt} onChange={() => toggleBucketProtected(editing)} aria-label="Protect this bucket's tags" />
               protected · its tasks survive auto-eviction
             </label>
@@ -201,8 +195,8 @@ export default function TagManager({ sched, mutate }) {
         )}
 
         {/* Activities section — the consolidation: activities live in their bucket */}
-        <div className="insight" style={{ fontWeight: 700, color: 'var(--cab-accent)', marginTop: isOrphans ? 0 : 12 }}>
-          Activities <span style={{ opacity: 0.6, fontWeight: 400 }}>· {countActs(list.length)}</span>
+        <div className={isOrphans ? 'subhead' : 'subhead spaced'}>
+          Activities <span className="subcount">· {countActs(list.length)}</span>
         </div>
         {/* Filter + sort appear only once the list is long enough to need them —
             a bucket with three activities stays as calm as it is today. */}
@@ -236,7 +230,7 @@ export default function TagManager({ sched, mutate }) {
           </div>
         )}
         {bulkOpen && !isOrphans ? (
-          <div className="zonewin" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
+          <div className="bulksheet">
             <textarea
               className="cabinput"
               rows={4}
@@ -245,21 +239,20 @@ export default function TagManager({ sched, mutate }) {
               onChange={(e) => setBulkText(e.target.value)}
               placeholder={`One activity per line, e.g.\nRead\nSketch | 30-90 | art, calm\n\n# Creative\n…starts a run for another bucket`}
               aria-label={`Bulk add activities to ${name}`}
-              style={{ resize: 'vertical', minHeight: 74 }}
             />
             {/* Live count of what will actually land, and what won't — the skip is
                 stated before you commit, never silently swallowed. */}
             <BulkPreview draft={bulkDrafts(isOrphans ? null : editing)} onCommit={() => commitBulk(isOrphans ? null : editing)} onCancel={() => { setBulkText(''); setBulkOpen(false); }} />
           </div>
         ) : (
-          <div className="chest" style={{ marginTop: 4 }}>
-            <button className="btn2 ghost" style={{ padding: '5px 9px' }} onClick={() => addActivity(isOrphans ? null : editing)} aria-label={`Add activity to ${name}`}>＋ activity</button>
-            {!isOrphans && <button className="btn2 ghost" style={{ padding: '5px 9px' }} onClick={() => { setBulkText(''); setBulkOpen(true); }} aria-label={`Paste many activities to ${name}`}>⤓ paste many</button>}
+          <div className="chest drillactions">
+            <button className="btn2 ghost" onClick={() => addActivity(isOrphans ? null : editing)} aria-label={`Add activity to ${name}`}>＋ activity</button>
+            {!isOrphans && <button className="btn2 ghost" onClick={() => { setBulkText(''); setBulkOpen(true); }} aria-label={`Paste many activities to ${name}`}>⤓ paste many</button>}
           </div>
         )}
 
         {!isOrphans && (
-          <button className="btn2 ghost" style={{ marginTop: 12, padding: '5px 9px' }} onClick={() => { dropBucket(editing.id); openBucket(null); }} aria-label={`Remove bucket ${editing.label}`}>
+          <button className="btn2 ghost editremove" onClick={() => { dropBucket(editing.id); openBucket(null); }} aria-label={`Remove bucket ${editing.label}`}>
             remove bucket
           </button>
         )}
@@ -275,14 +268,14 @@ export default function TagManager({ sched, mutate }) {
 
       {buckets.length === 0 && <p className="insight">No buckets yet.</p>}
       {buckets.map((b) => (
-        <button key={b.id} className="zonerow" onClick={() => openBucket(b.id)} aria-label={`Edit bucket ${b.label}`}>
-          <span aria-hidden="true" style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: b.color, flexShrink: 0, marginRight: 2 }} />
-          <b style={{ color: 'var(--cab-accent)' }}>{b.label}</b>
-          <span className="zmeta">
-            {b.tags.length} tag{b.tags.length === 1 ? '' : 's'} · {countActs(inBucket(b.id).length)}
-          </span>
-          <span aria-hidden="true">edit ›</span>
-        </button>
+        <DrillRow
+          key={b.id}
+          swatch={b.color}
+          label={b.label}
+          meta={`${b.tags.length} tag${b.tags.length === 1 ? '' : 's'} · ${countActs(inBucket(b.id).length)}`}
+          onOpen={() => openBucket(b.id)}
+          ariaLabel={`Edit bucket ${b.label}`}
+        />
       ))}
 
       {orphans.length > 0 && (
@@ -296,7 +289,7 @@ export default function TagManager({ sched, mutate }) {
       {/* Cross-bucket paste lives HERE, at the list, because that's the level it
           operates on — seeding a whole library in one go rather than six. */}
       {bulkOpen ? (
-        <div className="zonewin" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
+        <div className="bulksheet">
           <textarea
             className="cabinput"
             rows={6}
@@ -305,26 +298,25 @@ export default function TagManager({ sched, mutate }) {
             onChange={(e) => setBulkText(e.target.value)}
             placeholder={'# Rest\nnap | 20-45\nread a book | 15-90\n\n# Creative\nwrite poetry | 15-60'}
             aria-label="Bulk add activities across buckets"
-            style={{ resize: 'vertical', minHeight: 110 }}
           />
           <BulkPreview draft={bulkDrafts(null)} onCommit={() => commitBulk(null)} onCancel={() => { setBulkText(''); setBulkOpen(false); }} />
         </div>
       ) : (
-        <div className="chest" style={{ marginTop: 4 }}>
-          <button className="btn2 ghost" style={{ padding: '5px 9px' }} onClick={addBucket} aria-label="Add bucket">＋ bucket</button>
+        <div className="chest drillactions">
+          <button className="btn2 ghost" onClick={addBucket} aria-label="Add bucket">＋ bucket</button>
           {buckets.length > 0 && (
-            <button className="btn2 ghost" style={{ padding: '5px 9px' }} onClick={() => { setBulkText(''); setBulkOpen(true); }} aria-label="Paste many activities across buckets">⤓ paste many</button>
+            <button className="btn2 ghost" onClick={() => { setBulkText(''); setBulkOpen(true); }} aria-label="Paste many activities across buckets">⤓ paste many</button>
           )}
           {buckets.length === 0 && (
-            <button className="btn2" style={{ padding: '5px 9px' }} onClick={seed} aria-label="Seed starter buckets">＋ starter buckets</button>
+            <button className="btn2" onClick={seed} aria-label="Seed starter buckets">＋ starter buckets</button>
           )}
         </div>
       )}
 
       {retired.length > 0 && (
-        <div style={{ marginTop: 12 }}>
-          <div className="insight" style={{ fontWeight: 700 }}>Retired tags</div>
-          <div className="zonewin" style={{ gap: 6, flexWrap: 'wrap' }}>
+        <div className="retiredstrip">
+          <div className="subhead">Retired tags</div>
+          <div className="tagrow">
             {retired.map((t) => (
               <span key={t} className="w cabtag">{t}<button className="rm" onClick={() => unretire(t)} aria-label={`Un-retire ${t}`}>×</button></span>
             ))}
