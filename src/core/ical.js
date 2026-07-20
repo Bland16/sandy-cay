@@ -15,6 +15,7 @@
 
 import { Task } from './Task.js';
 import { addMinutes, lastRunDay, untilAfterLastRun } from './time.js';
+import { periodActiveOn } from './recurrence.js';
 
 const DAY_TO_BYDAY = { mon: 'MO', tue: 'TU', wed: 'WE', thu: 'TH', fri: 'FR', sat: 'SA', sun: 'SU' };
 const BYDAY_TO_DAY = Object.fromEntries(Object.entries(DAY_TO_BYDAY).map(([k, v]) => [v, k]));
@@ -170,11 +171,19 @@ function atLocal(dateKeyStr, hhmm = '00:00') {
   return new Date(y, m - 1, d, h || 0, mi || 0, 0, 0);
 }
 
-/** The pattern's start time on a given date — for an EXDATE/RECURRENCE-ID. */
+/** The pattern's start time on a given date — for an EXDATE/RECURRENCE-ID.
+ *  Must use the period actually IN FORCE on that date, not periods[0].
+ *  splitPeriod inserts a temporary period between a closed base and a reopened
+ *  one, so the array is not chronological and periods[0] is simply the oldest
+ *  window. Reading it meant an EXDATE for a date governed by a later period
+ *  carried the wrong time — and an EXDATE whose time doesn't match the
+ *  occurrence is ignored by the receiving calendar, so a skipped or moved
+ *  occurrence silently reappeared on the far side of an export. */
 function hhmmOf(task, dateKeyStr) {
-  const period = (task.recurrence.periods || [])[0];
-  if (!period) return '00:00';
+  const periods = task.recurrence.periods || [];
   const d = atLocal(dateKeyStr);
+  const period = periods.find((p) => periodActiveOn(p, d)) || periods[0];
+  if (!period) return '00:00';
   const dayKey = Object.keys(DAY_TO_BYDAY)[(d.getDay() + 6) % 7];
   const w = (period.windows || []).find((x) => x.day === dayKey) || (period.windows || [])[0];
   return w ? w.start : '00:00';

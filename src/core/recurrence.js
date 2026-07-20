@@ -14,7 +14,7 @@ import {
 } from './time.js';
 
 /** Is a period active on a given calendar date? */
-function periodActiveOn(period, date) {
+export function periodActiveOn(period, date) {
   const t = dayStart(date).getTime();
   if (period.effectiveFrom && t < dayStart(period.effectiveFrom).getTime()) return false;
   if (period.effectiveUntil && t >= dayStart(period.effectiveUntil).getTime()) return false;

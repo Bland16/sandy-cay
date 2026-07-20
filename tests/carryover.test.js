@@ -54,6 +54,60 @@ describe('3E — carryOver classification (OD-9/13)', () => {
   });
 });
 
+describe('carryOver stays inside the target week (double-book regression)', () => {
+  // The search window ran to toWs + maxPlacementLookahead + 6 (ten days, since
+  // `to` is inclusive of its day) while `occupied` only ever covered days 0–6.
+  // So days 7–9 were searchable but INVISIBLE: a carried task could be placed
+  // straight on top of an existing task in the following week, silently, and
+  // land outside the week it was supposedly carried into.
+  const NOW2 = new Date(2026, 6, 13, 0, 0, 0, 0); // Mon = start of the target week
+  const T = (offset, h, mi = 0) => {
+    const d = new Date(TO.getTime());
+    d.setDate(d.getDate() + offset);
+    d.setHours(h, mi, 0, 0);
+    return d;
+  };
+
+  it('a carried task never lands in the following week, and never on top of what lives there', () => {
+    resetIds();
+    const s = new Schedule({ config: defaultConfig });
+
+    // Fill every day of the target week so the only "free" ground is day 7+.
+    for (let d = 0; d <= 6; d += 1) {
+      const block = new Task({ title: `Full${d}`, type: 'fixed', startTime: T(d, 0, 0), endTime: T(d, 23, 59) });
+      block.pinned = true;
+      s.tasks.push(block);
+    }
+    // Day 7 (the next week) already has something. occupied cannot see it,
+    // because the filter is getDayIndex(toWs) <= 6.
+    const nextWeek = new Task({ title: 'NextWeek', type: 'fixed', startTime: T(7, 9), endTime: T(7, 10) });
+    nextWeek.pinned = true;
+    s.tasks.push(nextWeek);
+
+    const stray = s.addFlexible({ title: 'Stray', startTime: F(0, 10), endTime: F(0, 11) });
+
+    const res = s.carryOver(FROM, TO, { now: NOW2 });
+    expect(res.carried.map((t) => t.id)).toContain(stray.id);
+
+    // It was carried INTO the target week — not past it.
+    expect(stray.getDayIndex(TO)).toBeGreaterThanOrEqual(0);
+    expect(stray.getDayIndex(TO)).toBeLessThanOrEqual(6);
+    // And it did not silently double-book next week's anchor.
+    expect(stray.overlaps(nextWeek)).toBe(false);
+  });
+
+  it('with room in the target week it still places normally, unflagged', () => {
+    resetIds();
+    const s = new Schedule({ config: defaultConfig });
+    const stray = s.addFlexible({ title: 'Stray', startTime: F(0, 10), endTime: F(0, 11) });
+
+    s.carryOver(FROM, TO, { now: NOW2 });
+    expect(stray.getDayIndex(TO)).toBeGreaterThanOrEqual(0);
+    expect(stray.getDayIndex(TO)).toBeLessThanOrEqual(6);
+    expect(stray.schedulingWarning).toBe(false); // an ordinary carry is not a warning
+  });
+});
+
 describe('§2.2 — carryOver keeps a non-work task out of the exclusive zone', () => {
   const wideCfg = { ...defaultConfig, windows: { ...defaultConfig.windows, monFri: { start: '06:00', end: '23:00' } } };
   const workZone = () => ({

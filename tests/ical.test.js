@@ -4,6 +4,7 @@ import {
   toICS, parseICS, toRRULE, fromRRULE, deriveTags, eventToTask, importEvents,
   toICSDate, fromICSDate,
 } from '../src/core/ical.js';
+import { splitPeriod } from '../src/core/recurrence.js';
 
 const D = (dd, h, mi = 0) => new Date(2026, 6, dd, h, mi, 0, 0);
 
@@ -181,5 +182,55 @@ describe('importing someone else\'s calendar', () => {
     const ics = toICS([new Task({ title: long, startTime: D(13, 9), endTime: D(13, 10) })]);
     expect(ics.split('\r\n').every((l) => l.length <= 75)).toBe(true);
     expect(parseICS(ics)[0].summary).toBe(long); // survives the fold/unfold
+  });
+});
+
+describe('EXDATE/RECURRENCE-ID use the period in force, not periods[0]', () => {
+  // hhmmOf read periods[0] unconditionally. splitPeriod inserts a temporary
+  // period between a closed base and a reopened base, so the array is NOT
+  // chronological — periods[0] is merely the oldest window. An EXDATE for a date
+  // governed by a later period therefore carried the old time, and an EXDATE
+  // whose time doesn't match the occurrence is ignored by the receiving
+  // calendar: the skipped session silently came back after a round trip.
+  beforeEach(() => resetIds());
+
+  it('a skip inside a re-timed stretch exports at the NEW time', () => {
+    const t = gym(); // Mon/Wed 08:00–09:00
+    // From Mon 2026-07-20 the gym moves to 18:00.
+    splitPeriod(t, D(20, 0), [
+      { day: 'mon', start: '18:00', end: '19:00' },
+      { day: 'wed', start: '18:00', end: '19:00' },
+    ]);
+    // Skip Wed 2026-07-22 — a date governed by the NEW period.
+    t.recurrence.exceptions.push({ date: '2026-07-22', action: 'skip' });
+
+    const ics = toICS([t]);
+    const exdate = ics.split('\r\n').find((l) => l.startsWith('EXDATE:'));
+    expect(exdate).toBeTruthy();
+    expect(exdate).toContain('20260722T180000'); // the period actually in force
+    expect(exdate).not.toContain('20260722T080000'); // the old 08:00 window
+  });
+
+  it('a skip BEFORE the split still exports at the original time', () => {
+    const t = gym();
+    splitPeriod(t, D(20, 0), [{ day: 'mon', start: '18:00', end: '19:00' }]);
+    t.recurrence.exceptions.push({ date: '2026-07-15', action: 'skip' }); // Wed, pre-split
+
+    const ics = toICS([t]);
+    const exdate = ics.split('\r\n').find((l) => l.startsWith('EXDATE:'));
+    expect(exdate).toContain('20260715T080000');
+  });
+
+  it('a moved occurrence anchors its RECURRENCE-ID to the in-force time', () => {
+    const t = gym();
+    splitPeriod(t, D(20, 0), [{ day: 'mon', start: '18:00', end: '19:00' }]);
+    t.recurrence.exceptions.push({ date: '2026-07-27', action: 'move', start: '20:00', end: '21:00' });
+
+    const ics = toICS([t]);
+    const recId = ics.split('\r\n').find((l) => l.startsWith('RECURRENCE-ID:'));
+    expect(recId).toBeTruthy();
+    // Points at where the occurrence WOULD have been under the live period.
+    expect(recId).toContain('20260727T180000');
+    expect(recId).not.toContain('20260727T080000');
   });
 });
