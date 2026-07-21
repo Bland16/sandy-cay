@@ -271,6 +271,13 @@ body {
 .card.flexible { background-image: linear-gradient(0deg, rgba(169,205,209,.34), rgba(169,205,209,.34)); }
 .card.protected { background-image: linear-gradient(0deg, rgba(127,190,139,.40), rgba(127,190,139,.40)); }
 .card.pinned { background-image: linear-gradient(0deg, rgba(201,169,110,.34), rgba(201,169,110,.34)); backdrop-filter: blur(1.5px); }
+/* Bucket tint — the card's BASE colour only. The .fixed/.flexible/.protected/
+   .pinned rules above paint a background-IMAGE over this, so the semantic read
+   survives the tint rather than competing with it. Kept at 20% so a saturated
+   bucket colour can't fight the ink or the hand-tinted palette.
+   A browser without color-mix simply ignores this and gets today's paper card —
+   the tint is identity, never information (§9). */
+.card.tinted { background-color: color-mix(in oklab, var(--bucket-tint) 20%, var(--paper)); }
 .card.warn { box-shadow: 1.5px 2px 0 rgba(226,104,95,.35); }
 .card.done { opacity: .55; }
 .card.done .t { text-decoration: line-through; }

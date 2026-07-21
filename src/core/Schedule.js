@@ -6,6 +6,7 @@ import { Zone } from './Zone.js';
 import { Bucket } from './Bucket.js';
 import { Activity } from './Activity.js';
 import { makeId } from './ids.js';
+import { blendColors } from './color.js';
 import { makeConfig } from './config.js';
 import { normalizeWeights } from './scoring.js';
 import { LearningModule } from './learning.js';
@@ -303,10 +304,45 @@ export class Schedule {
     return this.retiredTags.includes(tag);
   }
 
+  /** EVERY bucket this task's tags touch, in bucket order.
+   *  This is the same rule `energy.js#loadForTask` uses, so a task's colour and
+   *  its energy are derived from the same set of buckets. (They used to
+   *  disagree: bucketForTask took only the first match.) */
+  bucketsForTask(task) {
+    const tags = (task && task.tags) || [];
+    return this.buckets.filter((b) => tags.some((t) => b.tags.includes(t)));
+  }
+
+  /** The single bucket that best claims this task, or null. Most tags matched
+   *  wins; ties fall to bucket order, so it is stable across renders. Used when
+   *  one colour is needed and a blend would be meaningless. */
+  dominantBucketForTask(task) {
+    const tags = (task && task.tags) || [];
+    let best = null; let bestN = 0;
+    for (const b of this.buckets) {
+      const n = tags.filter((t) => b.tags.includes(t)).length;
+      if (n > bestN) { best = b; bestN = n; }
+    }
+    return best;
+  }
+
   /** The bucket that claims this task (first tag match), or null. */
   bucketForTask(task) {
     const tags = task && task.tags ? task.tags : [];
     return this.buckets.find((b) => tags.some((t) => b.tags.includes(t))) || null;
+  }
+
+  /** The tint for a task's card: a perceptual blend of its buckets' colours,
+   *  falling back to the dominant bucket when the hues disagree too much for a
+   *  blend to mean anything (see color.js). Returns null when no bucket matches.
+   *  @returns { hex, buckets, blended } | null */
+  tintForTask(task) {
+    const matched = this.bucketsForTask(task);
+    if (matched.length === 0) return null;
+    const res = blendColors(matched.map((b) => b.color));
+    if (res.hex && res.blended) return { hex: res.hex, buckets: matched, blended: true };
+    const dom = this.dominantBucketForTask(task) || matched[0];
+    return { hex: dom.color, buckets: matched, blended: false };
   }
 
   // ---- queries -----------------------------------------------------------

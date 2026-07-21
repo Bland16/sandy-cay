@@ -388,6 +388,43 @@ Today `unretireTag` has UI (the recover strip) but `retireTag` has **none**
 
 ---
 
+## 9.1 Card tint from bucket colour (session 5)
+
+Bucket colour was authored in the Tag Manager and used **nowhere but its own
+swatch**. A task now takes a tint from **every bucket its tags touch** — the same
+rule `energy.js#loadForTask` uses, so a task's colour and its energy derive from
+the same set. *(`bucketForTask` took only the first match; the two used to
+disagree. `bucketsForTask` is the aligned version.)*
+
+**Blending without mud.** Averaging in sRGB is the obvious approach and it is
+wrong: channel-wise means drag toward grey, so coral + teal lands on a dead
+blue-grey belonging to neither. `core/color.js` instead:
+
+1. works in **OKLCH** (perceptually uniform);
+2. averages hue **circularly**, as chroma-weighted unit vectors — a plain mean of
+   350° and 10° gives 180°, the opposite colour, and a near-grey bucket must not
+   steer direction;
+3. takes chroma as the **mean of the inputs**, *not* the magnitude of the summed
+   hue vector. That magnitude collapses toward zero as hues diverge, and the
+   collapse **is** the mud.
+
+**Opposing hues are refused, not faked.** Red and cyan have no meaningful
+average; the vectors cancel and the resulting angle is noise. `blendColors`
+reports the hue agreement `R`, and below `HUE_AGREEMENT_MIN` (0.5) the caller
+falls back to the **dominant bucket** — most tags matched, ties by bucket order
+so it is stable across renders. Both buckets are still reported.
+
+**Layering — the tint must not cost the semantic read.** `.card.fixed` /
+`.flexible` / `.protected` / `.pinned` already tint the card, and those states are
+real information. The bucket colour is therefore the card's **base
+`background-color`** only, at 20%, with the existing rules painting their
+`background-image` gradients *over* it. Both survive.
+
+**§9 compliance.** The tint is identity, never information: those states each
+carry an icon badge (anchor, lock, hammock), the matched bucket names are on the
+card's `title` and `aria-label`, and a browser without `color-mix` simply gets
+today's paper card.
+
 ## 10. Sprites across the redesign (decision: use the sprites)
 
 The user's call — **use the sprites**. This **supersedes the old "only 3 wired"
