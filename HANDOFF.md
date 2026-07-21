@@ -1,19 +1,19 @@
 # Sandy Cay — handoff
 
-**Updated:** 2026-07-20, session 5. **`main` is now the trunk again** and is
-live on Pages (https://bland16.github.io/sandy-cay/). PRs #1, #2 and #4 are
-merged: the wrap report, recurrence/zones, responsive, the past-placement floor,
-unique task ids, the de-flaked suite, and ripple/zone exclusivity. 314 tests
-green on `main`.
+**Updated:** 2026-07-21, session 5. **`main` is the trunk and everything is
+merged into it** — PRs #1, #2, #3 and #4 are all in, and it is live on Pages
+(https://bland16.github.io/sandy-cay/). **472 tests green.** There are no
+outstanding branches; the worktrees under `.claude/worktrees/` are spent.
 
-**The one branch still outstanding is `worktree-activity-library`** (PR #3,
-draft) — the Activity Library / Tag Buckets / energy work. It is *not* merged
-and it is where the session-4/5 respec was written. **You are on that branch.**
+That covers: the wrap report, recurrence/zones, responsive, the past-placement
+floor, unique ids, the de-flaked suite, ripple/zone exclusivity, the whole
+Activity Library / Tag Buckets / energy line, the editor redesign (P0–P5), and
+the carryOver + iCal fixes.
 
 ```bash
 npm install
 npm run dev      # http://localhost:5173/sandy-cay/
-npm run test:run # 308 tests, all green any day of the week (flaky tests fixed)
+npm run test:run # 472 tests, all green any day of the week (flaky tests fixed)
 npm run build
 npx eslint src
 ```
@@ -38,10 +38,10 @@ earlier ones**:
    drill-in idiom, the form vocabulary, the wave `<EnergyControl>`, and the
    **P0–P5 phased plan**. Build is *gated on sign-off*; D-1…D-5 are still open.
 
-The code for 1–5 lives on `worktree-activity-library`, not `main`. Roughly P0–P3
-are built (role rip-out done, `<EnergyControl>` built, Zones + Buckets + the
-Activities list on the drill-in idiom); **P2 is incomplete** (the per-activity
-energy override was never removed) and **P4–P5 are untouched**.
+All of it is on `main` and built. `EDITOR-REDESIGN.md` carries the authoritative
+phase table at the top — **P0–P5 are closed, P4 cancelled** — plus §7.1 (filter /
+sort / pages), §7.2 (paste dedupe + cross-bucket headings), §7.3 (the 15-minute
+floor decision), §8 (retire) and §9.1 (the card tint).
 
 ---
 
@@ -53,30 +53,32 @@ Read `design/RECONCILIATION.md` (the corrected model) then
 `design/EDITOR-REDESIGN.md` (the current build spec, P0–P5). The reading order
 for all five design docs is in the section above.
 
-**Where the build actually stands on this branch (`worktree-activity-library`):**
+**Where the build stands (all on `main`):**
 
-- ✅ **Role rip-out — done.** `role` is gone from `Bucket.js`, `energy.js`,
-  `index.js`, `Schedule.js` (`roleOf` removed, `bucketForTask` kept),
-  `learning.js` (role×time / role×weekend interactions removed,
-  `MODEL_LAYOUT_VERSION` → 3), `suggest.js` (steering keys off load character),
-  `TagManager.jsx`. The only `role` left in `src/` is DOM/ARIA.
+- ✅ **Role rip-out.** `role` is gone from `Bucket.js`, `energy.js`, `index.js`,
+  `Schedule.js`, `learning.js` (role×time / role×weekend removed,
+  `MODEL_LAYOUT_VERSION` → 3), `suggest.js` (steering keys off load character)
+  and `TagManager.jsx`. The only `role` left in `src/` is DOM/ARIA.
 - ✅ **Unique ids** for Bucket/Activity/Zone (`_uniqueInColl` / `_dedupeIds`).
 - ✅ **Energy gating** — `config.energy.calibrationWeeks` (default 3);
   `learnedCapacity()` returns `null` until calibrated; the card shows a "still
   learning" shape with **no ceiling and no over/under verdict**.
-- ⚠️ **P0 barely started.** The drill-in *navigation* works, but there is **no**
-  `<DrillList>`/`<DrillEditor>` extraction and **none** of EDITOR-REDESIGN §4's
-  CSS vocabulary (`.field`, `.field.stack`, `.field-help`, `.control`,
-  `.rangefield`, `.editrow`). The editors still borrow zone classes and carry
-  **67 inline `style={{…}}` blocks** (ActivityEditor 22, TagManager 30,
-  ZonesEditor 15) — exactly the soup §1.1 diagnoses. *Don't trust the commit
-  messages here; check `styles.css` yourself.*
-- ✅ **P1** — the wave `<EnergyControl>` is built and good… but **without §5.3's
-  inherit/ghost mode**; `ActivityEditor` fakes it with a text wall.
-- ⚠️ **P2 / P3** — the Activities and Zones lists have the drill-in shape, on
-  the old classes.
-- ❌ **P5 untouched** — `retireTag` is still orphaned (no UI caller; only
-  `unretireTag` is wired), dead inline styles remain.
+- ✅ **P0** — §4's CSS vocabulary and `Drill.jsx` (`DrillList` / `DrillEditor` /
+  `DrillRow` / `Field`). The three editors went from **67 inline `style={{…}}`
+  blocks to 3**, and those three are data-driven, which §4 allows.
+- ✅ **P1/P2/P3** — the wave `<EnergyControl>` with §5.3's inherit/ghost mode,
+  the Activities drill-in, Zones on the shared idiom.
+- ✅ **P5** — `retireTag` has a control on bucket tag chips, distinct from
+  "remove from bucket".
+- ❌ **P4 cancelled** — no energy control on the task; see the box below.
+
+**Lesson from this session:** P0 was recorded as complete when it was not — the
+drill-in *navigation* had shipped and was mistaken for the whole phase. Verify
+against `styles.css` and the components, not the commit messages. Relatedly, a
+CSS-only refactor broke the energy control's layout in three ways (collapsed
+track width, collided restore/spend labels, right-aligned axis names) while all
+455 tests stayed green, because none of the *behaviour* changed. **Presentational
+work needs eyes on it; the suite cannot see it.**
 
 ### ⛔ Session-5 decisions that OVERRULE the specs below — do not build the old way
 
@@ -95,9 +97,11 @@ for all five design docs is in the section above.
 saying so. Note `task.load` was never writable anyway — `load` is absent from
 `UPDATE_WHITELIST` (`Schedule.js`), so `updateTask` silently drops it.
 
-**Known divergence, unresolved:** `loadForTask` uses **all** matching buckets;
-`Schedule.bucketForTask` returns only the **first** match. Two different
-tag→bucket rules. Now that tags are the sole source of energy, this matters.
+**That divergence is resolved.** `loadForTask` uses every matching bucket, and
+`Schedule.bucketsForTask` now does the same, so a task's colour and its energy
+derive from the same set (§9.1). `bucketForTask` (first match only) is still
+there for older callers — prefer the plural. `dominantBucketForTask` is the
+tiebreak when exactly one bucket must win.
 
 ### The original session-4 framing (kept for the reasoning)
 
@@ -122,18 +126,29 @@ consolidated fix/redesign plan. **Read `design/RECONCILIATION.md` first.** State
 cross-week `conflicts.js` double-book, `_occupiedExcluding`, the past-placement
 floor, unique ids and the de-flake all shipped). What remains:
 
-1. **Still open on `main`, from that bug list:** `carryOver` double-books *and*
-   places outside the target week (`carryOver.js:22` uses `toWs + lookahead + 6`
-   while `:43` filters occupied to days 0–6), and the iCal `EXDATE`/
-   `RECURRENCE-ID` wrong-time bug (`ical.js:174`'s `hhmmOf` reads `periods[0]`).
-   Also `recurrence.js` silently drops an `add` on a day the pattern fills, and
-   the `time.js` isoWeek comment example is still self-contradictory.
-2. **Finish the editor redesign** (this branch): P2's remainder, then P5.
-   **P4 is cancelled** — see the decisions box above.
-3. **One product call still open:** project management — build a surface for the
-   chunk ops (`growChunk`/`shrinkChunk`/`resizeChunk`/`deleteChunk`/
-   `finishProject`/`redistribute`, all unreachable from the UI today), or leave
-   them internal. *(Retire is decided: complete it, EDITOR-REDESIGN §8.)*
+1. ~~`carryOver` double-books and places outside the target week~~ **FIXED** —
+   the search window is now exactly the target week, because `to` is inclusive
+   of its day and `occupied` only ever covered days 0–6.
+2. ~~iCal `EXDATE`/`RECURRENCE-ID` wrong time~~ **FIXED** — `hhmmOf` uses the
+   period *in force* on that date. `splitPeriod` makes `periods` non-chronological,
+   so `periods[0]` was simply the oldest window.
+3. ~~Finish the editor redesign~~ **DONE** — P0–P5 closed, P4 cancelled.
+
+**Genuinely still open:**
+
+- **`recurrence.js`** silently drops an `add` exception on a day the pattern
+  already fills (`emit()` returns early — the pass-2 `add` branch reuses the
+  same `${task.id}@${key}` identity as the pattern occurrence). The last real
+  item from the audit's section A.
+- **`time.js`** isoWeek comment example is self-contradictory (cosmetic).
+- **Product call:** project management — build a surface for the chunk ops
+  (`growChunk`/`shrinkChunk`/`resizeChunk`/`deleteChunk`/`finishProject`/
+  `redistribute`, all unreachable from the UI), or leave them internal.
+- **Parked, now unblocked:** activity time-of-day preference, to be learned from
+  where instances actually get placed. It was blocked on knowing which task came
+  from which activity; `Task.activityId` (§7.1) supplies exactly that.
+- **Never run:** verify touch drag on a real phone (`npm run dev -- --host`, or
+  the Pages site).
 
 **Same lesson as session 2, reinforced:** every HIGH bug this session found is in
 code the green suite "covers." The cross-week double-books are *proven* by probe
@@ -192,23 +207,21 @@ record, arbitrates — 75KB, **grep it, never read it whole**) · `FRONTEND-SPEC
 
 ---
 
-## Where the work is (session 3–4 branches, none merged yet)
+## Where the work is — all of it is on `main` (as of 2026-07-21)
 
-`git worktree list` — the main checkout sits on `wrap-report`; the rest are
-isolated worktrees under `.claude/worktrees/`. Confirm PR numbers with
-`gh pr list`; per session notes they are roughly:
+Every branch is merged and every PR closed. `wrap-report`,
+`worktree-core-bugfixes`, `worktree-precedence-zones` and
+`worktree-activity-library` are all ancestors of `main`;
+`worktree-bugfix-sweep` never held anything. The worktrees under
+`.claude/worktrees/` are spent and safe to remove with `git worktree remove`.
 
-| Worktree / branch | Base | Holds |
-|---|---|---|
-| main checkout — `wrap-report` | `main` | wrap report + responsive + rollover (session 2–3) |
-| `worktree-activity-library` | wrap-report | activity library, L-1 energy, Tag Manager drill-in, **`design/RECONCILIATION.md`** (this session) |
-| `worktree-bugfix-sweep` / `worktree-core-bugfixes` | wrap-report | the bug-fix PR home (cross-week + iCal + unique-id fixes) — **build order step 1** |
-| `worktree-precedence-zones` | wrap-report | §2.2 precedence for displace/carryOver |
+**Start new work from `main`.** Note that `main` auto-deploys to Pages on push
+(`.github/workflows/deploy.yml`, gated on `npm run test:run`), so a push is a
+release — branch for anything you don't want live.
 
-**The reconciliation redesign (role rip-out etc.) has NO branch yet** — it's spec
-only, gated on the user's review. Start it on a fresh feature branch off
-`wrap-report` once approved. **Commit by explicit path, never `git add -A`** (the
-privacy note still holds — `design/import/` and `*.ics` are gitignored real data).
+**Commit by explicit path, never `git add -A`.** The repo is public and
+`design/import/` + `*.ics` hold a real person's schedule. The activity library
+itself is user data in `localStorage`, not in the repo — keep it that way.
 
 ## PENDING (pre-reconciliation): verify touch drag on a real phone
 
