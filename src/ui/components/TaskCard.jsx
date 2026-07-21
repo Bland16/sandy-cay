@@ -43,6 +43,7 @@ function Badges({ task }) {
 export default function TaskCard({
   task, style, compact, onOpen, onToggleComplete,
   ghost = false, dragging = false, pressing = false, phase, onMoveStart, onResizeStart,
+  tint = null,
 }) {
   const kind = cardKind(task);
   // Recurrence occurrences are virtual (§4.4): moving one writes an exception,
@@ -63,13 +64,21 @@ export default function TaskCard({
     !ghost && dragging ? 'dragging' : '',
     // Touch hold in progress — the drag hasn't armed yet (see LONG_PRESS_MS).
     !ghost && !dragging && pressing ? 'pressing' : '',
+    tint && tint.hex ? 'tinted' : '',
   ].filter(Boolean).join(' ');
 
   const deadlineChip = task.deadline && !task.isOccurrence;
+  // The bucket tint is the card's BASE colour; the fixed/flexible/protected
+  // gradients paint over it, so the semantic read survives (and those states
+  // carry icon badges anyway — §9, never meaning by colour alone).
+  const cardStyle = tint && tint.hex ? { ...style, '--bucket-tint': tint.hex } : style;
+  // Colour identifies; it never has to be decoded. The bucket names are on the
+  // tooltip so the tint is a convenience, not the only way to know (§9).
+  const bucketNames = tint && tint.buckets ? tint.buckets.map((b) => b.label).join(' + ') : '';
 
   if (ghost) {
     return (
-      <div className={cls} style={style} aria-hidden="true">
+      <div className={cls} style={cardStyle} aria-hidden="true">
         <CardFace task={task} compact={compact} deadlineChip={deadlineChip} />
       </div>
     );
@@ -78,11 +87,12 @@ export default function TaskCard({
   return (
     <div
       className={cls}
-      style={style}
+      style={cardStyle}
       role="button"
       tabIndex={0}
+      title={bucketNames || undefined}
       /* compact cards hide the .tm line, so the span lives in the name */
-      aria-label={`${task.title} · ${fmtRange(task)}`}
+      aria-label={bucketNames ? `${task.title} · ${fmtRange(task)} · ${bucketNames}` : `${task.title} · ${fmtRange(task)}`}
       aria-grabbed={dragging ? 'true' : undefined}
       onPointerDown={movable ? (e) => onMoveStart(e, task, compact) : undefined}
       onClick={() => onOpen(task)}

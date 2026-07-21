@@ -13,7 +13,15 @@ const MAX = 6;
 export const tagsInUse = (sched) =>
   Array.from(new Set((sched?.tasks || []).flatMap((t) => t.tags || []))).sort();
 
-export default function TagEditor({ tags, onChange, suggestions = [] }) {
+/**
+ * onRetire (optional) turns on the retire affordance — only the bucket editor
+ * passes it (EDITOR-REDESIGN §8). The two verbs are deliberately distinct:
+ *   ×      remove from this bucket — the tag itself is untouched
+ *   retire archive the tag everywhere new work is created; history, zones and
+ *          existing tasks keep it. Reversible from the retired-tags strip.
+ * Conflating them is the obvious mistake, so both carry explicit labels.
+ */
+export default function TagEditor({ tags, onChange, suggestions = [], onRetire = null, retired = [] }) {
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState('');
   const [hi, setHi] = useState(-1);
@@ -49,13 +57,25 @@ export default function TagEditor({ tags, onChange, suggestions = [] }) {
     <div className="chips">
       {tags.length === 0 && !adding && <span className="psub">no tags</span>}
       {tags.map((t) => (
-        <span key={t} className="pill tag on">
+        <span key={t} className={retired.includes(t) ? 'pill tag on isretired' : 'pill tag on'}>
           {t}
+          {retired.includes(t) && <span className="retiredmark" title="retired — hidden from new work">·retired</span>}
+          {onRetire && !retired.includes(t) && (
+            <button
+              type="button"
+              className="tagretire"
+              aria-label={`Retire ${t}`}
+              title={`Retire “${t}” — hide it from new work, keep it on history`}
+              onClick={() => onRetire(t)}
+            >
+              retire
+            </button>
+          )}
           <button
             type="button"
-            aria-label={`Remove ${t}`}
+            className="tagrm"
+            aria-label={onRetire ? `Remove ${t} from bucket` : `Remove ${t}`}
             onClick={() => onChange(tags.filter((x) => x !== t))}
-            style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', marginLeft: 4, fontWeight: 800 }}
           >
             ×
           </button>

@@ -554,6 +554,7 @@ export default function App() {
         <TaskCard
           ghost
           task={interaction.ghost.task}
+          tint={sched.tintForTask(interaction.ghost.task)}
           compact={interaction.ghost.compact}
           style={{
             position: 'fixed',

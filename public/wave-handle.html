@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Sandy Cay — wave handle options</title></head><body>
+<style>
+  :root{
+    /* app tokens (light grid world) */
+    --paper:#F1E9D8; --paper-shade:#E7DCC6; --ink:#2A2620; --ink-soft:#6E665A;
+    --hair:#D2C6A9; --primary:#2E8C99; --fixed:#5FB8B0; --flexible:#A9CDD1;
+    --pinned:#C9A96E; --rest:#7FBE8B; --warning:#E2685F; --cta:#E8B94D; --info:#8AA7C2;
+    /* page chrome (themed) */
+    --bg:#efe6d4; --panel:#f7f0e1; --edge:#e0d4ba; --fg:#2a2620; --muted:#6e665a; --accent:#2E8C99;
+    --mono:ui-monospace,"Courier New",monospace;
+    --sans:"Nunito",ui-rounded,system-ui,-apple-system,"Segoe UI",sans-serif;
+    --serif:"Rye","Playfair Display",Georgia,serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ --bg:#231b12; --panel:#2c2318; --edge:#3a2f20; --fg:#f3e9d7; --muted:#b6a888; --accent:#5FB8B0; }
+  }
+  :root[data-theme="dark"]{ --bg:#231b12; --panel:#2c2318; --edge:#3a2f20; --fg:#f3e9d7; --muted:#b6a888; --accent:#5FB8B0; }
+  :root[data-theme="light"]{ --bg:#efe6d4; --panel:#f7f0e1; --edge:#e0d4ba; --fg:#2a2620; --muted:#6e665a; --accent:#2E8C99; }
+
+  *{ box-sizing:border-box; }
+  body{ margin:0; }
+  main{
+    font-family:var(--sans); color:var(--fg); background:var(--bg);
+    min-height:100vh; padding:40px 24px 64px; line-height:1.5;
+  }
+  .wrap{ max-width:960px; margin:0 auto; }
+  .eyebrow{ font-family:var(--mono); font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--accent); margin:0 0 8px; }
+  h1{ font-family:var(--serif); font-weight:400; font-size:clamp(26px,4vw,40px); line-height:1.08; margin:0 0 14px; text-wrap:balance; }
+  .lede{ font-size:16px; color:var(--muted); max-width:60ch; margin:0 0 8px; }
+  .note{ font-size:13px; color:var(--muted); font-family:var(--mono); }
+
+  .grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:18px; margin:30px 0; }
+  figure{ margin:0; background:var(--panel); border:1px solid var(--edge); border-radius:14px; padding:16px; display:flex; flex-direction:column; gap:12px; }
+  figure.pick{ border-color:var(--accent); box-shadow:0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent); }
+  .tag{ font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); display:flex; justify-content:space-between; align-items:center; }
+  .tag .badge{ color:var(--accent); }
+  figcaption{ font-size:13px; color:var(--muted); }
+  figcaption b{ color:var(--fg); font-weight:700; }
+
+  /* the light "grid" ground a card actually sits on (authentic in both themes) */
+  .stage{ background:var(--paper); border-radius:10px; padding:16px 14px; }
+
+  /* ---- faithful task card ---- */
+  .card{
+    position:relative; background:var(--paper); border-radius:9px; padding:9px 9px 7px;
+    box-shadow:2.5px 4px 0 rgba(42,38,32,.18); cursor:grab;
+    background-image:linear-gradient(0deg, rgba(169,205,209,.34), rgba(169,205,209,.34));
+    transition:transform .12s, box-shadow .12s;
+  }
+  .card:hover{ transform:translateY(-1px); box-shadow:3px 5px 0 rgba(42,38,32,.22); }
+  .card .t{ font-weight:800; font-size:12px; line-height:1.12; color:var(--ink); padding-right:16px; }
+  .card .tm{ font-family:var(--mono); font-size:9px; color:var(--ink-soft); margin-top:2px; }
+  .card .check{ position:absolute; right:6px; bottom:6px; width:15px; height:15px; border:1.5px solid var(--ink); border-radius:4px; background:var(--paper); }
+
+  /* hit strips */
+  .wave,.sand{ position:absolute; left:0; right:0; height:10px; cursor:ns-resize; }
+  .wave{ top:0; } .sand{ bottom:0; }
+  .wave::after,.sand::after{ content:""; position:absolute; left:0; right:0; transition:height .14s, opacity .14s, filter .14s; }
+
+  /* CURRENT — 4px teal squiggle, opacity .8 */
+  .h-current .wave::after{ top:0; height:4px; opacity:.8;
+    background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='4' viewBox='0 0 12 4'%3E%3Cpath d='M0 3.2 Q3 0.3 6 3.2 T12 3.2' fill='none' stroke='%232E8C99' stroke-width='1.3'/%3E%3C/svg%3E") repeat-x left top/12px 4px; }
+  .h-current .wave:hover::after{ opacity:1; filter:brightness(1.15) saturate(1.2); }
+
+  /* A · SWELL — a fuller ribbon of water: crest line over a translucent body; rises on hover */
+  .h-swell .wave::after{ top:0; height:7px; opacity:.95;
+    background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='8' viewBox='0 0 26 8'%3E%3Cpath d='M0 4 Q6.5 1.4 13 4 T26 4 V8 H0 Z' fill='%235FB8B0' fill-opacity='0.34'/%3E%3Cpath d='M0 4 Q6.5 1.4 13 4 T26 4' fill='none' stroke='%232E8C99' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E") repeat-x left top/26px 8px; }
+  .h-swell .wave:hover::after{ height:11px; filter:brightness(1.08) saturate(1.15); }
+  .h-swell .sand::after{ bottom:0; height:5px; opacity:.9;
+    background:linear-gradient(180deg, rgba(232,185,77,.0), rgba(232,185,77,.45) 55%, var(--pinned)); }
+  .h-swell .sand:hover::after{ height:8px; }
+
+  /* B · RIPPLE GRIP — calm edge + a centered grip of ripples that says "grab here" */
+  .h-grip .wave::after{ top:0; height:8px; opacity:.9;
+    background:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='34' height='8' viewBox='0 0 34 8'%3E%3Cg fill='none' stroke='%232E8C99' stroke-linecap='round'%3E%3Cpath d='M6 6 Q17 1.5 28 6' stroke-width='1.5'/%3E%3Cpath d='M10 4 Q17 1.6 24 4' stroke-width='1.3' opacity='.6'/%3E%3C/g%3E%3C/svg%3E") no-repeat center top/34px 8px,
+      linear-gradient(180deg, color-mix(in srgb, var(--primary) 55%, transparent), transparent) left top/100% 2px no-repeat; }
+  .h-grip .wave:hover::after{ filter:brightness(1.12) saturate(1.2); }
+
+  /* C · CALM then STIR — a quiet solid edge at rest; the water stirs only on hover */
+  .h-stir .wave::after{ top:0; height:3px; opacity:.85;
+    background:linear-gradient(180deg, var(--primary), color-mix(in srgb, var(--primary) 30%, transparent)); }
+  .h-stir .wave:hover::after{ height:7px; opacity:1;
+    background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='8' viewBox='0 0 26 8'%3E%3Cpath d='M0 4 Q6.5 1.4 13 4 T26 4' fill='none' stroke='%232E8C99' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E") repeat-x left top/26px 8px; }
+  @media (prefers-reduced-motion:reduce){ .wave::after,.sand::after{ transition:none; } }
+
+  .rec{ margin:26px 0 0; background:var(--panel); border:1px solid var(--edge); border-left:3px solid var(--accent); border-radius:10px; padding:16px 18px; }
+  .rec h2{ font-family:var(--serif); font-weight:400; font-size:20px; margin:0 0 6px; }
+  .rec p{ margin:0; font-size:14px; color:var(--muted); }
+  .foot{ margin-top:30px; font-size:12px; color:var(--muted); font-family:var(--mono); border-top:1px solid var(--edge); padding-top:14px; }
+</style>
+
+<main>
+  <div class="wrap">
+    <p class="eyebrow">Sandy Cay · the resize handle</p>
+    <h1>The wave you grab to resize a task</h1>
+    <p class="lede">A card's top edge is water, its bottom is sand — drag either to change the start or end time. Today's wave is a thin jagged hairline with weak grab-affordance. Three directions below, on faithful cards. <b style="color:var(--fg)">Hover a card</b> to see the handle wake up.</p>
+
+    <div class="grid">
+      <figure>
+        <span class="tag">Current <span class="badge">·now</span></span>
+        <div class="stage"><div class="card h-current">
+          <div class="wave"></div><div class="sand"></div>
+          <div class="t">Read thesis chapter</div><div class="tm">2:00 – 3:30 PM</div>
+          <div class="check"></div>
+        </div></div>
+        <figcaption>A 4px teal squiggle at .8 opacity. Reads as a <b>decorative hairline</b>, not a handle — and jagged at 12px tiling.</figcaption>
+      </figure>
+
+      <figure class="pick">
+        <span class="tag">A · Swell <span class="badge">recommended</span></span>
+        <div class="stage"><div class="card h-swell">
+          <div class="wave"></div><div class="sand"></div>
+          <div class="t">Read thesis chapter</div><div class="tm">2:00 – 3:30 PM</div>
+          <div class="check"></div>
+        </div></div>
+        <figcaption>A real <b>ribbon of water</b> — a crest line over a translucent body. The tide <b>rises on hover</b> so grabbing it feels obvious. Matches the energy-control wave language.</figcaption>
+      </figure>
+
+      <figure>
+        <span class="tag">B · Ripple grip</span>
+        <div class="stage"><div class="card h-grip">
+          <div class="wave"></div><div class="sand"></div>
+          <div class="t">Read thesis chapter</div><div class="tm">2:00 – 3:30 PM</div>
+          <div class="check"></div>
+        </div></div>
+        <figcaption>A calm edge with a <b>centered grip of ripples</b> — affordance-first, an explicit "grab here" that still reads as water.</figcaption>
+      </figure>
+
+      <figure>
+        <span class="tag">C · Calm, then stir</span>
+        <div class="stage"><div class="card h-stir">
+          <div class="wave"></div><div class="sand"></div>
+          <div class="t">Read thesis chapter</div><div class="tm">2:00 – 3:30 PM</div>
+          <div class="check"></div>
+        </div></div>
+        <figcaption>A <b>quiet solid edge</b> at rest; the water only stirs into a wave on hover. Calmest grid, affordance on approach (reduced-motion safe).</figcaption>
+      </figure>
+    </div>
+
+    <div class="rec">
+      <h2>My pick — A · Swell</h2>
+      <p>It fixes both problems at once: it reads as <em>water you can grab</em> (not a hairline), and its crest-over-body curve is the same wave language the energy control uses, so the app speaks one visual dialect. B is the choice if you want affordance shouted louder; C if you want the quietest possible grid. Whichever we pick, the bottom <em>sand</em> strip gets the matching treatment.</p>
+    </div>
+
+    <p class="foot">Faithful to the app's real tokens (paper #F1E9D8, primary teal #2E8C99, the offset hand-drawn shadow). Fonts here are system proxies — Rye / Nunito / Special Elite are CDN-blocked in this sandbox; the in-app build keeps the real faces. Cards sit on the light grid ground in both page themes because that's their true home.</p>
+  </div>
+</main>
+</body></html>

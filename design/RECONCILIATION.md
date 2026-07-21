@@ -5,6 +5,35 @@ design debt in the activity/energy/bucket features. This reconciles them into on
 honest model before more code. Proposals are marked **▶ PROPOSAL**; genuine forks
 that need your call are marked **⚑ FORK**.
 
+> ### ⚠ AMENDED, session 5 (2026-07-20) — energy is derived from tags
+>
+> **Principles 1 and 2 below say load is "inherently user-authored" and must be
+> editable on the task, on the schedule. That is reversed.** The user's call:
+> *a task's energy is autocalculated from its tags — no energy control on the
+> task UI, so the task page doesn't get overcrowded.*
+>
+> What this changes:
+>
+> - **No task-level energy control.** `EDITOR-REDESIGN.md` P4 is **cancelled**.
+> - **The derivation is `energy.js#loadForTask`**, which already implements it:
+>   every bucket sharing ≥1 tag with the task contributes; per axis, the positive
+>   contributions are averaged among themselves, the negative ones averaged among
+>   themselves, and the two means added. Spend and restore do **not** cancel
+>   before averaging. (`task.load` remains as a data path but has no authoring
+>   surface — and was never writable anyway: `load` is absent from
+>   `UPDATE_WHITELIST`.)
+> - **Buckets and activities keep their `<EnergyControl>`** (two homes, not the
+>   three in §5.5). The per-activity control is *retained*; only its old
+>   "customise / inherit" wall is replaced by the ghost-tube inherit mode.
+>
+> What still stands: no fabricated numbers, neutral-0 defaults, learned capacity
+> behind the calibration bar, the `role` rip-out (Principle 3), unique ids
+> (Principle 4), and one editor idiom (Principle 5).
+>
+> **Open, unresolved:** `loadForTask` uses *all* matching buckets while
+> `Schedule.bucketForTask` returns only the *first* match. Two tag→bucket rules;
+> now that tags are the sole source of energy, they should agree.
+
 ## What went wrong (so the fixes are principled, not patches)
 
 The features shipped fast and accrued four kinds of debt:

@@ -161,6 +161,7 @@ export default function WeekGrid({
                 <TaskCard
                   key={task.id}
                   task={task}
+                  tint={sched.tintForTask(task)}
                   style={style}
                   compact={compact}
                   onOpen={onOpenTask}

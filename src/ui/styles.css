@@ -271,6 +271,13 @@ body {
 .card.flexible { background-image: linear-gradient(0deg, rgba(169,205,209,.34), rgba(169,205,209,.34)); }
 .card.protected { background-image: linear-gradient(0deg, rgba(127,190,139,.40), rgba(127,190,139,.40)); }
 .card.pinned { background-image: linear-gradient(0deg, rgba(201,169,110,.34), rgba(201,169,110,.34)); backdrop-filter: blur(1.5px); }
+/* Bucket tint — the card's BASE colour only. The .fixed/.flexible/.protected/
+   .pinned rules above paint a background-IMAGE over this, so the semantic read
+   survives the tint rather than competing with it. Kept at 20% so a saturated
+   bucket colour can't fight the ink or the hand-tinted palette.
+   A browser without color-mix simply ignores this and gets today's paper card —
+   the tint is identity, never information (§9). */
+.card.tinted { background-color: color-mix(in oklab, var(--bucket-tint) 20%, var(--paper)); }
 .card.warn { box-shadow: 1.5px 2px 0 rgba(226,104,95,.35); }
 .card.done { opacity: .55; }
 .card.done .t { text-decoration: line-through; }
@@ -290,16 +297,20 @@ body {
 .wave { top: 0; }
 .sand { bottom: 0; }
 .card.compact .wave, .card.compact .sand { height: 6px; }
-.wave::after, .sand::after { content: ""; position: absolute; left: 0; right: 0; transition: opacity .12s, filter .12s; }
+.wave::after, .sand::after { content: ""; position: absolute; left: 0; right: 0; transition: height .14s, opacity .14s, filter .14s, background-size .14s; }
+/* Swell (chosen): a fuller ribbon of water — a crest over a translucent body —
+   that rises a touch on hover so it reads as a grabbable handle, not a hairline.
+   Band kept low at rest so it clears the top badges and short (compact) cards. */
 .wave::after {
-  top: 0; height: 4px; opacity: .8;
-  background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='4' viewBox='0 0 12 4'><path d='M0 3.2 Q3 0.3 6 3.2 T12 3.2' fill='none' stroke='%232E8C99' stroke-width='1.3'/></svg>") repeat-x left top / 12px 4px;
+  top: 0; height: 4px; opacity: .9;
+  background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='4' viewBox='0 0 24 4'><path d='M0 2.4 Q6 0.6 12 2.4 T24 2.4 V4 H0 Z' fill='%235FB8B0' fill-opacity='0.34'/><path d='M0 2.4 Q6 0.6 12 2.4 T24 2.4' fill='none' stroke='%232E8C99' stroke-width='1.2' stroke-linecap='round'/></svg>") repeat-x left top / 24px 4px;
 }
+.wave:hover::after { height: 6px; background-size: 24px 6px; opacity: 1; filter: brightness(1.1) saturate(1.15); }
 .sand::after {
-  bottom: 0; height: 3px; opacity: .85;
-  background: linear-gradient(180deg, rgba(232,185,77,.25), var(--cta) 60%, var(--pinned));
+  bottom: 0; height: 3px; opacity: .9;
+  background: linear-gradient(180deg, rgba(232,185,77,0), rgba(232,185,77,.5) 55%, var(--pinned));
 }
-.wave:hover::after, .sand:hover::after { opacity: 1; filter: brightness(1.15) saturate(1.2); }
+.sand:hover::after { height: 5px; opacity: 1; filter: brightness(1.1) saturate(1.15); }
 
 /* top: 5px clears the 4px wave band. The strips sit above the badges on the
    z-scale, so they still win the hit test inside their own 8px band. */
@@ -674,6 +685,167 @@ body.sc-dragging { user-select: none; }
 .insight b { color: var(--cab-accent); }
 .insight .bar2 { height: 7px; background: rgba(0,0,0,.35); border-radius: 4px; overflow: hidden; margin: 3px 0 7px; }
 .insight .bar2 i { display: block; height: 100%; background: var(--cab-accent); }
+
+/* ---------- Form-field vocabulary (EDITOR-REDESIGN §4) ----------
+   The fix for "nothing lines up": a fixed label column + a control area, so
+   editors stop hand-styling every element. Components must not set per-element
+   style={{…}} for LAYOUT once they're on these — data-driven bits (colour
+   swatches) stay inline. Replaces the .zonewin-as-generic-row borrowing. */
+.field {
+  display: flex; gap: 8px; align-items: center; margin: 7px 0;
+  font-family: var(--font-type); font-size: 11px; color: #e9dcc4;
+}
+/* the label column — one width everywhere, so controls form a true column */
+.field > .flabel {
+  flex: none; width: 54px; text-align: right;
+  font-size: 10.5px; color: #d8c6a5; opacity: .85;
+}
+/* the control area: flexes, wraps predictably, never overflows its card */
+.field > .fctl { flex: 1; min-width: 0; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+/* label ABOVE control — for full-width controls (tags, the energy control) */
+.field.stack { flex-direction: column; align-items: stretch; gap: 4px; }
+.field.stack > .flabel { width: auto; text-align: left; }
+/* a stacked field holds full-width controls, so they stretch rather than centre */
+.field.stack > .fctl { flex-wrap: wrap; align-items: stretch; }
+/* help text beneath a field — the calm alternative to a wall of explanation */
+.field-help { font-size: 10.5px; line-height: 1.45; color: #d8c6a5; opacity: .75; margin-top: 3px; }
+.field-help strong { color: var(--cab-accent); font-weight: 700; }
+
+/* one input/select skin (was .zonewin input + .cabinput, which disagreed) */
+.control {
+  background: rgba(0,0,0,.28); border: 1.5px solid var(--cab-trim); border-radius: 7px;
+  padding: 5px 8px; color: var(--cab-text);
+  font-family: var(--font-type); font-size: 11px; min-width: 0;
+}
+.control:focus-visible { outline: 2px solid var(--cab-accent); outline-offset: 1px; }
+.control.grow { flex: 1; }
+.control.num { width: 58px; }
+
+/* the elastic duration control — reads "15 – 60 min", not two naked boxes */
+.rangefield { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.rangefield .rdash { opacity: .6; }
+.rangefield .runit { font-size: 10.5px; opacity: .65; }
+
+/* a collection list row (the neutral name for .zonerow — not zone-specific) */
+.editrow {
+  display: flex; gap: 8px; align-items: center; width: 100%; text-align: left;
+  background: rgba(0,0,0,.22); border: 1.5px solid var(--cab-trim); border-radius: 9px;
+  padding: 8px 10px; margin: 5px 0; cursor: pointer; color: var(--cab-text);
+  font-family: var(--font-body); font-size: 12.5px;
+}
+.editrow:hover, .editrow:focus-visible { border-color: var(--cab-accent); outline: none; }
+.editrow .ername { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.editrow .ermeta { flex: none; font-family: var(--font-type); font-size: 9.5px; opacity: .6; }
+.editrow .erchev { flex: none; opacity: .5; }
+.editrow .erswatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; flex: none; }
+.editrow .ername { color: var(--cab-accent); }
+.drillactions { margin-top: 4px; }
+.drillactions .btn2 { padding: 5px 9px; }
+/* destructive action: bottom, ghost, and set apart from the rest */
+.editremove { margin-top: 12px; padding: 5px 9px; }
+/* a stack of day/time rows inside one field (zone windows) */
+.winrows { display: flex; flex-direction: column; gap: 5px; width: 100%; }
+.winrow { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+/* a checkbox + its sentence, sharing the field rhythm without a label column */
+.checkfield { gap: 8px; cursor: pointer; align-items: center; }
+/* a section heading inside a card (Activities, Retired tags) */
+.subhead { font-family: var(--font-body); font-size: 11.5px; font-weight: 700; color: var(--cab-accent); line-height: 1.5; }
+.subhead.spaced { margin-top: 12px; }
+.subhead .subcount { opacity: .6; font-weight: 400; }
+/* the paste-many sheet */
+.bulksheet { display: flex; flex-direction: column; align-items: stretch; gap: 6px; margin: 5px 0; }
+.bulksheet textarea { resize: vertical; min-height: 74px; }
+.retiredstrip { margin-top: 12px; }
+.tagrow { display: flex; gap: 6px; flex-wrap: wrap; margin: 5px 0; }
+/* the bucket colour well, sized to sit as a swatch beside its name */
+.control.swatchinput { width: 30px; padding: 0; flex: none; }
+/* tag chip actions — "retire" and "remove from bucket" are different verbs and
+   must not look like the same button (EDITOR-REDESIGN §8) */
+.tagrm { background: none; border: none; color: inherit; cursor: pointer; margin-left: 4px; font-weight: 800; padding: 0; }
+.tagretire {
+  background: none; border: none; cursor: pointer; padding: 0 0 0 6px;
+  color: inherit; opacity: .65; font-family: var(--font-type); font-size: 9px;
+  text-transform: uppercase; letter-spacing: .04em; text-decoration: underline;
+}
+.tagretire:hover, .tagretire:focus-visible { opacity: 1; }
+.pill.tag.isretired { opacity: .55; }
+.retiredmark { font-family: var(--font-type); font-size: 9px; opacity: .7; margin-left: 5px; }
+/* the drill-in editor's back button, and its destructive action (kept at the
+   bottom, ghost — never adjacent to a save-like affordance, §3) */
+/* filter + sort above a long collection list (EDITOR-REDESIGN §7.1) */
+.listtools { display: flex; gap: 6px; align-items: center; margin: 6px 0 4px; }
+.listtools .control { min-width: 0; }
+/* the pager — bounded pages keep a 100-activity bucket calm */
+.pager { display: flex; gap: 8px; align-items: center; justify-content: center; margin: 8px 0 2px; }
+.pager .btn2 { flex: none; min-width: 0; padding: 4px 10px; font-size: 10.5px; }
+.pager .btn2:disabled { opacity: .35; cursor: default; }
+.pagerat { font-family: var(--font-type); font-size: 10px; color: #d8c6a5; opacity: .75; }
+
+.bulkbtn { padding: 5px 9px; }
+.editback { margin-bottom: 10px; padding: 5px 9px; }
+.cabcard > .btn2.ghost:last-child { margin-top: 8px; padding: 5px 9px; }
+
+/* ---------- EnergyControl: the tube-float on a wave (EDITOR-REDESIGN §5) ----------
+   One wave per axis, tinted blue (water); drag the life-ring. The axis critter
+   rides IN the tube in its natural colour. A text label names the axis. No
+   numerals — position is the value (a continuous float). */
+/* Full width inside a .field.stack's .fctl — .fctl is a flex container, so
+   without this the control shrinks to its content: short tracks, and the
+   restore/spend ends collapsing into each other. */
+.energyctl { display: flex; flex-direction: column; gap: 8px; margin: 2px 0; width: 100%; }
+/* The ends row must line up with the TRACKS, not the whole control, so its left
+   inset matches the label column + gap exactly (54 + 8). */
+.enends {
+  display: flex; justify-content: space-between; padding: 0 2px 0 62px;
+  font-family: var(--font-type); font-size: 9px; letter-spacing: .06em;
+  text-transform: uppercase; color: #d8c6a5; opacity: .7;
+}
+.enrow { display: flex; align-items: center; gap: 8px; }
+.enlabel {
+  flex: none; width: 54px; text-align: left;
+  font-family: var(--font-type); font-size: 10.5px; color: #d8c6a5; opacity: .85;
+}
+.entrack {
+  position: relative; flex: 1; height: 28px; border-radius: 9px; cursor: ew-resize;
+  border: 1.5px solid var(--cab-trim); background-color: rgba(0, 0, 0, .30);
+  overflow: hidden; touch-action: none;
+}
+.entrack:focus-visible { outline: 2px solid var(--cab-accent); outline-offset: 2px; }
+/* the water: the wave sprite, tinted blue on its own layer so the tube stays true colour */
+.entrack::before {
+  content: ""; position: absolute; inset: 0; z-index: 0; opacity: .78;
+  background-image: var(--wave); background-repeat: repeat-x;
+  background-size: auto 20px; background-position: left center;
+  filter: sepia(.85) saturate(1.3) hue-rotate(158deg) brightness(1);
+}
+/* the calm-water centre (neutral) detent */
+.entrack::after {
+  content: ""; position: absolute; left: 50%; top: 3px; bottom: 3px; width: 1.5px;
+  transform: translateX(-50%); background: rgba(255, 255, 255, .28); z-index: 1;
+}
+/* the tube: a life-ring float with the axis critter riding centred inside it */
+.enfloat {
+  position: absolute; top: 50%; left: 50%; width: 32px; height: 32px;
+  transform: translate(-50%, -50%); display: grid; place-items: center; z-index: 2;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .45)); pointer-events: none;
+}
+/* inheriting: ghost tubes — the value is real and readable, but visibly not this
+   thing's own. Touching one commits it (EDITOR-REDESIGN §5.3). */
+.energyctl.inheriting .enfloat { opacity: .5; filter: drop-shadow(0 1px 1px rgba(0,0,0,.3)) saturate(.35); }
+.energyctl.inheriting .entrack::before { opacity: .5; }
+.energyctl.inheriting .entrack:focus-visible .enfloat,
+.energyctl.inheriting .entrack:hover .enfloat { opacity: .8; }
+.entube { position: absolute; inset: 0; width: 100%; height: 100%; }
+.enrider { position: relative; z-index: 1; width: 15px; height: 15px; object-fit: contain; }
+/* inline text-button (e.g. "↺ inherit") in the Cabana's warm palette */
+.linklike { background: none; border: none; color: var(--cab-accent); cursor: pointer; font: inherit; padding: 0; text-decoration: underline; }
+/* per-critter colour. Source sprites are muted, so these push toward the target;
+   a shared drop-shadow gives each edge definition against the pale ring interior
+   (a plain white critter was washing out on the white tube). */
+.en-mental   { filter: grayscale(1) brightness(1.32) contrast(1.22) drop-shadow(0 1px 1px rgba(0,0,0,.45)); } /* seagull — clean white, feathery */
+.en-physical { filter: sepia(1) saturate(1.9) hue-rotate(-12deg) brightness(.8) drop-shadow(0 1px 1px rgba(0,0,0,.4)); } /* surfboard — warm brown */
+.en-social   { filter: saturate(.55) brightness(1.28) contrast(1.35) drop-shadow(0 1px 1px rgba(0,0,0,.4)); } /* beach ball — plasticky white, a hint of colour */
+.en-creative { filter: sepia(1) saturate(7) hue-rotate(-20deg) brightness(.95) drop-shadow(0 1px 1px rgba(0,0,0,.4)); } /* crab — red */
 
 /* ---------- persistence status + toast ---------- */
 .statusdot { display: inline-flex; align-items: center; gap: 5px; font-family: var(--font-type); font-size: 9px; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); }

@@ -78,11 +78,20 @@ export function useEngine() {
         s.zones = next.zones;
         s.config = next.config;
         s.learning = next.learning;
+        // The activity library rides along with an import (design/ACTIVITY-LIBRARY.md):
+        // dropping it here is the exact silent-loss trap sharp edge #15 warns about.
+        s.buckets = next.buckets;
+        s.activities = next.activities;
+        s.retiredTags = next.retiredTags;
         // The imported week's planned baselines and rollover mark come too —
         // an import that dropped them would silently cost the Wrap report its
         // planned-vs-actual and re-fire a rollover the export had already seen.
         s._snapshots = next._snapshots;
         s._lastSeenWeek = next._lastSeenWeek;
+        // _dismissed is additive persisted state too (sharp edge #15) and was
+        // being dropped here — a restored footlocker re-raised detector cards the
+        // user had already answered. Copy it with the rest.
+        s._dismissed = next._dismissed;
       });
     }, [mutate]),
   };

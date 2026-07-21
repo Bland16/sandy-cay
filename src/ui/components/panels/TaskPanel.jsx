@@ -208,7 +208,7 @@ export default function TaskPanel({ task, sched, mutate, weekStart, onClose, sho
 
       <div className="fieldrow">
         <div className="flabel">Tags</div>
-        <TagEditor tags={editable.tags} onChange={(tags) => upd({ tags })} suggestions={tagsInUse(sched)} />
+        <TagEditor tags={editable.tags} onChange={(tags) => upd({ tags })} suggestions={tagsInUse(sched).filter((t) => !sched.isTagRetired(t))} />
       </div>
 
       <div className="fieldrow split">

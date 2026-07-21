@@ -92,3 +92,49 @@ describe('R-5 a diverged model is discarded, never shipped', () => {
     expect(lm.diverged).toBe(false);
   });
 });
+
+describe('Phase D.1 — per-bucket position learning', () => {
+  beforeEach(() => resetIds());
+
+  const D = (d, h) => new Date(2026, 6, d, h, 0, 0, 0);
+  const rate = (s, tag, d, hour, overall) => {
+    const t = s.addFixed({ title: `${tag}${d}${hour}`, tags: [tag], startTime: D(d, hour), endTime: D(d, hour + 1) });
+    t.completion = 'done';
+    t.satisfaction = { overall, timingFit: 0, durationFit: 0, energy: 0 };
+    return t;
+  };
+  const withBuckets = () => {
+    const s = new Schedule({ config: defaultConfig });
+    s.addBucket({ label: 'Work', tags: ['work'] });
+    s.addBucket({ label: 'Rest', tags: ['rest'] });
+    return s;
+  };
+
+  // (The role×time / role×weekend interaction tests were removed with the role
+  //  rip-out — see design/RECONCILIATION.md. Per-position learning returns in L-2
+  //  keyed off load, not an enum.)
+
+  it('retrains from ratings when a saved model has an older layout (migration)', () => {
+    const s = withBuckets();
+    for (let i = 0; i < 12; i += 1) rate(s, 'work', 13 + (i % 6), 9, 5);
+    s.retrain();
+    const json = JSON.parse(JSON.stringify(s.toJSON()));
+    expect(json.model.layoutVersion).toBe(3);
+    json.model.layoutVersion = 1; // pretend an older build wrote it
+    json.model.weights = [1, 2, 3]; // stale, wrong-length garbage
+    const back = Schedule.fromJSON(json);
+    expect(back.learning.layoutVersion).toBe(3);
+    expect(back.learning.trained).toBe(true);
+    expect(back.learning.sampleCount).toBe(12);
+  });
+
+  it('duration buckets distinguish lengths below 45 minutes', () => {
+    const s = withBuckets();
+    rate(s, 'work', 13, 9, 5);
+    s.retrain();
+    const labels = s.learning.inspect().map((x) => x.label);
+    expect(labels).toContain('dur:<15');
+    expect(labels).toContain('dur:15-30');
+    expect(labels).toContain('dur:30-45'); // was a single "< 45" bucket before
+  });
+});

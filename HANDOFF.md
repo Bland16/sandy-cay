@@ -8,7 +8,7 @@ green on `main`.
 
 **The one branch still outstanding is `worktree-activity-library`** (PR #3,
 draft) — the Activity Library / Tag Buckets / energy work. It is *not* merged
-and it is where the session-4/5 respec was written.
+and it is where the session-4/5 respec was written. **You are on that branch.**
 
 ```bash
 npm install
@@ -47,9 +47,103 @@ energy override was never removed) and **P4–P5 are untouched**.
 
 ## ⚠️ READ THIS FIRST
 
+### The model was reconciled in session 4; session 5 respec'd the editors and reversed the energy-authoring call.
+
+Read `design/RECONCILIATION.md` (the corrected model) then
+`design/EDITOR-REDESIGN.md` (the current build spec, P0–P5). The reading order
+for all five design docs is in the section above.
+
+**Where the build actually stands on this branch (`worktree-activity-library`):**
+
+- ✅ **Role rip-out — done.** `role` is gone from `Bucket.js`, `energy.js`,
+  `index.js`, `Schedule.js` (`roleOf` removed, `bucketForTask` kept),
+  `learning.js` (role×time / role×weekend interactions removed,
+  `MODEL_LAYOUT_VERSION` → 3), `suggest.js` (steering keys off load character),
+  `TagManager.jsx`. The only `role` left in `src/` is DOM/ARIA.
+- ✅ **Unique ids** for Bucket/Activity/Zone (`_uniqueInColl` / `_dedupeIds`).
+- ✅ **Energy gating** — `config.energy.calibrationWeeks` (default 3);
+  `learnedCapacity()` returns `null` until calibrated; the card shows a "still
+  learning" shape with **no ceiling and no over/under verdict**.
+- ⚠️ **P0 barely started.** The drill-in *navigation* works, but there is **no**
+  `<DrillList>`/`<DrillEditor>` extraction and **none** of EDITOR-REDESIGN §4's
+  CSS vocabulary (`.field`, `.field.stack`, `.field-help`, `.control`,
+  `.rangefield`, `.editrow`). The editors still borrow zone classes and carry
+  **67 inline `style={{…}}` blocks** (ActivityEditor 22, TagManager 30,
+  ZonesEditor 15) — exactly the soup §1.1 diagnoses. *Don't trust the commit
+  messages here; check `styles.css` yourself.*
+- ✅ **P1** — the wave `<EnergyControl>` is built and good… but **without §5.3's
+  inherit/ghost mode**; `ActivityEditor` fakes it with a text wall.
+- ⚠️ **P2 / P3** — the Activities and Zones lists have the drill-in shape, on
+  the old classes.
+- ❌ **P5 untouched** — `retireTag` is still orphaned (no UI caller; only
+  `unretireTag` is wired), dead inline styles remain.
+
+### ⛔ Session-5 decisions that OVERRULE the specs below — do not build the old way
+
+1. **Energy is autocalculated from tags. There is NO energy control on the task
+   UI.** The task page must not be crowded with dials. The live calculation is
+   `energy.js#loadForTask`: every bucket sharing ≥1 tag with the task
+   contributes, and per axis the *positive* contributions are averaged among
+   themselves, the *negative* ones averaged among themselves, and the two means
+   added — so spend and restore do **not** cancel before averaging.
+2. **`<EnergyControl>` keeps two homes, not three:** the bucket editor and the
+   activity editor (inherit mode). The activity's control is *correct* — only its
+   presentation is outstanding (P2 above).
+
+**This kills `EDITOR-REDESIGN.md` P4 and reverses `RECONCILIATION.md` P-1/P-2's
+"energy is authored on the task, on the schedule."** Both docs carry a banner
+saying so. Note `task.load` was never writable anyway — `load` is absent from
+`UPDATE_WHITELIST` (`Schedule.js`), so `updateTask` silently drops it.
+
+**Known divergence, unresolved:** `loadForTask` uses **all** matching buckets;
+`Schedule.bucketForTask` returns only the **first** match. Two different
+tag→bucket rules. Now that tags are the sole source of energy, this matters.
+
+### The original session-4 framing (kept for the reasoning)
+
+Real use exposed that the activity / energy / bucket features accrued design debt
+(a fix that wasn't generalised, a UI redesign applied to one editor not all, a
+feature on the wrong object, fabricated energy numbers, a redundant `role` enum).
+So this session shipped **no features** — it wrote a corrected model and a
+consolidated fix/redesign plan. **Read `design/RECONCILIATION.md` first.** State:
+
+- **Forks are RESOLVED.** `role` gets **ripped out of the model entirely** (a
+  bucket's character IS its load vector — the enum was a redundant second
+  description); the energy budget shows a *"still learning"* state until ~3 weeks
+  of ratings calibrate capacity (no fabricated ceiling before that); bucket/task
+  load defaults to **neutral 0, user-set**.
+- **Task is the atom; Activity is a thin task template** (nothing a task lacks).
+  ~~So energy becomes editable **on the task, on the schedule**; the
+  per-activity energy override is wrong-object and gets removed.~~
+  **↑ REVERSED in session 5 — see the decisions box above.** Energy is derived
+  from tags; there is no task-level control, and the activity keeps its own.
+
+**Build order — step 1 is DONE and merged** (PRs #1/#2/#4 are on `main`; the
+cross-week `conflicts.js` double-book, `_occupiedExcluding`, the past-placement
+floor, unique ids and the de-flake all shipped). What remains:
+
+1. **Still open on `main`, from that bug list:** `carryOver` double-books *and*
+   places outside the target week (`carryOver.js:22` uses `toWs + lookahead + 6`
+   while `:43` filters occupied to days 0–6), and the iCal `EXDATE`/
+   `RECURRENCE-ID` wrong-time bug (`ical.js:174`'s `hhmmOf` reads `periods[0]`).
+   Also `recurrence.js` silently drops an `add` on a day the pattern fills, and
+   the `time.js` isoWeek comment example is still self-contradictory.
+2. **Finish the editor redesign** (this branch): P2's remainder, then P5.
+   **P4 is cancelled** — see the decisions box above.
+3. **One product call still open:** project management — build a surface for the
+   chunk ops (`growChunk`/`shrinkChunk`/`resizeChunk`/`deleteChunk`/
+   `finishProject`/`redistribute`, all unreachable from the UI today), or leave
+   them internal. *(Retire is decided: complete it, EDITOR-REDESIGN §8.)*
+
+**Same lesson as session 2, reinforced:** every HIGH bug this session found is in
+code the green suite "covers." The cross-week double-books are *proven* by probe
+yet no test caught them. Drive the real app on real data; don't trust green.
+
+---
+
 **Wrap report (§7.1 / R-7) and Responsive (§11) are DONE. The date-flaky tests
-are FIXED and ripple now honours zones (session 3).** Next job: **verify touch
-drag on a real phone** (still unrun), and drive a ripple near the work zone.
+are FIXED and ripple now honours zones (session 3).** Still unrun: **verify touch
+drag on a real phone**, and drive a ripple near the work zone.
 
 **✅ The 11 date-flaky UI tests are fixed (session 3).** `tests/ui-drag.test.jsx`
 and `tests/ui-bulk.test.jsx` seeded with `new Date()` and hardcoded weekday
@@ -98,7 +192,25 @@ record, arbitrates — 75KB, **grep it, never read it whole**) · `FRONTEND-SPEC
 
 ---
 
-## NEXT JOB: verify touch drag on a real phone (Responsive is otherwise done)
+## Where the work is (session 3–4 branches, none merged yet)
+
+`git worktree list` — the main checkout sits on `wrap-report`; the rest are
+isolated worktrees under `.claude/worktrees/`. Confirm PR numbers with
+`gh pr list`; per session notes they are roughly:
+
+| Worktree / branch | Base | Holds |
+|---|---|---|
+| main checkout — `wrap-report` | `main` | wrap report + responsive + rollover (session 2–3) |
+| `worktree-activity-library` | wrap-report | activity library, L-1 energy, Tag Manager drill-in, **`design/RECONCILIATION.md`** (this session) |
+| `worktree-bugfix-sweep` / `worktree-core-bugfixes` | wrap-report | the bug-fix PR home (cross-week + iCal + unique-id fixes) — **build order step 1** |
+| `worktree-precedence-zones` | wrap-report | §2.2 precedence for displace/carryOver |
+
+**The reconciliation redesign (role rip-out etc.) has NO branch yet** — it's spec
+only, gated on the user's review. Start it on a fresh feature branch off
+`wrap-report` once approved. **Commit by explicit path, never `git add -A`** (the
+privacy note still holds — `design/import/` and `*.ics` are gitignored real data).
+
+## PENDING (pre-reconciliation): verify touch drag on a real phone
 
 **Responsive (§11) is built and tested** — phone <768 (day view + `DayPicker`
 strip), tablet 768–1279 (`WeekGrid days={[0..4]}` + `WeekendDrawer`), desktop

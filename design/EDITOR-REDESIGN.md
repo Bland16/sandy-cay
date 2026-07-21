@@ -7,6 +7,41 @@ well first.* **Build is gated on sign-off** (working agreement). This spec cover
 **all three** collection editors (Zones, Buckets, Activities) plus the reused
 energy control, then a phased build plan to ship them in one chunked effort.
 
+> ### ⚠ AMENDED, session 5 (2026-07-20) — P4 is cancelled
+>
+> **§5.5 lists three homes for `<EnergyControl>`; there are two.** The user's
+> call: *a task's energy is autocalculated from its tags — no energy control on
+> the task UI, to keep the task page uncrowded.*
+>
+> - **P4 (Task energy on the schedule) is CANCELLED.** Do not add
+>   `<EnergyControl>` to `TaskPanel`. The derivation is `energy.js#loadForTask`
+>   (see the amendment banner in `RECONCILIATION.md` for the exact rule).
+> - **§5.5 reads: two homes** — the **bucket editor** (sets the default) and the
+>   **activity editor** (template default, inheritable). Not the task.
+> - **§7 and §9 are unchanged and still apply:** the activity keeps its energy
+>   control, but its old "customise / inherit" text wall must be folded into
+>   `<EnergyControl>`'s ghost-tube inherit mode (§5.3). That is the outstanding
+>   part of P2.
+>
+> Everything else in this spec — the drill-in idiom, the form vocabulary, the
+> wave control itself, the sprite decisions, P0–P3 and P5 — stands as written.
+>
+> **Phase status (verified against the code, 2026-07-20):**
+> P0 ✅ — §4's vocabulary is in `styles.css` (`.field`, `.field.stack`,
+> `.field-help`, `.control`, `.rangefield`, `.editrow`), and `<DrillList>` /
+> `<DrillEditor>` / `<DrillRow>` / `<Field>` are extracted into `Drill.jsx`.
+> The three editors went from **67 inline `style={{…}}` blocks to 3**, and those
+> three are data-driven (wave URL, float position, colour swatch), which §4
+> explicitly allows. *(This phase was recorded as done once before it was —
+> don't trust the commit messages here, check `styles.css`.)*
+> P1 ✅ · P2 ✅ (drill-in list + §5.3 inherit/ghost mode).
+> P3 ✅ (Zones on the shared idiom).
+> P4 ❌ cancelled (see the amendment above).
+> P5 ✅ — `retireTag` has a control (§8); the `role` UI and the inline styles are
+> gone. **All phases are now closed.**
+> **D-3 is moot** — `<EnergyControl>` is already built, so there is nothing left
+> to prototype ahead of it.
+
 ---
 
 ## 1. Why they feel poor (the diagnosis this remake answers)
@@ -216,6 +251,118 @@ energy *override* framing (P-1: an activity just carries a `load` like a task).
   (`<EnergyControl>` in **inherit** mode by default — see §5.3).
 - **Add:** per-group `＋ activity`; empty-state points at making a bucket first.
 
+### 7.1 Scale — filter, sort & pages (session 5)
+
+The drill-in fixed the *wall* for five activities. It does nothing for a hundred,
+and a single bucket can hold that many on its own. So a bucket's Activities
+section gains a **filter box, a sort control, and pages** — all three, applied
+**within each bucket** (and within the "Unbucketed activities" group).
+
+**Order of operations: filter → sort → paginate.** Getting this wrong produces
+the classic bug where page 2 shows items that don't match the filter.
+
+- **Filter** — a plain substring match (case-insensitive) on the activity label.
+  Typing **resets to page 1**; otherwise you can filter down to 3 results while
+  stranded on page 4 and see an empty list. This is the one real hazard of
+  having both controls, so it is a hard rule, not a nicety.
+- **Sort** — three orders: **A–Z** (default), **Z–A**, and **most used**.
+- **Pages** — `config.activities.pageSize` (default **8**). The pager is
+  **hidden entirely when there's only one page**, so a bucket with three
+  activities looks exactly as it does today. Pager reads `‹ prev · 1 of 3 · next ›`.
+- **Empty states are distinct:** "no activities yet" (make one) is not the same
+  message as "nothing matches *foo*" (clear the filter).
+
+**"Most used" needs data the model doesn't have.** Today `placeActivity` creates
+a Task and discards which activity it came from, so usage is unknowable. The fix:
+
+- **`Task.activityId`** — a nullable back-link stamped by `placeActivity`, and
+  carried through `toJSON`/`fromJSON`. Nothing else reads it yet.
+- **`activityUsage(schedule, { now, days })`** → `{ [activityId]: count }`,
+  counting tasks whose `activityId` matches and whose `startTime` falls in the
+  trailing window. `config.activities.frequencyDays` default **90** — the list
+  should track what you're doing *lately*, not what you did in 2024.
+- **Cold start:** with no history every count is 0, so "most used" would be
+  arbitrary. It **always tiebreaks on A–Z**, making it stable and sensible on a
+  fresh install rather than random.
+
+**⚠ P-1 boundary — this counts what you DID, never what you skipped.** `suggest.js`
+is explicit that *"cycling past a suggestion records NOTHING — it cannot infer
+procrastination because it never watches what you skip."* Usage counts
+**instantiations**: you chose the activity and it became a task. A future change
+must not "improve" this by counting dismissals, ignored suggestions, or
+placed-then-deleted tasks as signal — that would turn a convenience sort into
+exactly the surveillance P-1 forbids. Counting a task that was placed but later
+skipped is fine (you chose it; the skip is not recorded as a judgement).
+
+### 7.2 Bulk paste — duplicates and multiple buckets (session 5)
+
+**A pasted activity never lands twice.** Identity is the **trimmed,
+case-insensitive label**, not label+duration: two activities both called
+"meditate" in one bucket are a mistake whether or not their ranges agree, and the
+second is unreachable noise. Dedupe runs on both axes — repeats *within* the
+paste (first occurrence wins, so the durations written first are kept) and
+against what the bucket *already holds*, which makes pasting the same block twice
+idempotent instead of doubling everything. Dedupe is scoped **per bucket**: the
+same label in two different buckets is legitimate.
+
+**A paste may span buckets, via `# Bucket name` heading lines.** Everything after
+a heading targets that bucket until the next one.
+
+> The obvious design — an inline leading column, `Creative | write poetry | 15-60`
+> — is **ambiguous and was rejected**: `Creative | write poetry` and
+> `write poetry | 15-60` are both two fields, so a bucket name and a
+> duration-less activity cannot be told apart. Headings remove the guess, and
+> match the shape people already write lists in.
+
+- Heading matching is case- and whitespace-insensitive.
+- Rows **before** the first heading go to the bucket you're standing in. Pasted
+  from the bucket *list*, where there is no such default, they are **reported as
+  unassigned**, not silently dropped.
+- A heading naming **no known bucket** is reported and its rows skipped.
+  Auto-creating a bucket from what might be a typo is worse than saying so.
+- A row that omits tags inherits **its heading's** bucket tags — which is what
+  drives its energy (§7.1 / the tag-derived model).
+
+**Nothing is dropped silently.** The commit bar states, before you press it, how
+many rows will land and in how many buckets, and names every duplicate, unknown
+heading and unassigned row. A bulk import that quietly discards rows is how you
+end up trusting a library that isn't what you pasted.
+
+The cross-bucket sheet lives at the **bucket list**, because that is the level it
+operates on; the in-bucket sheet keeps its own default but understands headings
+too.
+
+### 7.3 The 15-minute floor — DECIDED: no sub-grid activities (session 5)
+
+Real use surfaced activities that are genuinely a minute or two: *drink some
+water*, *phone break*, *drink some tea*. `Activity.js` clamps `durationMin` to
+**15** (OD-1: the grid snaps to 15 and the wave/sand resize borders can't cross),
+so these were silently becoming quarter-hour blocks.
+
+**Decision: the floor stays, and micro-activities do not get a sub-grid
+representation.** An Activity is a *template for a Task*, and a Task is a block on
+a 15-minute grid — so a 3-minute activity would still occupy 15 minutes once
+placed. Adding a sub-grid duration would let the library promise something the
+schedule cannot keep, which is worse than the floor.
+
+**What changes is honesty, not the number.** The clamp was silent: type 5, get 15,
+no explanation. Now:
+
+- `parseActivityLine` returns **`raisedToFloor`** when the written duration was
+  below the floor (as opposed to simply omitted — defaulting to 15 is not the
+  same as overriding what someone wrote).
+- The paste preview **names** the rows it raised.
+- The activity editor states the rule under the length field.
+
+*(If a real "moment" concept is ever wanted — something logged without occupying
+grid time — it is a new object, not a short Activity, and it belongs with the
+passive-wait work in `ROUTINES.md`. Not proposed now.)*
+
+**Bonus:** the `activityId` back-link is also the missing prerequisite for the
+parked **activity time-of-day preference** learning (decided 2026-07-18: learn it
+from where instances actually get placed). That work is blocked on exactly this
+link, so it lands here.
+
 ## 8. Retire — completed (decision: complete it)
 
 Today `unretireTag` has UI (the recover strip) but `retireTag` has **none**
@@ -240,6 +387,43 @@ Today `unretireTag` has UI (the recover strip) but `retireTag` has **none**
 - **Ad-hoc inline layout styles** across both editors — replaced by §4 vocabulary.
 
 ---
+
+## 9.1 Card tint from bucket colour (session 5)
+
+Bucket colour was authored in the Tag Manager and used **nowhere but its own
+swatch**. A task now takes a tint from **every bucket its tags touch** — the same
+rule `energy.js#loadForTask` uses, so a task's colour and its energy derive from
+the same set. *(`bucketForTask` took only the first match; the two used to
+disagree. `bucketsForTask` is the aligned version.)*
+
+**Blending without mud.** Averaging in sRGB is the obvious approach and it is
+wrong: channel-wise means drag toward grey, so coral + teal lands on a dead
+blue-grey belonging to neither. `core/color.js` instead:
+
+1. works in **OKLCH** (perceptually uniform);
+2. averages hue **circularly**, as chroma-weighted unit vectors — a plain mean of
+   350° and 10° gives 180°, the opposite colour, and a near-grey bucket must not
+   steer direction;
+3. takes chroma as the **mean of the inputs**, *not* the magnitude of the summed
+   hue vector. That magnitude collapses toward zero as hues diverge, and the
+   collapse **is** the mud.
+
+**Opposing hues are refused, not faked.** Red and cyan have no meaningful
+average; the vectors cancel and the resulting angle is noise. `blendColors`
+reports the hue agreement `R`, and below `HUE_AGREEMENT_MIN` (0.5) the caller
+falls back to the **dominant bucket** — most tags matched, ties by bucket order
+so it is stable across renders. Both buckets are still reported.
+
+**Layering — the tint must not cost the semantic read.** `.card.fixed` /
+`.flexible` / `.protected` / `.pinned` already tint the card, and those states are
+real information. The bucket colour is therefore the card's **base
+`background-color`** only, at 20%, with the existing rules painting their
+`background-image` gradients *over* it. Both survive.
+
+**§9 compliance.** The tint is identity, never information: those states each
+carry an icon badge (anchor, lock, hammock), the matched bucket names are on the
+card's `title` and `aria-label`, and a browser without `color-mix` simply gets
+today's paper card.
 
 ## 10. Sprites across the redesign (decision: use the sprites)
 

@@ -14,6 +14,15 @@ import { buildWrapReport, applySuggestion } from '../report.js';
 import { fmtDur, DAY_NAMES } from '../format.js';
 import Icon from '../Icon.jsx';
 
+// Deadline buffer, in plain words — hours under a day, whole days beyond it.
+const fmtBuf = (h) => {
+  const a = Math.abs(h);
+  if (a < 24) return `${Math.round(a)}h`;
+  const d = Math.round(a / 24);
+  return d === 1 ? 'a day' : `${d} days`;
+};
+const bufPhrase = (h) => (h < 0 ? `finished ${fmtBuf(h)} after it was due` : `finished ${fmtBuf(h)} before it was due`);
+
 /**
  * Shells as the satisfaction glyph (§10) — filled to the rating, ghosted past it.
  *
@@ -304,6 +313,31 @@ export default function WrapReport({ sched, weekStart, version, onBack, onOpenTa
                         </p>
                       )}
                     </>
+                  )}
+                </div>
+              )}
+
+              {/* Deadlines — how close to the wire things ran. Facts, never a
+                  verdict (P-1): derived from your deadlines + when work sat, never
+                  from what you skipped, and never euphemised. */}
+              {stats.deadlines.count > 0 && (
+                <div className="rp-sub">
+                  <h3>Deadlines</h3>
+                  <p className="rp-line">
+                    {stats.deadlines.count} {stats.deadlines.count === 1 ? 'task had' : 'tasks had'} a deadline this week
+                    {stats.deadlines.closeCount > 0
+                      ? `; ${stats.deadlines.closeCount} ${stats.deadlines.closeCount === 1 ? 'was' : 'were'} finished with under ${fmtBuf(stats.deadlines.thresholdHours)} to spare.`
+                      : ', all finished with room to spare.'}
+                  </p>
+                  {stats.deadlines.tightest && (
+                    <p className="rp-line">
+                      Closest to the wire: <b>{stats.deadlines.tightest.title}</b>, {bufPhrase(stats.deadlines.tightest.bufferHours)}.
+                    </p>
+                  )}
+                  {stats.deadlines.closestBucket && (
+                    <p className="rp-line">
+                      Of your buckets, <b>{stats.deadlines.closestBucket.label}</b> ran closest — a median of {fmtBuf(stats.deadlines.closestBucket.medianBufferHours)} of buffer.
+                    </p>
                   )}
                 </div>
               )}

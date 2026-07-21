@@ -91,6 +91,12 @@ export function autoSchedule(schedule, opts = {}) {
     if (t.chunking) continue; // parent bookkeeping record, not a grid object
     if (t.recurrence) continue; // materialized separately below
     if (!inWeek(t)) continue;
+    // A resolved task is history, never a re-placement candidate — moving finished
+    // work into the present/future is the bug this guards. `skipped` is resolved
+    // as not-done, so it neither moves nor blocks its old slot; `done`/`partial`
+    // happened where they sit, so they anchor (their time is spent).
+    if (t.completion === 'skipped') continue;
+    if (t.completion != null) { anchors.push(t); continue; }
     if (t.isAnchored(protectedTags)) anchors.push(t);
     else if (t.type === 'flexible' && !t.pinned) candidates.push(t);
     else anchors.push(t);

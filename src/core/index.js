@@ -8,6 +8,8 @@ import { weekStart as weekStartOf, addDays, atTime, dateKey } from './time.js';
 
 export { Task } from './Task.js';
 export { Zone } from './Zone.js';
+export { Bucket } from './Bucket.js';
+export { Activity } from './Activity.js';
 export { Schedule } from './Schedule.js';
 export { LearningModule } from './learning.js';
 export { StorageAdapter, exportState, summarizeImport, pickBackend } from './storage.js';
@@ -32,6 +34,12 @@ export {
   dayGaps, getBreakCompression, getSatisfactionMatrix,
 } from './queries.js';
 export { whatToDo, currentOpening, openingLabel } from './whatToDo.js';
+export { suggestActivities, placeActivity, steerBias, priorityPressure } from './suggest.js';
+export {
+  activityUsage, activityPage, filterActivities, sortActivities, paginate, activityCfg,
+  dedupeDrafts, dedupeBulk, parseActivityLine, parseBulkBlock, SORTS, SORT_LABELS,
+} from './activityList.js';
+export { energyBudget, energyCalibration, learnedCapacity, energyTrajectory, reserveAt, loadForTask, normalizeLoad, LOAD_AXES } from './energy.js';
 export {
   toICS, parseICS, importEvents, eventToTask, deriveTags,
   toRRULE, fromRRULE, toICSDate, fromICSDate,
@@ -47,6 +55,30 @@ export {
 export { score, normalizeWeights } from './scoring.js';
 export { findBestSlot, placeTask, dayWindowBounds, intervalsOf } from './placement.js';
 export { resetIds } from './ids.js';
+
+// Starter buckets (design/ACTIVITY-LIBRARY.md): a proposed set the user edits.
+// Load defaults to neutral (0) — the user authors each bucket's character on the
+// wave control; we never fabricate it. The `tags` are the ones each bucket grabs
+// if they're already in use.
+export const STARTER_BUCKETS = [
+  { label: 'Rest', tags: ['rest', 'leisure', 'nap'] },
+  { label: 'Work / School', tags: ['work', 'study', 'thesis', 'admin'] },
+  { label: 'Creative', tags: ['creative', 'music', 'art', 'personal-project'] },
+  { label: 'Home', tags: ['chores', 'errand', 'home'] },
+  { label: 'Social', tags: ['social', 'family', 'friends'] },
+  { label: 'Health', tags: ['health', 'sports', 'exercise', 'gym'] },
+];
+
+/**
+ * Seed the starter buckets onto a schedule. Idempotent: a no-op the moment any
+ * bucket exists, so it never clobbers an edited set. Returns the buckets it added
+ * (empty if it did nothing). The *trigger* (first run vs a Cabana action) is a
+ * Phase-B decision; this is just the data + the guard.
+ */
+export function seedStarterBuckets(schedule) {
+  if (!schedule || (schedule.buckets && schedule.buckets.length > 0)) return [];
+  return STARTER_BUCKETS.map((b) => schedule.addBucket(b));
+}
 
 /**
  * Seed a rich, deterministic Schedule that exercises every badge and rule on

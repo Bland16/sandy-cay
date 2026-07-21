@@ -3,7 +3,10 @@
 
 import { Task } from './Task.js';
 import { Zone } from './Zone.js';
+import { Bucket } from './Bucket.js';
+import { Activity } from './Activity.js';
 import { makeId } from './ids.js';
+import { blendColors } from './color.js';
 import { makeConfig } from './config.js';
 import { normalizeWeights } from './scoring.js';
 import { LearningModule } from './learning.js';
@@ -31,6 +34,8 @@ import { carryOver as runCarryOver } from './carryOver.js';
 import { addProject as runAddProject } from './projects.js';
 import { getWeekLoad as runWeekLoad, getTagBreakdown as runTagBreakdown, snapshot as runSnapshot } from './queries.js';
 import { whatToDo as runWhatToDo } from './whatToDo.js';
+import { suggestActivities as runSuggest, placeActivity as runPlaceActivity } from './suggest.js';
+import { energyBudget as runEnergyBudget, energyCalibration as runEnergyCalibration } from './energy.js';
 import { overpackCheck } from './detectors.js';
 
 const UPDATE_WHITELIST = [
@@ -49,6 +54,18 @@ export class Schedule {
     // second silently edited the first. Repair any collision already in the save.
     this._dedupeTaskIds();
     this.zones = (init.zones || []).map((z) => (z instanceof Zone ? z : Zone.fromJSON(z)));
+    // Activity library (design/ACTIVITY-LIBRARY.md): buckets (categories + tag
+    // groups), the activities inside them, and the set of retired tags. All
+    // additive — absent on every save written before this shipped, which loads
+    // clean; schemaVersion stays 1.
+    this.buckets = (init.buckets || []).map((b) => (b instanceof Bucket ? b : Bucket.fromJSON(b)));
+    this.activities = (init.activities || []).map((a) => (a instanceof Activity ? a : Activity.fromJSON(a)));
+    // Same collision guard tasks get: slug(label) alone collides (two "New bucket"s
+    // → one id), so repair any duplicate zone/bucket/activity id from an old save.
+    this._dedupeIds(this.zones);
+    this._dedupeIds(this.buckets);
+    this._dedupeIds(this.activities);
+    this.retiredTags = Array.isArray(init.retiredTags) ? [...init.retiredTags] : [];
     this.learning = init.model instanceof LearningModule
       ? init.model
       : LearningModule.fromJSON(init.model, this.config);
@@ -59,6 +76,10 @@ export class Schedule {
     this._lastSeenWeek = init.lastSeenWeek || null;
     this._dismissed = init.dismissed ? { ...init.dismissed } : {};
     this._changeCount = 0;
+    // A save from an older model feature-layout can't be scored against the new
+    // vector — retrain from the rated tasks now (weights are disposable; the
+    // ratings persist). One-time, until it's re-saved with the current layout.
+    if (this.learning.needsRetrain) this.retrain();
   }
 
   // ---- weight / model helpers used by placement -------------------------
@@ -111,6 +132,22 @@ export class Schedule {
     for (const t of this.tasks) {
       if (seen.has(t.id)) while (seen.has(t.id) || this.tasks.some((x) => x !== t && x.id === t.id)) t.id = makeId(t.title);
       seen.add(t.id);
+    }
+  }
+
+  /** The task collision guard, generalized to any {id,label} collection (Bucket/
+   *  Activity/Zone). On add, keep a new item's id unique; on load, repair dupes.
+   *  Fixes the two-new-buckets bug (design/RECONCILIATION.md, unique ids). */
+  _uniqueInColl(item, coll) {
+    while (coll.some((x) => x !== item && x.id === item.id)) item.id = makeId(item.label);
+    return item;
+  }
+
+  _dedupeIds(coll) {
+    const seen = new Set();
+    for (const it of coll) {
+      if (seen.has(it.id)) while (seen.has(it.id) || coll.some((x) => x !== it && x.id === it.id)) it.id = makeId(it.label);
+      seen.add(it.id);
     }
   }
 
@@ -169,6 +206,7 @@ export class Schedule {
 
   addZone(data) {
     const z = new Zone(data);
+    this._uniqueInColl(z, this.zones);
     this.zones.push(z);
     this._touch();
     return z;
@@ -188,6 +226,123 @@ export class Schedule {
     Object.assign(z, changes);
     this._touch();
     return z;
+  }
+
+  // ---- activity library (buckets / activities / retired tags) ------------
+  addBucket(data) {
+    const b = new Bucket(data);
+    this._uniqueInColl(b, this.buckets);
+    this.buckets.push(b);
+    this._touch();
+    return b;
+  }
+
+  removeBucket(id) {
+    const i = this.buckets.findIndex((b) => b.id === id);
+    if (i < 0) return null;
+    const [removed] = this.buckets.splice(i, 1);
+    // Orphan its activities rather than delete them — a mis-click on a bucket
+    // shouldn't silently destroy the activities the user authored inside it. The
+    // Cabana surfaces orphans (bucketId === null) for reassignment.
+    for (const a of this.activities) if (a.bucketId === id) a.bucketId = null;
+    this._touch();
+    return removed;
+  }
+
+  updateBucket(id, changes) {
+    const b = this.buckets.find((x) => x.id === id);
+    if (!b) return null;
+    Object.assign(b, changes);
+    this._touch();
+    return b;
+  }
+
+  addActivity(data) {
+    const a = new Activity(data);
+    this._uniqueInColl(a, this.activities);
+    this.activities.push(a);
+    this._touch();
+    return a;
+  }
+
+  removeActivity(id) {
+    const i = this.activities.findIndex((a) => a.id === id);
+    if (i < 0) return null;
+    const [removed] = this.activities.splice(i, 1);
+    this._touch();
+    return removed;
+  }
+
+  updateActivity(id, changes) {
+    const a = this.activities.find((x) => x.id === id);
+    if (!a) return null;
+    Object.assign(a, changes);
+    this._touch();
+    return a;
+  }
+
+  /** Retire a tag: it disappears from *new*-task pickers, chips and the library,
+   *  but stays on historical tasks and in insights (design: hide-from-new). */
+  retireTag(tag) {
+    if (tag && !this.retiredTags.includes(tag)) {
+      this.retiredTags.push(tag);
+      this._touch();
+    }
+    return this.retiredTags;
+  }
+
+  unretireTag(tag) {
+    const i = this.retiredTags.indexOf(tag);
+    if (i >= 0) {
+      this.retiredTags.splice(i, 1);
+      this._touch();
+    }
+    return this.retiredTags;
+  }
+
+  isTagRetired(tag) {
+    return this.retiredTags.includes(tag);
+  }
+
+  /** EVERY bucket this task's tags touch, in bucket order.
+   *  This is the same rule `energy.js#loadForTask` uses, so a task's colour and
+   *  its energy are derived from the same set of buckets. (They used to
+   *  disagree: bucketForTask took only the first match.) */
+  bucketsForTask(task) {
+    const tags = (task && task.tags) || [];
+    return this.buckets.filter((b) => tags.some((t) => b.tags.includes(t)));
+  }
+
+  /** The single bucket that best claims this task, or null. Most tags matched
+   *  wins; ties fall to bucket order, so it is stable across renders. Used when
+   *  one colour is needed and a blend would be meaningless. */
+  dominantBucketForTask(task) {
+    const tags = (task && task.tags) || [];
+    let best = null; let bestN = 0;
+    for (const b of this.buckets) {
+      const n = tags.filter((t) => b.tags.includes(t)).length;
+      if (n > bestN) { best = b; bestN = n; }
+    }
+    return best;
+  }
+
+  /** The bucket that claims this task (first tag match), or null. */
+  bucketForTask(task) {
+    const tags = task && task.tags ? task.tags : [];
+    return this.buckets.find((b) => tags.some((t) => b.tags.includes(t))) || null;
+  }
+
+  /** The tint for a task's card: a perceptual blend of its buckets' colours,
+   *  falling back to the dominant bucket when the hues disagree too much for a
+   *  blend to mean anything (see color.js). Returns null when no bucket matches.
+   *  @returns { hex, buckets, blended } | null */
+  tintForTask(task) {
+    const matched = this.bucketsForTask(task);
+    if (matched.length === 0) return null;
+    const res = blendColors(matched.map((b) => b.color));
+    if (res.hex && res.blended) return { hex: res.hex, buckets: matched, blended: true };
+    const dom = this.dominantBucketForTask(task) || matched[0];
+    return { hex: dom.color, buckets: matched, blended: false };
   }
 
   // ---- queries -----------------------------------------------------------
@@ -246,6 +401,26 @@ export class Schedule {
 
   whatToDo(now = new Date(), options = {}) {
     return runWhatToDo(this, now, options);
+  }
+
+  /** Library-activity fallback for "what to do" (Phase C). Read-only. */
+  suggestActivities(now = new Date(), opts = {}) {
+    return runSuggest(this, now, opts);
+  }
+
+  /** "Do it now" for a library activity: instantiate it into the opening. */
+  placeActivity(activity, start, openingMin) {
+    return runPlaceActivity(this, activity, start, openingMin);
+  }
+
+  /** Deterministic energy budget for a day (design/ENERGY-MODEL.md, L-1). */
+  energyBudget(date = new Date()) {
+    return runEnergyBudget(this, date);
+  }
+
+  /** Whether the energy budget is calibrated yet (design/RECONCILIATION.md P-2). */
+  energyCalibration() {
+    return runEnergyCalibration(this);
   }
 
   // ---- engine ------------------------------------------------------------
@@ -371,6 +546,9 @@ export class Schedule {
       schemaVersion: 1,
       tasks: this.tasks.map((t) => t.toJSON()),
       zones: this.zones.map((z) => z.toJSON()),
+      buckets: this.buckets.map((b) => b.toJSON()),
+      activities: this.activities.map((a) => a.toJSON()),
+      retiredTags: [...this.retiredTags],
       config: this.config,
       model: this.learning.toJSON(),
       // The planned baseline has to survive a reload or the Wrap report can
@@ -386,6 +564,11 @@ export class Schedule {
       config: json.config,
       tasks: (json.tasks || []).map((t) => Task.fromJSON(t)),
       zones: (json.zones || []).map((z) => Zone.fromJSON(z)),
+      // Additive (design/ACTIVITY-LIBRARY.md): absent on old saves → empty, which
+      // is exactly right. schemaVersion stays 1.
+      buckets: (json.buckets || []).map((b) => Bucket.fromJSON(b)),
+      activities: (json.activities || []).map((a) => Activity.fromJSON(a)),
+      retiredTags: json.retiredTags,
       model: json.model,
       // Absent on every save written before this shipped — an old file loads as
       // a schedule with no baselines, which is exactly right. schemaVersion
