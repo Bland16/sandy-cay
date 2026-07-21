@@ -698,7 +698,8 @@ body.sc-dragging { user-select: none; }
 /* label ABOVE control — for full-width controls (tags, the energy control) */
 .field.stack { flex-direction: column; align-items: stretch; gap: 4px; }
 .field.stack > .flabel { width: auto; text-align: left; }
-.field.stack > .fctl { flex-wrap: wrap; }
+/* a stacked field holds full-width controls, so they stretch rather than centre */
+.field.stack > .fctl { flex-wrap: wrap; align-items: stretch; }
 /* help text beneath a field — the calm alternative to a wall of explanation */
 .field-help { font-size: 10.5px; line-height: 1.45; color: #d8c6a5; opacity: .75; margin-top: 3px; }
 .field-help strong { color: var(--cab-accent); font-weight: 700; }
@@ -781,15 +782,20 @@ body.sc-dragging { user-select: none; }
    One wave per axis, tinted blue (water); drag the life-ring. The axis critter
    rides IN the tube in its natural colour. A text label names the axis. No
    numerals — position is the value (a continuous float). */
-.energyctl { display: flex; flex-direction: column; gap: 8px; margin: 2px 0; }
+/* Full width inside a .field.stack's .fctl — .fctl is a flex container, so
+   without this the control shrinks to its content: short tracks, and the
+   restore/spend ends collapsing into each other. */
+.energyctl { display: flex; flex-direction: column; gap: 8px; margin: 2px 0; width: 100%; }
+/* The ends row must line up with the TRACKS, not the whole control, so its left
+   inset matches the label column + gap exactly (54 + 8). */
 .enends {
-  display: flex; justify-content: space-between; padding: 0 14px 0 66px;
+  display: flex; justify-content: space-between; padding: 0 2px 0 62px;
   font-family: var(--font-type); font-size: 9px; letter-spacing: .06em;
   text-transform: uppercase; color: #d8c6a5; opacity: .7;
 }
 .enrow { display: flex; align-items: center; gap: 8px; }
 .enlabel {
-  flex: none; width: 54px; text-align: right;
+  flex: none; width: 54px; text-align: left;
   font-family: var(--font-type); font-size: 10.5px; color: #d8c6a5; opacity: .85;
 }
 .entrack {
