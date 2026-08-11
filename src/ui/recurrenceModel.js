@@ -26,7 +26,76 @@ export function ordinalNumber(n) {
 }
 
 /**
- * The repeat options, WRITTEN OUT OF THE CHOSEN DATE as finished sentences.
+ * The repeat control is TWO levels: a short top list of the cadences people
+ * actually reach for, and — only where it means something — the detail folded
+ * inside the branch you picked.
+ *
+ * A single flat list had to carry "every 3rd week", "every month on the first
+ * Tuesday" and "every month on the 15th" all at once, which is a lot of reading
+ * to do before you find the one line you wanted.
+ */
+export const TOP_FREQUENCIES = [
+  { value: 'weekday', label: 'every weekday (Mon–Fri)' },
+  { value: 'week', label: 'every week' },
+  { value: 'month', label: 'every month' },
+  { value: 'year', label: 'every year' },
+  { value: 'other', label: 'other…' },
+];
+
+/**
+ * What "every month" can mean, written out of the chosen date. These are the
+ * only two ideas — keep the weekday and move the date ("the first Tuesday"), or
+ * keep the date and let the weekday move ("the 15th") — and the user should
+ * never have to name that distinction, only recognise the sentence.
+ *
+ * "The last Tuesday" appears only when the chosen date genuinely is one.
+ */
+export function monthlyModesForDate(date) {
+  const d = date || new Date();
+  const dayName = DAY_FULL[weekdayIndex(d)];
+  const nth = nthWeekdayOfMonth(d);
+  const out = [{ value: 'mnth', label: `on the ${ORDINAL_WORDS[nth - 1]} ${dayName}` }];
+  if (isLastWeekdayOfMonth(d)) out.push({ value: 'mlast', label: `on the last ${dayName}` });
+  out.push({ value: 'mdate', label: `on the ${ordinalNumber(d.getDate())}` });
+  return out;
+}
+
+/** Split a model's option + interval into the two-level UI choice. */
+export function uiChoiceOf(model) {
+  const option = optionOfModel(model);
+  const interval = Number(model && model.interval) || 1;
+  const base = { monthMode: 'mnth', unit: 'weeks', n: 2 };
+  if (option === 'weekday') return { ...base, top: 'weekday' };
+  if (option === 'y') return { ...base, top: 'year' };
+  if (option === 'mnth' || option === 'mlast' || option === 'mdate') {
+    return interval > 1
+      ? { ...base, top: 'other', unit: 'months', n: interval, monthMode: option }
+      : { ...base, top: 'month', monthMode: option };
+  }
+  const n = Number(option) || 1;
+  return n === 1 ? { ...base, top: 'week' } : { ...base, top: 'other', n };
+}
+
+/** The option + interval a UI choice means. */
+export function choiceToOption(choice) {
+  const n = Math.max(2, Number(choice.n) || 2);
+  switch (choice.top) {
+    case 'weekday': return { option: 'weekday', interval: 1 };
+    case 'month': return { option: choice.monthMode || 'mnth', interval: 1 };
+    case 'year': return { option: 'y', interval: 1 };
+    case 'other':
+      return choice.unit === 'months'
+        ? { option: choice.monthMode || 'mnth', interval: n }
+        : { option: String(n), interval: n };
+    case 'week':
+    default: return { option: '1', interval: 1 };
+  }
+}
+
+/**
+ * The repeat options as ONE flat list of finished sentences. Still the source of
+ * truth for reading a pattern back and for validity, and used by the preview;
+ * the editor presents them two-level (see `TOP_FREQUENCIES`).
  *
  * There is no "by date vs by position" mode to understand, because picking a
  * date already answers both. The first design asked the user to choose between
@@ -80,21 +149,26 @@ export function optionOfModel(model) {
   return String(interval);
 }
 
-/** The freq + windows a chosen option means, given the date and a time row. */
-export function windowsForOption(value, date, times, weeklyWindows) {
+/**
+ * The freq + windows a chosen option means, given the date and a time row.
+ * `intervalOverride` carries "every 2nd month" — for a weekly option the
+ * interval IS the option, so it is ignored there.
+ */
+export function windowsForOption(value, date, times, weeklyWindows, intervalOverride) {
   const t = { start: times.start, end: times.end };
   const dayKey = dayKeyOf(date);
+  const every = Math.max(1, Number(intervalOverride) || 1);
   switch (value) {
     case 'weekday':
       return { freq: 'weekly', interval: 1, windows: WEEKDAY_KEYS.map((day) => ({ day, ...t })) };
     case 'mnth':
-      return { freq: 'monthly', interval: 1, windows: [{ day: dayKey, nth: nthWeekdayOfMonth(date), ...t }] };
+      return { freq: 'monthly', interval: every, windows: [{ day: dayKey, nth: nthWeekdayOfMonth(date), ...t }] };
     case 'mlast':
-      return { freq: 'monthly', interval: 1, windows: [{ day: dayKey, nth: -1, ...t }] };
+      return { freq: 'monthly', interval: every, windows: [{ day: dayKey, nth: -1, ...t }] };
     case 'mdate':
-      return { freq: 'monthly', interval: 1, windows: [{ monthDay: date.getDate(), ...t }] };
+      return { freq: 'monthly', interval: every, windows: [{ monthDay: date.getDate(), ...t }] };
     case 'y':
-      return { freq: 'yearly', interval: 1, windows: [{ month: date.getMonth() + 1, monthDay: date.getDate(), ...t }] };
+      return { freq: 'yearly', interval: every, windows: [{ month: date.getMonth() + 1, monthDay: date.getDate(), ...t }] };
     default: {
       // '1' / '2' / '3' / '4' — keep whatever day rows the user has built up,
       // since "Mon and Wed" is a real thing to want.
@@ -272,7 +346,7 @@ export function buildRecurrence(model, anchor = new Date()) {
   const date = anchor instanceof Date ? anchor : new Date(anchor);
   const times = model.windows[0] || { start: '09:00', end: '10:00' };
   const { freq, interval, windows } = windowsForOption(
-    optionOfModel(model), date, times, model.windows,
+    optionOfModel(model), date, times, model.windows, model.interval,
   );
   if (!windows.length) return null;
 

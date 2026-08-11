@@ -14,6 +14,7 @@
 import { DAY_NAMES, DAY_KEYS, MONTHS } from '../format.js';
 import {
   isWeekdayPattern, toWeekdayWindows, optionsForDate, previewDates, optionOfModel,
+  TOP_FREQUENCIES, monthlyModesForDate, uiChoiceOf, choiceToOption,
 } from '../recurrenceModel.js';
 
 const fmtDate = (d) => `${DAY_NAMES[(d.getDay() + 6) % 7]} ${d.getDate()} ${MONTHS[d.getMonth()]}`;
@@ -29,26 +30,33 @@ export default function RecurrenceEditor({ model, onChange, anchorDate, allowSco
 
   const date = anchorDate instanceof Date ? anchorDate : new Date();
   const options = optionsForDate(date);
+  const monthModes = monthlyModesForDate(date);
   // Fall back rather than show a blank select: an option can vanish when the
   // date moves (there is no "last Tuesday" in the middle of a month).
   const derived = optionOfModel(model);
   const option = options.some((o) => o.value === derived) ? derived : '1';
-  // Weekly patterns keep their day rows VISIBLE, including the weekday preset —
-  // it writes five windows rather than hiding them, so you can still change one
-  // day's time afterwards and have the pattern honestly stop calling itself
-  // "every weekday".
-  const showDayRows = option === 'weekday' || /^\d+$/.test(option);
+  const choice = uiChoiceOf({ ...model, option });
+  // Day rows belong to "every week" (and to "other → every N weeks"), because
+  // "Mon AND Wed" is a real thing to want. Everything else needs only a time:
+  // "every weekday" is Mon–Fri by definition, and the monthly and yearly
+  // sentences already said which day.
+  const showDayRows = choice.top === 'week' || (choice.top === 'other' && choice.unit === 'weeks');
 
-  const setOption = (v) => {
-    const delta = { option: v };
-    if (/^\d+$/.test(v)) delta.interval = Number(v) || 1;
-    else delta.interval = 1;
-    // The preset writes the windows; it is not a stored mode (§4.3 readback).
-    if (v === 'weekday') delta.windows = toWeekdayWindows(model.windows);
-    onChange({ ...model, ...delta });
+  /** Apply a change to the two-level choice, writing option + interval. */
+  const setChoice = (delta) => {
+    const next = { ...choice, ...delta };
+    const { option: opt, interval } = choiceToOption(next);
+    const patchObj = { option: opt, interval };
+    // The weekday preset WRITES the five windows rather than storing a mode, so
+    // changing one day's time later makes the pattern honestly stop calling
+    // itself "every weekday" (§4.3 readback).
+    if (opt === 'weekday') patchObj.windows = toWeekdayWindows(model.windows);
+    onChange({ ...model, ...patchObj });
   };
 
-  const preview = model.enabled ? previewDates({ ...model, option }, date) : { dates: [], skipped: [] };
+  const preview = model.enabled
+    ? previewDates({ ...model, option, interval: model.interval }, date)
+    : { dates: [], skipped: [] };
 
   return (
     <div className="recbox">
@@ -72,13 +80,67 @@ export default function RecurrenceEditor({ model, onChange, anchorDate, allowSco
             <div className="flabel">How often</div>
             <select
               className="input"
-              value={option}
-              onChange={(e) => setOption(e.target.value)}
+              value={choice.top}
+              onChange={(e) => setChoice({ top: e.target.value })}
               aria-label="Repeat frequency"
             >
-              {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              {TOP_FREQUENCIES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
+
+          {/* "every month" — the only branch with a real choice inside it, and
+              both readings are offered as sentences so neither has to be
+              understood in the abstract. */}
+          {choice.top === 'month' && (
+            <div className="fieldrow" style={{ margin: '0 0 6px' }}>
+              <select
+                className="input"
+                value={choice.monthMode}
+                onChange={(e) => setChoice({ monthMode: e.target.value })}
+                aria-label="Which day of the month"
+              >
+                {monthModes.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+          )}
+
+          {/* "other…" — the uncommon cadences, out of the main list but one
+              click away. "Every other week" lives here. */}
+          {choice.top === 'other' && (
+            <div className="winrow" style={{ marginBottom: 6 }}>
+              <span className="flabel" style={{ margin: 0 }}>every</span>
+              <select
+                className="daysel"
+                style={{ width: 56 }}
+                value={choice.n}
+                onChange={(e) => setChoice({ n: Number(e.target.value) })}
+                aria-label="Every how many"
+              >
+                {[2, 3, 4, 5, 6, 8, 12].map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+              <select
+                className="daysel"
+                style={{ width: 78 }}
+                value={choice.unit}
+                onChange={(e) => setChoice({ unit: e.target.value })}
+                aria-label="Weeks or months"
+              >
+                <option value="weeks">weeks</option>
+                <option value="months">months</option>
+              </select>
+              {choice.unit === 'months' && (
+                <select
+                  className="input"
+                  style={{ width: '100%', marginTop: 5 }}
+                  value={choice.monthMode}
+                  onChange={(e) => setChoice({ monthMode: e.target.value })}
+                  aria-label="Which day of the month"
+                >
+                  {monthModes.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              )}
+            </div>
+          )}
 
           {/* Weekly patterns carry day rows, because "Mon AND Wed" is real.
               Monthly and yearly need no rows — the sentence said it all — so
@@ -128,7 +190,7 @@ export default function RecurrenceEditor({ model, onChange, anchorDate, allowSco
                 {option === 'mdate' && ' Pick "the last day" if you mean the end of the month.'}
               </span>
             )}
-            {/^[234]$/.test(option) && (
+            {choice.top === 'other' && (
               <span className="from">Counted from the date you picked, not the start of the month.</span>
             )}
           </div>
