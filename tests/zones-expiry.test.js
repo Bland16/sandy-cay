@@ -116,3 +116,57 @@ describe('§1.2 — exclusivity is symmetric across overlapping zones', () => {
     expect(inGym).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// A zone DEFINES the window for its own tags (2026-08-11).
+//
+// config.windows is the default availability for auto-placement — "when I'm
+// awake and happy for the app to put things". A zone is a deliberate statement
+// that THIS time is for THESE tags, so it overrides that default instead of
+// being trimmed by it. Clipping to the day window made a zone outside it
+// silently unusable: the intersection was empty, placement relaxed out of the
+// zone, and the task landed in general time flagged "outside zone" — the exact
+// opposite of what the user drew. Found by use case SET2-05, "a 2h gym task
+// into a 06:00-08:00 exercise zone", with the day starting at 08:00.
+// ---------------------------------------------------------------------------
+describe('a zone defines the window for its own tags', () => {
+  const MON = new Date(2026, 8, 14); // Mon 14 Sep 2026
+  const zoned = (windows) => {
+    const s = new Schedule();
+    s.addZone({ label: 'Physical Activity', matchTags: ['exercise'], exclusive: false, windows });
+    return s;
+  };
+
+  it('reaches BEFORE the day window — an early-morning zone is usable', () => {
+    // The day starts at 08:00 by default; the zone is 06:00-08:00.
+    const s = zoned([{ day: 'mon', start: '06:00', end: '08:00' }]);
+    const t = s.addFlexible({ title: 'Gym', durationMin: 120, tags: ['exercise'], from: MON, to: MON });
+    expect(t.startTime.getHours()).toBe(6);
+    expect(t.getDuration()).toBe(120);
+    expect(t.schedulingInfo).toBeNull(); // it is INSIDE its zone, not relaxed out
+  });
+
+  it('reaches AFTER the day window — the same trap at the other end', () => {
+    // The default day ends at 18:00; a real 18:00-22:00 study block must work.
+    const s = zoned([{ day: 'mon', start: '18:00', end: '22:00' }]);
+    const t = s.addFlexible({ title: 'Study', durationMin: 60, tags: ['exercise'], from: MON, to: MON });
+    expect(t.startTime.getHours()).toBeGreaterThanOrEqual(18);
+    expect(t.schedulingInfo).toBeNull();
+  });
+
+  it('still yields to another exclusive zone it does not match', () => {
+    // Widening the window must not weaken symmetric exclusivity: a task routed
+    // into its own zone still may not sit inside someone else's exclusive one.
+    const s = zoned([{ day: 'mon', start: '06:00', end: '10:00' }]);
+    s.addZone({ label: 'Work', matchTags: ['work'], exclusive: true,
+      windows: [{ day: 'mon', start: '06:00', end: '09:00' }] });
+    const t = s.addFlexible({ title: 'Gym', durationMin: 60, tags: ['exercise'], from: MON, to: MON });
+    expect(t.startTime.getHours()).toBeGreaterThanOrEqual(9); // 06:00-09:00 is reserved
+  });
+
+  it('leaves a task with no matching zone bound by the day window as before', () => {
+    const s = zoned([{ day: 'mon', start: '06:00', end: '08:00' }]);
+    const t = s.addFlexible({ title: 'Reading', durationMin: 60, tags: ['study'], from: MON, to: MON });
+    expect(t.startTime.getHours()).toBeGreaterThanOrEqual(8); // general time still starts at 08:00
+  });
+});

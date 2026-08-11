@@ -76,9 +76,20 @@ function zoneIntervalsOnDay(zone, date) {
 
 /**
  * Allowed placement windows for a task on a given day.
- *  - task matches ≥1 zone → union of those zones' windows (∩ base).
+ *  - task matches ≥1 zone → union of those zones' windows. **The zone defines
+ *    the window for its own tags; it is NOT clipped to the general day.**
  *  - else → base minus exclusive zones' windows.
  *  - deadline clips every window to end ≤ deadline.
+ *
+ * `config.windows` is the DEFAULT availability for auto-placement — roughly
+ * "when I'm awake and happy for the app to put things". A zone is a deliberate
+ * statement that *this* time is for *these* tags, so it overrides that default
+ * rather than being trimmed by it. Clipping to base meant a gym zone at
+ * 06:00–08:00 was silently unusable while the day began at 08:00: the
+ * intersection was empty, placement relaxed out of the zone, and the task
+ * landed at 08:00 flagged "outside zone" — the user got the opposite of what
+ * they drew. Same at the other end: an 18:00–22:00 study zone against a day
+ * ending at 18:00.
  */
 export function computeWindows(schedule, task, date, { ignoreZone = false } = {}) {
   const b = dayWindowBounds(schedule.config, date);
@@ -88,15 +99,7 @@ export function computeWindows(schedule, task, date, { ignoreZone = false } = {}
   // stop shaping September (§1.2 effectiveFrom/effectiveUntil).
   const matching = ignoreZone ? [] : schedule.zones.filter((z) => z.activeOn(date) && z.matches(task));
   if (matching.length > 0) {
-    const zoneIvs = matching.flatMap((z) => zoneIntervalsOnDay(z, date));
-    // intersect with base
-    const clipped = [];
-    for (const iv of zoneIvs) {
-      const s = new Date(Math.max(iv.start.getTime(), b.start.getTime()));
-      const e = new Date(Math.min(iv.end.getTime(), b.end.getTime()));
-      if (e > s) clipped.push({ start: s, end: e });
-    }
-    windows = unionIntervals(clipped);
+    windows = unionIntervals(matching.flatMap((z) => zoneIntervalsOnDay(z, date)));
     // Matching a zone routes the task IN, but exclusivity is symmetric: a *different*
     // exclusive zone the task does NOT match still reserves its hours against
     // everyone else, and a matching window can overlap it (Work 09:00–18:30 vs an

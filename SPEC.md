@@ -102,7 +102,9 @@ class Schedule {
 ## 2. Placement engine
 
 ### 2.1 Windows & capacity
-`config.windows`: Mon–Fri 08–18, Sat 08–22, Sun 10–14 (`lightDay`, `maxTasks: 2`, used only when other days ≥ ~80% full). Windows bound **automatic** placement only — the grid is 24h and users may drag anywhere.
+`config.windows`: Mon–Fri 08–18, Sat 08–22, Sun 10–14 (`lightDay`, `maxTasks: 2`, used only when other days ≥ ~80% full). Windows bound **automatic** placement only — the grid is 24h and users may drag anywhere. They are the **default availability** — roughly "when I'm awake and happy for the app to put things" — not a statement about which hours exist.
+
+**A zone DEFINES the window for its own tags, and is not clipped by `config.windows`** (amended 2026-08-11). Drawing a zone is a deliberate statement that *this* time is for *these* tags, so it overrides the default rather than being trimmed by it — a 06:00–08:00 gym zone works while the day still starts at 08:00, and an 18:00–22:00 study zone works while it ends at 18:00. Clipping to the day window had made such a zone **silently unusable**: the intersection was empty, placement relaxed out of the zone, and the task landed in general time wearing an "outside zone" badge — the opposite of what was drawn. Non-matching tasks are unaffected and stay bound by `config.windows`, and symmetric exclusivity is unaffected: a task routed into its own zone still may not sit inside a *different* exclusive zone it does not match.
 
 ### 2.2 Constraint precedence
 **deadline > zone > general windows.** Deadline tasks may only occupy slots ending ≤ deadline. If a matching zone lacks pre-deadline capacity, the zone relaxes (info badge: "placed outside Study zone — due Wed"). No pre-deadline capacity at all → park in best pre-deadline gap, `schedulingWarning`, coral badge.
