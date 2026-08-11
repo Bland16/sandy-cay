@@ -591,6 +591,48 @@ body.sc-dragging { user-select: none; }
 .winrow .rm { border: none; background: none; color: var(--warning); font-weight: 800; cursor: pointer; font-size: 15px; line-height: 1; padding: 0 4px; }
 .recbox { border: 1.5px solid var(--hair); border-radius: 10px; padding: 9px; background: var(--paper); }
 
+/* The repeat preview — four real dates under the control. This is what makes
+   "the first Tuesday" and "the 31st" legible without explaining a rule, and
+   where a skipped month is discovered in the panel rather than in November. */
+.recpreview {
+  margin-top: 9px; padding-top: 8px; border-top: 1.5px dashed var(--hair);
+  font-family: var(--font-type); font-size: 10.5px; color: var(--ink-soft); line-height: 1.75;
+}
+.recpreview .lbl { display: block; text-transform: uppercase; letter-spacing: .07em; font-size: 9px; margin-bottom: 1px; }
+.recpreview b { color: var(--primary); font-weight: 400; }
+.recpreview .warn { color: var(--warning); display: block; margin-top: 4px; line-height: 1.5; }
+.recpreview .from { display: block; margin-top: 4px; }
+
+/* ---------- the "when" date field (DATES-AND-RECURRENCE P1) ----------
+   Panel scope, deliberately: .field/.control (EDITOR-REDESIGN §4) carry the
+   Cabana's dark palette, so borrowing them into this light panel would read as
+   a colour bug. These sit with .timein/.winrow instead. */
+.datein {
+  width: 140px; border: 2px solid var(--ink); border-radius: 8px; padding: 5px 6px;
+  font-family: var(--font-type); font-size: 12px; text-align: center; background: var(--paper); color: var(--ink);
+}
+.datein.sm { width: 124px; font-size: 11.5px; }
+.datein:focus { outline: 2px solid var(--primary); outline-offset: 1px; }
+/* The readback — which weekday, and how far off. A bare ISO date says neither. */
+.whennote { font-family: var(--font-type); font-size: 10.5px; letter-spacing: .04em; color: var(--ink-soft); margin-top: 6px; }
+/* The "pick a date" opt-in, sitting inside a .flabel. margin-left is load-bearing:
+   without it the label and this ran together as "Whenpick a date". */
+.inlinecheck { text-transform: none; letter-spacing: 0; cursor: pointer; font-weight: 600; margin-left: 9px; }
+.inlinecheck input { margin-right: 5px; vertical-align: -2px; }
+
+/* progressive disclosure for the placement range — collapsed by default, so the
+   common case stays a single field */
+.moreopts { border-top: 1.5px dashed var(--hair); margin-top: 12px; padding-top: 2px; }
+.disclose {
+  display: flex; align-items: center; gap: 6px; font-family: var(--font-type); font-size: 10.5px;
+  letter-spacing: .05em; text-transform: uppercase; color: var(--ink-soft);
+  background: none; border: none; cursor: pointer; padding: 6px 0;
+}
+.disclose:hover { color: var(--ink); }
+.optbody { padding: 2px 0 4px; }
+.radiorow { display: flex; align-items: center; gap: 7px; margin: 6px 0; font-size: 12px; flex-wrap: wrap; cursor: pointer; }
+.radiorow input[type=radio] { accent-color: var(--primary); width: 15px; height: 15px; flex: none; }
+
 /* WTD */
 .pick { border: 2px solid var(--ink); border-radius: 11px; padding: 9px 10px; background: linear-gradient(0deg, rgba(169,205,209,.32), rgba(169,205,209,.32)); }
 .pick .pt2 { font-weight: 800; font-size: 13.5px; display: flex; justify-content: space-between; gap: 6px; }
@@ -866,7 +908,16 @@ body.sc-dragging { user-select: none; }
 .toast {
   background: var(--paper); border: 2px solid var(--ink); border-radius: 12px; padding: 10px 16px;
   box-shadow: 0 10px 30px rgba(0,0,0,.35); font-size: 12.5px; font-weight: 600; max-width: 90vw;
+  display: flex; align-items: center; gap: 12px;
 }
+/* One optional affordance ("Go there"). Not a warning — landing a task in a week
+   you aren't looking at is a normal thing to do, so this is quiet. */
+.toast .toastgo {
+  font-family: var(--font-body); font-weight: 800; font-size: 11.5px; color: var(--primary);
+  background: none; border: 2px solid var(--primary); border-radius: 8px; padding: 4px 9px;
+  cursor: pointer; flex: none;
+}
+.toast .toastgo:hover { background: var(--primary); color: var(--paper); }
 
 .note { max-width: 700px; margin: 16px auto 0; color: #9c927e; font-size: 11.5px; line-height: 1.55; text-align: center; }
 

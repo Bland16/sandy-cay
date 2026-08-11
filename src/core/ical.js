@@ -60,10 +60,32 @@ export function toRRULE(task) {
   if (!task.recurrence) return null;
   const period = (task.recurrence.periods || []).find((p) => !p.effectiveUntil) || (task.recurrence.periods || [])[0];
   if (!period || !(period.windows || []).length) return null;
+  const freq = period.freq || 'weekly';
+  const interval = period.interval ?? 1;
+  const w0 = period.windows[0];
+
+  // Monthly and yearly (P2). BYMONTHDAY=-1 is RFC 5545's own "last day of the
+  // month", and BYDAY=-1TU its "last Tuesday", so our -1 maps straight across.
+  if (freq === 'monthly' || freq === 'yearly') {
+    const parts = [`FREQ=${freq.toUpperCase()}`];
+    if (interval > 1) parts.push(`INTERVAL=${interval}`);
+    if (freq === 'yearly') {
+      parts.push(`BYMONTH=${w0.month ?? 1}`);
+      parts.push(`BYMONTHDAY=${w0.monthDay ?? 1}`);
+    } else if (w0.monthDay != null) {
+      parts.push(`BYMONTHDAY=${w0.monthDay}`);
+    } else if (w0.nth != null && DAY_TO_BYDAY[w0.day]) {
+      parts.push(`BYDAY=${w0.nth}${DAY_TO_BYDAY[w0.day]}`);
+    } else {
+      return null;
+    }
+    if (period.effectiveUntil) parts.push(`UNTIL=${toICSDate(lastRunDay(period.effectiveUntil))}`);
+    return parts.join(';');
+  }
+
   const days = period.windows.map((w) => DAY_TO_BYDAY[w.day]).filter(Boolean);
   if (!days.length) return null;
   const parts = ['FREQ=WEEKLY'];
-  const interval = period.interval ?? 1;
   if (interval > 1) parts.push(`INTERVAL=${interval}`);
   parts.push(`BYDAY=${[...new Set(days)].join(',')}`);
   // RFC 5545: UNTIL is INCLUSIVE — the last occurrence may start on it. Our
@@ -81,22 +103,78 @@ export function fromRRULE(rrule, start, end) {
     const [k, v] = p.split('=');
     if (k) kv[k.toUpperCase()] = v;
   }
-  if ((kv.FREQ || '').toUpperCase() !== 'WEEKLY') return null; // only weekly maps to our model
+  const freqRaw = (kv.FREQ || '').toUpperCase();
+  // A modifier we don't understand SELECTS DIFFERENT DATES, so a rule carrying
+  // one must be refused rather than quietly read as if it weren't there —
+  // FREQ=MONTHLY;BYWEEKNO=3 is not "monthly on the DTSTART day".
+  // (COUNT is deliberately not in this list: it bounds the run rather than
+  // choosing dates, so importing the pattern unbounded is the lesser error.)
+  const UNDERSTOOD = new Set(['FREQ', 'INTERVAL', 'UNTIL', 'COUNT', 'WKST', 'BYDAY', 'BYMONTHDAY', 'BYMONTH']);
+  if (Object.keys(kv).some((k) => !UNDERSTOOD.has(k))) return null;
   const startHHMM = `${pad(start.getHours())}:${pad(start.getMinutes())}`;
   const endHHMM = `${pad(end.getHours())}:${pad(end.getMinutes())}`;
-  const byday = (kv.BYDAY || '').split(',').map((d) => BYDAY_TO_DAY[d.trim().toUpperCase()]).filter(Boolean);
-  const days = byday.length ? byday : [Object.values(BYDAY_TO_DAY)[(start.getDay() + 6) % 7]];
-  return {
+  const times = { start: startHHMM, end: endHHMM };
+  const interval = kv.INTERVAL ? Number(kv.INTERVAL) : 1;
+  const until = kv.UNTIL ? untilAfterLastRun(fromICSDate(kv.UNTIL)) : null;
+  const wrap = (freq, windows) => ({
     periods: [{
-      windows: days.map((day) => ({ day, start: startHHMM, end: endHHMM })),
-      interval: kv.INTERVAL ? Number(kv.INTERVAL) : 1,
+      ...(freq !== 'weekly' ? { freq } : {}),
+      windows,
+      interval,
       effectiveFrom: null,
       // ...and back: an inclusive UNTIL from the wire becomes our exclusive bound.
-      effectiveUntil: kv.UNTIL ? untilAfterLastRun(fromICSDate(kv.UNTIL)) : null,
+      effectiveUntil: until,
     }],
     anchorDate: new Date(start.getTime()),
     exceptions: [],
-  };
+  });
+
+  if (freqRaw === 'WEEKLY') {
+    const byday = (kv.BYDAY || '').split(',').map((d) => BYDAY_TO_DAY[d.trim().toUpperCase()]).filter(Boolean);
+    const days = byday.length ? byday : [Object.values(BYDAY_TO_DAY)[(start.getDay() + 6) % 7]];
+    return wrap('weekly', days.map((day) => ({ day, ...times })));
+  }
+
+  // MONTHLY / YEARLY (P2). Before this, every non-weekly RRULE returned null and
+  // the event still imported — WITHOUT its pattern and without a warning — so a
+  // calendar's "rent, monthly" became one event on one day. Proven by probe.
+  if (freqRaw === 'MONTHLY') {
+    if (kv.BYMONTHDAY) {
+      const md = Number(kv.BYMONTHDAY);
+      if (Number.isFinite(md) && md !== 0) return wrap('monthly', [{ monthDay: md, ...times }]);
+      return null;
+    }
+    const m = String(kv.BYDAY || '').trim().toUpperCase().match(/^(-?\d)([A-Z]{2})$/);
+    if (m && BYDAY_TO_DAY[m[2]]) {
+      return wrap('monthly', [{ day: BYDAY_TO_DAY[m[2]], nth: Number(m[1]), ...times }]);
+    }
+    // Bare "FREQ=MONTHLY" means "the same day-of-month as DTSTART".
+    if (!kv.BYDAY) return wrap('monthly', [{ monthDay: start.getDate(), ...times }]);
+    return null;
+  }
+
+  if (freqRaw === 'YEARLY') {
+    const month = kv.BYMONTH ? Number(kv.BYMONTH) : start.getMonth() + 1;
+    const monthDay = kv.BYMONTHDAY ? Number(kv.BYMONTHDAY) : start.getDate();
+    if (Number.isFinite(month) && Number.isFinite(monthDay) && monthDay > 0) {
+      return wrap('yearly', [{ month, monthDay, ...times }]);
+    }
+    return null;
+  }
+
+  return null; // DAILY, BYWEEKNO, multi-BYSETPOS — reported, not silently lost
+}
+
+/** Why an event's pattern could not be read, for the import report. `null`
+ *  means there was nothing to lose. */
+export function unreadableRRULE(rrule) {
+  if (!rrule) return null;
+  const kv = {};
+  for (const p of String(rrule).split(';')) {
+    const [k, v] = p.split('=');
+    if (k) kv[k.toUpperCase()] = v;
+  }
+  return `FREQ=${(kv.FREQ || '?').toUpperCase()}`;
 }
 
 /**
@@ -279,13 +357,24 @@ export function eventToTask(event, { sourceTags = [] } = {}) {
 export function importEvents(events, { sourceTags = [], tagFilter = null, from = null, to = null } = {}) {
   const wanted = (tagFilter || []).map((s) => s.toLowerCase()).filter(Boolean);
   const out = [];
+  // Patterns we could not read. The event still imports as a one-off — that is
+  // the honest fallback — but flattening someone's repeating commitment and
+  // saying nothing is data loss they have no way to notice. `importEvents`
+  // still returns an array, so every existing caller is unaffected; the list
+  // rides along as a property.
+  const dropped = [];
   for (const e of events) {
     if (e.recurrenceId) continue; // overrides ride with their parent; skip for now
     if (from && e.start < from) continue;
     if (to && e.start >= to) continue;
     const { tags } = deriveTags(e, { sourceTags });
     if (wanted.length && !tags.some((t) => wanted.includes(t))) continue;
-    out.push(eventToTask(e, { sourceTags }));
+    const task = eventToTask(e, { sourceTags });
+    if (e.rrule && !task.recurrence) {
+      dropped.push({ title: task.title, rule: unreadableRRULE(e.rrule) });
+    }
+    out.push(task);
   }
+  Object.defineProperty(out, 'dropped', { value: dropped, enumerable: false });
   return out;
 }

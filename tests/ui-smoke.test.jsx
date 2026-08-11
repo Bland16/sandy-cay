@@ -9,7 +9,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, cleanup, screen, within, fireEvent } from '@testing-library/react';
 import App from '../src/App.jsx';
-import { seed } from '../src/core/index.js';
+import { seed, weekStart, addDays, dateKey } from '../src/core/index.js';
 import { STORAGE_KEY } from '../src/ui/useEngine.js';
 
 beforeEach(() => window.localStorage.clear());
@@ -97,24 +97,32 @@ describe('7B — a fixed task goes where you say', () => {
     // Fixed reveals the when-fields; they are not optional for a fixed task.
     fireEvent.click(within(panel).getByText('Fixed'));
     fireEvent.change(within(panel).getByPlaceholderText(/Call plumber/i), { target: { value: 'Dentist' } });
-    fireEvent.change(within(panel).getByLabelText('Day'), { target: { value: '4' } }); // Friday
+    // Friday OF THE VIEWED WEEK, derived — this file doesn't freeze the clock,
+    // and a hardcoded date would be a different week on most days of the year.
+    fireEvent.change(within(panel).getByLabelText('Date'), {
+      target: { value: dateKey(addDays(weekStart(new Date()), 4)) },
+    });
     fireEvent.change(within(panel).getByLabelText('Start time'), { target: { value: '14:00' } });
-    fireEvent.click(within(panel).getByText('Add to the week'));
+    fireEvent.click(within(panel).getByText('Add'));
 
     const card = screen.getByText('Dentist').closest('.card');
     expect(card.getAttribute('aria-label')).toContain('14:00–15:00'); // where I said
     expect(Number(card.closest('[data-dropzone]').dataset.dayIndex)).toBe(4); // Friday
   });
 
-  it('a flexible task is still auto-placed unless you ask to pick a time', () => {
+  it('a flexible task is still auto-placed unless you ask to pick a date', () => {
     render(<App />);
     fireEvent.click(screen.getByLabelText('Add task'));
     const panel = document.querySelector('.panel');
     // Flexible is the default, and offers no when-fields until asked.
+    expect(within(panel).queryByLabelText('Date')).toBeNull();
     expect(within(panel).queryByLabelText('Start time')).toBeNull();
     expect(within(panel).getByText(/no unscheduled tray/i)).toBeTruthy();
 
-    fireEvent.click(within(panel).getByText('pick a time'));
-    expect(within(panel).getByLabelText('Start time')).toBeTruthy();
+    // The opt-in is a DATE; the time is then optional on top of it, and blank
+    // means "that day, you choose when" — which is what flexible means.
+    fireEvent.click(within(panel).getByText('pick a date'));
+    expect(within(panel).getByLabelText('Date')).toBeTruthy();
+    expect(within(panel).getByLabelText('Start time').value).toBe('');
   });
 });

@@ -244,7 +244,7 @@ describe('the Repeats frequency control', () => {
     // ...then one selection instead of four more rows.
     fireEvent.change(within(panel).getByLabelText('Repeat frequency'), { target: { value: 'weekday' } });
 
-    fireEvent.click(within(panel).getByText(/add to the week/i));
+    fireEvent.click(within(panel).getByText('Add'));
 
     act(() => { vi.advanceTimersByTime(2500); });
     const saved = JSON.parse(window.localStorage.getItem(STORAGE_KEY));
@@ -258,6 +258,10 @@ describe('the Repeats frequency control', () => {
     expect(lunch.recurrence.periods[0].interval).toBe(1);
   });
 
+  // The control became TWO levels (a short top list, detail folded inside the
+  // branch you pick). The stored model is unchanged — "every weekday" still
+  // WRITES five windows rather than storing a mode — but Mon–Fri is implied by
+  // the sentence, so it no longer spends five rows saying so.
   it('reads the pattern back, so a saved weekday task reopens as "every weekday"', () => {
     render(<App />);
     fireEvent.click(screen.getByLabelText('Add task'));
@@ -266,8 +270,11 @@ describe('the Repeats frequency control', () => {
     fireEvent.change(within(panel).getByLabelText('Repeat frequency'), { target: { value: 'weekday' } });
 
     expect(within(panel).getByLabelText('Repeat frequency').value).toBe('weekday');
-    // Five rows are really there — the preset writes windows, it doesn't hide them.
-    expect(within(panel).getAllByLabelText('Day')).toHaveLength(5);
+    // The five windows are really there — the preview proves it by naming five
+    // consecutive weekdays, which only a five-window pattern can produce.
+    const preview = panel.querySelector('.recpreview').textContent;
+    for (const day of ['Mon', 'Tue', 'Wed', 'Thu']) expect(preview).toContain(day);
+    expect(within(panel).queryAllByLabelText('Day')).toHaveLength(0); // implied, not listed
   });
 
   it('an interval still applies on top: every 2nd week, Mon–Fri', () => {
@@ -277,11 +284,37 @@ describe('the Repeats frequency control', () => {
     fireEvent.click(within(panel).getByLabelText('Repeat this task'));
 
     const freq = within(panel).getByLabelText('Repeat frequency');
-    fireEvent.change(freq, { target: { value: 'weekday' } });
-    fireEvent.change(freq, { target: { value: '2' } });
+    fireEvent.change(freq, { target: { value: 'weekday' } }); // writes five windows
+    fireEvent.change(freq, { target: { value: 'other' } });   // fortnightly lives here
 
-    // The five weekday rows survive; only the cadence changed.
+    expect(freq.value).toBe('other');
+    expect(within(panel).getByLabelText('Every how many').value).toBe('2');
+    expect(within(panel).getByLabelText('Weeks or months').value).toBe('weeks');
+    // The five weekday rows survive the cadence change, and are editable again
+    // because a weekly pattern is where per-day times mean something.
     expect(within(panel).getAllByLabelText('Day')).toHaveLength(5);
-    expect(freq.value).toBe('2');
+  });
+
+  it('"every month" folds its two readings inside, not into the top list', () => {
+    render(<App />);
+    fireEvent.click(screen.getByLabelText('Add task'));
+    const panel = document.querySelector('.panel');
+    fireEvent.click(within(panel).getByText('pick a date'));
+    fireEvent.change(within(panel).getByLabelText('Date'), { target: { value: '2026-09-01' } });
+    fireEvent.click(within(panel).getByLabelText('Repeat this task'));
+
+    // Five entries at the top, and no monthly detail until you ask for it.
+    const freq = within(panel).getByLabelText('Repeat frequency');
+    expect([...freq.options].map((o) => o.value))
+      .toEqual(['weekday', 'week', 'month', 'year', 'other']);
+    expect(within(panel).queryByLabelText('Which day of the month')).toBeNull();
+
+    fireEvent.change(freq, { target: { value: 'month' } });
+    const mode = within(panel).getByLabelText('Which day of the month');
+    expect([...mode.options].map((o) => o.text)).toEqual(['on the first Tuesday', 'on the 1st']);
+    expect(panel.querySelector('.recpreview').textContent).toContain('Tue 6 Oct'); // first Tuesday
+
+    fireEvent.change(mode, { target: { value: 'mdate' } });
+    expect(panel.querySelector('.recpreview').textContent).toContain('Thu 1 Oct'); // the 1st
   });
 });

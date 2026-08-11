@@ -1,22 +1,68 @@
 # Sandy Cay — handoff
 
-**Updated:** 2026-07-21, session 5. **`main` is the trunk and everything is
-merged into it** — PRs #1, #2, #3 and #4 are all in, and it is live on Pages
-(https://bland16.github.io/sandy-cay/). **472 tests green.** There are no
-outstanding branches; the worktrees under `.claude/worktrees/` are spent.
+**Updated:** 2026-08-11, session 6. **`main` is the trunk and everything is
+merged into it** — it is live on Pages (https://bland16.github.io/sandy-cay/).
+**516 tests green.** No outstanding branches; the worktrees under
+`.claude/worktrees/` are spent.
 
 That covers: the wrap report, recurrence/zones, responsive, the past-placement
 floor, unique ids, the de-flaked suite, ripple/zone exclusivity, the whole
-Activity Library / Tag Buckets / energy line, the editor redesign (P0–P5), and
-the carryOver + iCal fixes.
+Activity Library / Tag Buckets / energy line, the editor redesign (P0–P5), the
+carryOver + iCal fixes, and **session 6's dates-and-recurrence work**.
 
 ```bash
 npm install
 npm run dev      # http://localhost:5173/sandy-cay/
-npm run test:run # 472 tests, all green any day of the week (flaky tests fixed)
+npm run test:run # 516 tests, all green any day of the week (flaky tests fixed)
 npm run build
 npx eslint src
 ```
+
+## Session 6 — you can put an event on a DATE
+
+Spec: `design/DATES-AND-RECURRENCE.md`. Audit: `design/SPEC-COMB-2026-08.md`.
+
+- **P1 — "When" is a date, not a weekday.** The Add-task panel resolved a
+  weekday `<select>` against the *viewed* week, so "Orientation, 3 September"
+  could not be added from an August view. Now: a **fixed** task takes a date and
+  a time; a **flexible** one shows nothing until you tick **"pick a date"**, and
+  is then placed *on that day* (`from === to` bounds the scored search to one
+  day) with the time **optional** — blank means "that day, you choose when".
+  A repeating task shows the date as **"Starts"**. A readback names the weekday
+  and distance ("Thursday · 7 weeks ahead"); the toast names the day and offers
+  **Go there** when it lands off-week. `＋ more options` holds the wider
+  placement range, collapsed.
+- **P2 — monthly, ordinal weekday, yearly.** A period gains an optional `freq`
+  (absent = weekly, so old saves are untouched and still serialize with no
+  `freq` key). Windows are `{monthDay}`, `{day,nth}` (`nth: -1` = last) or
+  `{month,monthDay}`. **A month without the requested day is SKIPPED, never
+  clamped** — hence separate always-fire "last day" / "last Tuesday" options.
+- **P3 — `.ics` stops losing your repeats.** `FREQ=MONTHLY`/`YEARLY` read and
+  written, RFC's `-1` mapped both ways, and anything still unreadable is
+  **reported** via `importEvents(...).dropped` instead of vanishing.
+
+**The repeat control is two levels:** `every weekday · every week · every month ·
+every year · other…`, with the detail folded inside the branch you pick. Options
+are **generated from the chosen date as finished sentences** ("on the first
+Tuesday"), never a by-date/by-position mode picker — the user rejected that as
+confusing and was right. A **live preview runs the real engine** and shows four
+real dates plus any months skipped.
+
+### ⚠️ The lesson of this session — verify a panel by RENDERING it
+
+Three P1 defects shipped past **484 green tests**: the whole "When" block
+vanished when Repeats was on (reading as "never built"), a flexible task's date
+control only chose the *week* while claiming a day, and the label rendered as
+**"Whenpick a time"**. Behaviour tests cannot see a missing field, a
+run-together label, or a control that lies about its own effect.
+
+**So: dump what the panel actually renders, in every state, before believing
+it.** A throwaway jsdom test that walks the panel and prints each label/input is
+enough, and it is how all three were found. Same for the engine: `freq` was
+being **silently dropped by both `reviveRecurrence` and `recurrenceToJSON`**
+(they rebuild periods from a field whitelist), so monthly patterns expanded as
+weekly with no error — found by probe, invisible to tests. **Any new period
+field must be added to BOTH.**
 
 ---
 
@@ -138,9 +184,19 @@ floor, unique ids and the de-flake all shipped). What remains:
 
 - **`recurrence.js`** silently drops an `add` exception on a day the pattern
   already fills (`emit()` returns early — the pass-2 `add` branch reuses the
-  same `${task.id}@${key}` identity as the pattern occurrence). The last real
-  item from the audit's section A.
-- **`time.js`** isoWeek comment example is self-contradictory (cosmetic).
+  same `${task.id}@${key}` identity as the pattern occurrence). **Re-proven by
+  probe 2026-08-11**, so "one extra gym this week" still fails on the likeliest
+  day to want it. Needs a decision, not a patch — §4.4 makes that identity
+  load-bearing for ML history. See D-6 in `design/SPEC-COMB-2026-08.md`.
+- ~~`time.js` isoWeek comment~~ **FIXED** — it gave two dates in the *same* week
+  (2026-W53) as examples of different ISO years. The function was always right.
+- **SPEC §4.3's shared window-row component does not exist** — `ZonesEditor`
+  never imports `RecurrenceEditor`, so the weekday affordance exists twice. The
+  spec now says NOT TRUE AS BUILT. Extract it or drop the claim (D-7); it is
+  worth settling because P2 has already touched that component once.
+- **SPEC §10 keyboard drag/resize is not built** (an accessibility gap), and
+  there is still **no retention policy** for `history` / `occurrenceData` /
+  `snapshots` / `dismissed`.
 - **Product call:** project management — build a surface for the chunk ops
   (`growChunk`/`shrinkChunk`/`resizeChunk`/`deleteChunk`/`finishProject`/
   `redistribute`, all unreachable from the UI), or leave them internal.

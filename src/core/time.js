@@ -90,6 +90,79 @@ export function daysBetween(a, b) {
   return Math.round((dayStart(b).getTime() - dayStart(a).getTime()) / MS_PER_DAY);
 }
 
+// ---------------------------------------------------------------------------
+// Monthly / yearly calendar maths (DATES-AND-RECURRENCE P2).
+//
+// The rule throughout: a month that does not HAVE the requested day is SKIPPED,
+// never clamped. Clamping "the 31st" to the 30th invents a session on a date the
+// person never chose, and RFC 5545 skips too. "Last day" / "last weekday" are
+// separate, always-fire options precisely because of this.
+// ---------------------------------------------------------------------------
+
+/** Days in a month. `m` is 0-based, as `Date` uses. */
+export function daysInMonth(y, m) {
+  return new Date(y, m + 1, 0).getDate();
+}
+
+/** Whole calendar months between two dates. Signed. The monthly sibling of
+ *  `weeksBetween`, for "every Nth month" parity against `anchorDate`. */
+export function monthsBetween(a, b) {
+  return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
+}
+
+/** JS weekday (Sun=0) for a Monday-based day key ('mon'…'sun'). */
+export function jsDayOfKey(key) {
+  const idx = DAY_KEYS.indexOf(key);
+  return idx < 0 ? -1 : (idx + 1) % 7;
+}
+
+/** Which occurrence of its own weekday a date is within its month: 1…5.
+ *  1 Oct 2026 is a Thursday and the FIRST one — the classic off-by-one is to
+ *  assume a month can't start on the target weekday. */
+export function nthWeekdayOfMonth(date) {
+  return Math.ceil(date.getDate() / 7);
+}
+
+/** Is this the last such weekday in its month? (So "last Tuesday" can be
+ *  offered only when the chosen date genuinely is one.) */
+export function isLastWeekdayOfMonth(date) {
+  return date.getDate() + 7 > daysInMonth(date.getFullYear(), date.getMonth());
+}
+
+/** The nth (1…5) `wd` (JS Sun=0) of a month, or **null** when that month has no
+ *  such day — a fifth Friday only exists in some months. */
+export function nthWeekdayDate(y, m, wd, nth) {
+  const offset = (wd - new Date(y, m, 1).getDay() + 7) % 7;
+  const day = 1 + offset + (nth - 1) * 7;
+  return day <= daysInMonth(y, m) ? new Date(y, m, day, 0, 0, 0, 0) : null;
+}
+
+/** The last `wd` of a month. Always exists. */
+export function lastWeekdayDate(y, m, wd) {
+  const last = new Date(y, m, daysInMonth(y, m));
+  return new Date(y, m, last.getDate() - ((last.getDay() - wd + 7) % 7), 0, 0, 0, 0);
+}
+
+/** The date of `monthDay` in a month, or null if absent. `-1` = the last day. */
+export function monthDayDate(y, m, monthDay) {
+  const dim = daysInMonth(y, m);
+  if (monthDay === -1) return new Date(y, m, dim, 0, 0, 0, 0);
+  return monthDay >= 1 && monthDay <= dim ? new Date(y, m, monthDay, 0, 0, 0, 0) : null;
+}
+
+/** The {y, m} pairs a Mon–Sun week touches — one, or two when it straddles a
+ *  month boundary. A monthly pattern must be checked against both, or the
+ *  session in the straddled month silently disappears. */
+export function monthsInWeek(weekStartDate) {
+  const a = dayStart(weekStartDate);
+  const b = addDays(a, 6);
+  const out = [{ y: a.getFullYear(), m: a.getMonth() }];
+  if (a.getMonth() !== b.getMonth() || a.getFullYear() !== b.getFullYear()) {
+    out.push({ y: b.getFullYear(), m: b.getMonth() });
+  }
+  return out;
+}
+
 /** 'YYYY-MM-DD' local date key. */
 export function dateKey(date) {
   const y = date.getFullYear();
@@ -139,8 +212,14 @@ export function untilAfterLastRun(lastDay) {
 /**
  * ISO-8601 week number → { year, week }. The year is the ISO week-numbering
  * year, which is NOT always the calendar year: 2027-01-01 is a Friday, so it
- * belongs to 2026-W53, and 2026-12-28 is a Monday already in 2027-W01. The
- * Wrap report's filename sorts chronologically only if we honour that.
+ * belongs to 2026-W53 — as does the Monday before it, 2026-12-28, because they
+ * are the same ISO week. Going the other way, 2024-12-30 is a Monday already in
+ * 2025-W01. The Wrap report's filename sorts chronologically only if we honour
+ * that.
+ *
+ * (The old comment gave 2026-12-28 as an example of a date in 2027-W01. It
+ * isn't — it's in 2026-W53, one week earlier, so the example contradicted
+ * itself. Verified against this function, which was right all along.)
  *
  * Method: the Thursday of a week always falls in that week's ISO year, so we
  * count weeks from the Thursday of the target week back to Jan 1 of that

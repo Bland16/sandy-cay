@@ -156,13 +156,13 @@ Each row: the concrete gesture → engine → outcome. This is the coverage proo
 | **4A** skip one class | occurrence context menu → **Skip this occurrence** | `skip` exception; slot frees (backfill toast) |
 | **4B** gym → mornings permanently | panel → Recurrence → edit windows → **"from now on"** | period split; one identity, ML history kept |
 | **4C** one-off lands on a recurring slot | drop appointment onto the occurrence → **mini-menu**: Move this / Skip this / Cancel | `move`/`skip` exception; pattern untouched |
-| **4D** laundry every other Sunday | Recurrence → interval **every 2nd week** | parity vs `anchorDate` |
+| **4D** laundry every other Sunday | Recurrence → **every other week** (was labelled "every 2nd week" until 2026-08-11 — the numeric wording was hard enough to spot that the user asked whether fortnightly existed at all; the stored `interval: 2` is unchanged) | parity vs `anchorDate` |
 | **4E** standup +30m in summer only | Recurrence → **temporary: from Jun 1 until Sep 1** | period sandwich auto-built |
 
 ### Situation 5 — Planning ahead
 | Case | How | Engine → result |
 |---|---|---|
-| **5A** task two weeks out | **›** twice (or date-jump) → Add task on that day | week-relative render |
+| **5A** task two weeks out | **Add task → type the date.** (Until 2026-08-11 this row read "**›** twice (or date-jump) → Add task on that day", because the panel took a *weekday* and silently meant the viewed week — navigating there first was the only way. See `design/DATES-AND-RECURRENCE.md` P1.) | week-relative render |
 | **5B** 10h project in chunks | **＋ Add → Project** (total 10h, min 1h / max 3h, range 2 wks) | `addProject` materializes chunks (buckets → castle) |
 | **5C** block the whole weekend | Week ⋯ → **Block days…** (Sat–Sun) | `blockRange` per-day blockers; flexibles evacuate |
 | **5D** compare this vs next week load | hover the **load meter ›** | `getWeekLoad` adjacent preview |

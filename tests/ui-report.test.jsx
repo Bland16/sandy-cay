@@ -304,7 +304,7 @@ describe('regression — "I tried to schedule a break for today and it scheduled
     fireEvent.click(screen.getByLabelText('Add task'));
     const panel = document.querySelector('.panel');
     fireEvent.change(within(panel).getByPlaceholderText(/call plumber/i), { target: { value: 'Break' } });
-    fireEvent.click(within(panel).getByText(/add to the week/i));
+    fireEvent.click(within(panel).getByText('Add'));
 
     const added = readSaved().tasks.find((x) => x.title === 'Break');
     expect(added).toBeTruthy();

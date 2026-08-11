@@ -19,7 +19,7 @@ export * as time from './time.js';
 export {
   weekStart, addDays, atTime, dateKey, dateFromKey, sameDay,
   formatHHMM, hhmmToMinutes, dayStart, addMinutes, minutesBetween,
-  isoWeek, isoWeekKey, lastRunDay, untilAfterLastRun,
+  isoWeek, isoWeekKey, lastRunDay, untilAfterLastRun, weekdayIndex, dayKeyOf,
 } from './time.js';
 export { chooseConflictStrategy, strategyCosts, resolveDropConflicts } from './conflicts.js';
 export { rippleShift } from './ripple.js';
