@@ -279,7 +279,14 @@ export function placeTask(schedule, task, opts = {}) {
   if (!best) {
     const from = searchOpts.from ? new Date(searchOpts.from) : new Date();
     const windows = computeWindows(schedule, task, from, { ignoreZone: true });
-    const start = windows[0] ? windows[0].start : dayWindowBounds(config, from).start;
+    const wStart = windows[0] ? windows[0].start : dayWindowBounds(config, from).start;
+    // Clamp to `from`. This branch had exactly the bug the SCORED search was
+    // fixed for in session 2 — it parked at the window's own start regardless
+    // of how far into the day `from` already was, so an overdue task (whose
+    // deadline nothing can satisfy, hence this branch) landed at 08:00 when it
+    // was already 15:00. A park is a last resort to keep the task VISIBLE; it
+    // is not a licence to schedule into hours that have already been lived.
+    const start = wStart.getTime() < from.getTime() ? new Date(from.getTime()) : wStart;
     best = { slot: { start, end: addMinutes(start, task.getDuration() || config.defaultDuration) }, score: 0, day: dayStart(from) };
     warning = true;
   }

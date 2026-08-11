@@ -5,7 +5,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Schedule, Task, resetIds } from '../src/core/index.js';
-import { findBestSlot } from '../src/core/placement.js';
+import { findBestSlot, placeTask } from '../src/core/placement.js';
 import { defaultConfig } from '../src/core/config.js';
 
 const MON = new Date(2026, 6, 13, 0, 0, 0, 0);   // week start
@@ -73,5 +73,39 @@ describe('placement never reaches backwards', () => {
     const t = s.addFlexible({ title: 'Past week', durationMin: 60, from: lastWeek, to: new Date(2026, 6, 12) });
     expect(t.startTime.getTime()).toBeGreaterThanOrEqual(lastWeek.getTime());
     expect(t.startTime.getTime()).toBeLessThan(MON.getTime());
+  });
+
+  // ------------------------------------------------------------------
+  // The LAST-RESORT PARK had the same bug the scored search was fixed for.
+  // Found 2026-08-11 by an adversarial use case (UC-X4): "a deadline three
+  // days in the past". Nothing can satisfy an impossible deadline, so
+  // placeTask falls through to step 4, which parked at the day WINDOW's start
+  // without clamping to `from` — landing an overdue task at 08:00 when it was
+  // already 15:00. findBestSlot got this clamp in session 2; this branch was
+  // missed, so the floor held everywhere except the one path that ignores it.
+  // ------------------------------------------------------------------
+  it('an impossible deadline parks the task at "now", never earlier', () => {
+    const wed3pm = D(2, 15); // Wednesday 15:00
+    const t = new Task({
+      title: 'Submit expenses', type: 'flexible', durationMin: 20,
+      deadline: D(0, 17), // Monday — already gone, so no slot can satisfy it
+    });
+    s.tasks.push(t);
+    const r = placeTask(s, t, { from: wed3pm, to: D(6, 0) });
+
+    expect(r.warning).toBe(true); // it IS a park, and says so
+    // ...but a park is not a licence to schedule into hours already lived.
+    expect(t.startTime.getTime()).toBeGreaterThanOrEqual(wed3pm.getTime());
+  });
+
+  it('parking still honours `from` when the day window has not opened yet', () => {
+    // The mirror case: `from` BEFORE the window start must not drag the task
+    // out of its window — the clamp takes the later of the two, not `from`.
+    const wed4am = D(2, 4);
+    const t = new Task({ title: 'Early bird', type: 'flexible', durationMin: 20, deadline: D(0, 17) });
+    s.tasks.push(t);
+    placeTask(s, t, { from: wed4am, to: D(6, 0) });
+    expect(t.startTime.getHours()).toBeGreaterThanOrEqual(defaultConfig.windows.wed
+      ? Number(String(defaultConfig.windows.wed.start).slice(0, 2)) : 8);
   });
 });
