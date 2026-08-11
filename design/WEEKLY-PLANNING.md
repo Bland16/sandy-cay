@@ -282,10 +282,27 @@ would make it meaningful, at the cost of a rule with two numbers in it.
   the plan only ever exists because you asked for it.
 - **D-4.** Do repeating projects show in the grid **as a group** (one tinted
   band you can see is "the maths 2h") or just as ordinary independent cards?
-- **D-5.** Should this replace `Activity`'s role as a template, or sit beside it?
-  An activity is "a task I do often"; a repeating project is "work the week
-  owes". Related but not the same — and two overlapping template concepts is
-  exactly the design debt session 4 was called to clean up.
+- **D-5. RESOLVED 2026-08-11** — they sit beside each other, and the boundary
+  is **how much lead time the thing needs**:
+
+  | | lead time | example | lives in |
+  |---|---|---|---|
+  | **Activity** | none — startable this second | "go for a hike" | the library; `suggest.js` ranks these |
+  | **Repeating project** | plan it, then do it in pieces | "2h of maths a week" | a standing commitment |
+  | **Planned event** | needs someone else to agree | dinner with a friend | an ordinary task; neither of the above |
+
+  The user's framing, and it is sharper than "a task I do often": *"All of these
+  are instant, they don't require anything and they can be unplanned. Social
+  things require planning and attention."* The activity library is the answer to
+  **"I have a free 30 minutes, what now?"** — so anything needing coordination
+  is categorically excluded from it, not missing from it.
+
+  **Consequence worth stating:** a bucket may legitimately hold tags and NO
+  activities. `suggest.js` ranks `schedule.activities`, so such a bucket
+  contributes energy character to planned tasks while offering nothing to
+  suggestions. That is correct on both counts, and it is why a "People" bucket
+  looks empty and should stay that way. Only the *initiating* action ("reach out
+  to someone") is instant enough to be an activity; the resulting plan is not.
 
 ---
 
