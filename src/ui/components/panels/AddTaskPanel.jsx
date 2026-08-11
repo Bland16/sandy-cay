@@ -7,23 +7,34 @@
 //   FLEXIBLE — placed immediately by score, no unscheduled tray (7A) — unless
 //              you tick "pick a time" and say where it goes yourself.
 // A time you chose means placedBy:'user', so re-optimize prefers to leave it be.
+//
+// WHEN IS A DATE, NOT A WEEKDAY (DATES-AND-RECURRENCE P1). This used to be a
+// weekday <select> resolved against `addDays(weekStart, day)`, which meant the
+// date was implicit in whichever week the grid happened to show — so a September
+// event could not be added from an August view without navigating there first.
+// The date now says which week to search, which is why a flexible task shows it
+// too even when you haven't picked a time.
 import { useState } from 'react';
-import { addDays, addMinutes, atTime, dateFromKey, formatHHMM } from '../../../core/index.js';
+import {
+  addDays, addMinutes, atTime, dateFromKey, dateKey, formatHHMM,
+  weekStart as weekStartOf, weekdayIndex,
+} from '../../../core/index.js';
 import { buildRecurrence, emptyRecurrence } from '../../recurrenceModel.js';
-import { DAY_NAMES } from '../../format.js';
+import { DAY_NAMES, DAY_FULL, MONTHS } from '../../format.js';
 import PanelHeader from '../PanelHeader.jsx';
 import DurationControl from '../DurationControl.jsx';
 import TagEditor, { tagsInUse } from '../TagEditor.jsx';
 import RecurrenceEditor from '../RecurrenceEditor.jsx';
 
-/** Today if it's in the viewed week, else Monday — the likeliest day you mean. */
-function defaultDayIndex(weekStart) {
-  const idx = Math.floor((Date.now() - weekStart.getTime()) / 86400000);
-  return idx >= 0 && idx <= 6 ? idx : 0;
+/** Today if it's in the viewed week, else that week's Monday — the likeliest day
+ *  you mean, and the rule the old weekday <select> already used. */
+function defaultDateKey(weekStart, now = new Date()) {
+  const end = addDays(weekStart, 7);
+  return dateKey(now >= weekStart && now < end ? now : weekStart);
 }
 
 /**
- * Where auto-placement should start looking: now, when the viewed week is the
+ * Where auto-placement should start looking: now, when the target week is the
  * one we're living in — otherwise the week's own Monday.
  *
  * A break added on Wednesday belongs today, not in Monday's leftover gap. The
@@ -42,7 +53,31 @@ function defaultStart() {
   return formatHHMM(d);
 }
 
-export default function AddTaskPanel({ sched, mutate, weekStart, onClose, showToast }) {
+/** "Thu 3 Sep" — for toasts, where the week sign isn't there to give context. */
+export function fmtDay(d) {
+  return `${DAY_NAMES[weekdayIndex(d)]} ${d.getDate()} ${MONTHS[d.getMonth()]}`;
+}
+
+/**
+ * "Thursday · 3 weeks ahead" — the readback under the date field.
+ *
+ * A bare ISO date doesn't tell you which day of the week it is, and that is what
+ * a person is actually thinking in. The distance catches the fat-fingered year
+ * and the wrong-month slip before you submit.
+ */
+export function whenNote(key, now = new Date()) {
+  if (!key) return '';
+  const d = dateFromKey(key);
+  if (Number.isNaN(d.getTime())) return '';
+  const weeks = Math.round((weekStartOf(d).getTime() - weekStartOf(now).getTime()) / 604800000);
+  const dist = weeks === 0 ? 'this week'
+    : weeks === 1 ? 'next week'
+      : weeks === -1 ? 'last week'
+        : weeks > 0 ? `${weeks} weeks ahead` : `${Math.abs(weeks)} weeks ago`;
+  return `${DAY_FULL[weekdayIndex(d)]} · ${dist}`;
+}
+
+export default function AddTaskPanel({ sched, mutate, weekStart, onClose, showToast, onJump }) {
   const [type, setType] = useState('flexible');
   const [title, setTitle] = useState('');
   const [dur, setDur] = useState(60);
@@ -52,33 +87,56 @@ export default function AddTaskPanel({ sched, mutate, weekStart, onClose, showTo
   const [deadline, setDeadline] = useState('');
   const [recModel, setRecModel] = useState(emptyRecurrence);
   const [pickTime, setPickTime] = useState(false);
-  const [day, setDay] = useState(() => defaultDayIndex(weekStart));
+  const [dateStr, setDateStr] = useState(() => defaultDateKey(weekStart));
   const [start, setStart] = useState(defaultStart);
+  // P4 — the wider placement range, behind a disclosure so the common case stays
+  // one field. 'week' is today's behaviour and stays the default.
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [rangeMode, setRangeMode] = useState('week'); // 'week' | 'until'
+  const [rangeUntil, setRangeUntil] = useState('');
 
-  const canSubmit = title.trim().length > 0;
+  const canSubmit = title.trim().length > 0 && !!dateStr;
   const repeats = !!recModel.enabled;
   // A fixed task IS a time — the choice isn't optional. A repeating task gets
   // its times from the pattern's windows instead.
   const timed = !repeats && (type === 'fixed' || pickTime);
+  // The date drives which week gets searched, so a flexible task needs it too.
+  const chosen = dateStr ? dateFromKey(dateStr) : weekStart;
+  const chosenWeek = weekStartOf(chosen);
+  const canRange = !repeats && !timed;
 
   const submit = () => {
     if (!canSubmit) return;
+    const now = new Date();
     const data = {
       title: title.trim(),
       tags,
       priority,
       pinned,
-      // Bound the scored search to the week you're looking at, starting from now
-      // if that week is the current one.
-      from: placementFrom(weekStart),
-      to: addDays(weekStart, 6),
       deadline: deadline ? dateFromKey(deadline) : null,
     };
-    const rec = buildRecurrence(recModel, weekStart);
+
+    // Bound the scored search. By default that's the week holding the date you
+    // picked — which is the viewed week when you haven't touched the field, so
+    // this is unchanged for the common case. "More options" widens it.
+    const until = rangeMode === 'until' && rangeUntil ? dateFromKey(rangeUntil) : null;
+    if (canRange && until && until >= chosen) {
+      data.from = chosen > now ? chosen : now;
+      data.to = until;
+    } else {
+      data.from = placementFrom(chosenWeek, now);
+      data.to = addDays(chosenWeek, 6);
+    }
+
+    // The pattern starts the week of the date you chose, not the week you happen
+    // to be looking at — "gym every Tuesday, starting the week of the 8th".
+    const rec = buildRecurrence(recModel, chosen);
     if (rec) data.recurrence = rec;
 
     if (timed) {
-      const s = atTime(addDays(weekStart, day), start);
+      // dateFromKey, never new Date(str): an ISO date string parses as UTC
+      // midnight and lands a day early west of Greenwich (sharp edge #4).
+      const s = atTime(chosen, start);
       data.startTime = s;
       data.endTime = addMinutes(s, dur);
       data.placedBy = 'user'; // you chose it; don't let re-optimize wander it
@@ -104,7 +162,17 @@ export default function AddTaskPanel({ sched, mutate, weekStart, onClose, showTo
       if (res && res.rejected) note = ` · overlaps ${res.reason ? res.reason.split(': ').pop() : 'something fixed'}`;
       else if (res && res.displaced.length) note = ` · ${res.displaced.length} moved aside`;
     }
-    showToast(`Added "${data.title}"${timed ? ` at ${start}` : ''}${note}`);
+
+    // Where it actually ended up — a flexible task is placed by score, so the
+    // date you gave is a hint, not the answer.
+    const landed = added && added.startTime ? added.startTime : chosen;
+    const offWeek = weekStartOf(landed).getTime() !== weekStartOf(weekStart).getTime();
+    // Adding something into a week you can't see, silently, is the same class of
+    // surprise as a dropped import. Name the day and offer to go there.
+    showToast(
+      `Added "${data.title}" · ${fmtDay(landed)}${timed ? ` at ${start}` : ''}${note}`,
+      offWeek && onJump ? { label: 'Go there', onClick: () => onJump(landed) } : null,
+    );
     onClose();
   };
 
@@ -126,29 +194,33 @@ export default function AddTaskPanel({ sched, mutate, weekStart, onClose, showTo
         <DurationControl minutes={dur} onChange={setDur} />
       </div>
 
-      {/* When. A fixed task must say; a flexible one may. A repeating task takes
-          its times from the pattern, so asking twice would just contradict it. */}
+      {/* When. A fixed task must say the time; a flexible one may. Both need the
+          date, because it decides which week gets searched. A repeating task
+          takes its times from the pattern, so asking twice would contradict it. */}
       {!repeats && (
         <div className="fieldrow">
           <div className="flabel">
-            {type === 'fixed' ? 'When' : 'When '}
+            When
             {type !== 'fixed' && (
-              <label style={{ textTransform: 'none', letterSpacing: 0, cursor: 'pointer', fontWeight: 600 }}>
+              <label className="inlinecheck">
                 <input
                   type="checkbox"
                   checked={pickTime}
                   onChange={(e) => setPickTime(e.target.checked)}
-                  style={{ marginRight: 5, verticalAlign: '-2px' }}
                 />
                 pick a time
               </label>
             )}
           </div>
-          {timed ? (
-            <div className="winrow">
-              <select className="input" style={{ flex: 1 }} value={day} onChange={(e) => setDay(Number(e.target.value))} aria-label="Day">
-                {DAY_NAMES.map((d, i) => <option key={d} value={i}>{d}</option>)}
-              </select>
+          <div className="winrow">
+            <input
+              className="datein"
+              type="date"
+              value={dateStr}
+              onChange={(e) => setDateStr(e.target.value)}
+              aria-label="Date"
+            />
+            {timed && (
               <input
                 className="timein"
                 type="time"
@@ -157,9 +229,42 @@ export default function AddTaskPanel({ sched, mutate, weekStart, onClose, showTo
                 onChange={(e) => setStart(e.target.value)}
                 aria-label="Start time"
               />
+            )}
+          </div>
+          <div className="whennote">{whenNote(dateStr)}</div>
+          {!timed && <p className="psub-note">Placed by score somewhere that week — no unscheduled tray.</p>}
+
+          {/* P4 — the wider range, collapsed. Default behaviour is unchanged, so
+              the panel stays one field until you ask for more. */}
+          {canRange && (
+            <div className="moreopts">
+              <button type="button" className="disclose" aria-expanded={moreOpen} onClick={() => setMoreOpen(!moreOpen)}>
+                {moreOpen ? '－ fewer options' : '＋ more options'}
+              </button>
+              {moreOpen && (
+                <div className="optbody">
+                  <div className="flabel">Place it</div>
+                  <label className="radiorow">
+                    <input type="radio" name="addrange" checked={rangeMode === 'week'} onChange={() => setRangeMode('week')} />
+                    that week
+                  </label>
+                  <label className="radiorow">
+                    <input type="radio" name="addrange" checked={rangeMode === 'until'} onChange={() => setRangeMode('until')} />
+                    any time before
+                    <input
+                      className="datein sm"
+                      type="date"
+                      value={rangeUntil}
+                      onChange={(e) => { setRangeUntil(e.target.value); setRangeMode('until'); }}
+                      aria-label="Place it before"
+                    />
+                  </label>
+                  {/* A search window is not a promise. Conflating the two would
+                      make the report claim a deadline you never set. */}
+                  <p className="psub-note">A search window, not a deadline — it only says where to look.</p>
+                </div>
+              )}
             </div>
-          ) : (
-            <p className="psub-note">Placed immediately by score — no unscheduled tray.</p>
           )}
         </div>
       )}
@@ -186,8 +291,12 @@ export default function AddTaskPanel({ sched, mutate, weekStart, onClose, showTo
       <div className="fieldrow">
         <div className="flabel">Repeat?</div>
         <RecurrenceEditor model={recModel} onChange={setRecModel} />
+        {/* The date field is hidden while repeating, but it still seeds the
+            pattern's first week — so say which week that is rather than
+            deciding it invisibly. */}
+        {repeats && <p className="psub-note">Starts the week of {fmtDay(chosenWeek)}.</p>}
       </div>
-      <button type="button" className="btn cta" style={{ marginTop: 8 }} disabled={!canSubmit} onClick={submit}>Add to the week</button>
+      <button type="button" className="btn cta" style={{ marginTop: 8 }} disabled={!canSubmit} onClick={submit}>Add</button>
     </>
   );
 }

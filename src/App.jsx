@@ -81,10 +81,16 @@ export default function App() {
   const toastTimer = useRef(null);
   const gapTimer = useRef(null);
 
-  const showToast = useCallback((msg) => {
-    setToast(msg);
+  /**
+   * @param {string} msg
+   * @param {?{label: string, onClick: Function}} action — an optional single
+   *   affordance ("Go there"). It buys a longer dwell, because a toast you are
+   *   meant to click can't expire at reading speed.
+   */
+  const showToast = useCallback((msg, action = null) => {
+    setToast({ msg, action });
     clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(null), 2600);
+    toastTimer.current = setTimeout(() => setToast(null), action ? 7000 : 2600);
   }, []);
   useEffect(() => () => { clearTimeout(toastTimer.current); clearTimeout(gapTimer.current); }, []);
 
@@ -494,6 +500,7 @@ export default function App() {
                 onOpenTask={openTask}
                 showToast={showToast}
                 onGapFreed={onGapFreed}
+                onJump={(d) => { setWeekStart(weekStartOf(d)); setView('week'); }}
               />
             )}
           </div>
@@ -610,7 +617,20 @@ export default function App() {
               onProtect={doProtect}
             />
           )}
-          {toast && <div className="toast" role="status">{toast}</div>}
+          {toast && (
+            <div className="toast" role="status">
+              <span className="grow">{toast.msg}</span>
+              {toast.action && (
+                <button
+                  type="button"
+                  className="toastgo"
+                  onClick={() => { toast.action.onClick(); setToast(null); }}
+                >
+                  {toast.action.label}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -9,7 +9,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, cleanup, screen, within, fireEvent } from '@testing-library/react';
 import App from '../src/App.jsx';
-import { seed } from '../src/core/index.js';
+import { seed, weekStart, addDays, dateKey } from '../src/core/index.js';
 import { STORAGE_KEY } from '../src/ui/useEngine.js';
 
 beforeEach(() => window.localStorage.clear());
@@ -97,9 +97,13 @@ describe('7B — a fixed task goes where you say', () => {
     // Fixed reveals the when-fields; they are not optional for a fixed task.
     fireEvent.click(within(panel).getByText('Fixed'));
     fireEvent.change(within(panel).getByPlaceholderText(/Call plumber/i), { target: { value: 'Dentist' } });
-    fireEvent.change(within(panel).getByLabelText('Day'), { target: { value: '4' } }); // Friday
+    // Friday OF THE VIEWED WEEK, derived — this file doesn't freeze the clock,
+    // and a hardcoded date would be a different week on most days of the year.
+    fireEvent.change(within(panel).getByLabelText('Date'), {
+      target: { value: dateKey(addDays(weekStart(new Date()), 4)) },
+    });
     fireEvent.change(within(panel).getByLabelText('Start time'), { target: { value: '14:00' } });
-    fireEvent.click(within(panel).getByText('Add to the week'));
+    fireEvent.click(within(panel).getByText('Add'));
 
     const card = screen.getByText('Dentist').closest('.card');
     expect(card.getAttribute('aria-label')).toContain('14:00–15:00'); // where I said

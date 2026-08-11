@@ -71,7 +71,11 @@ export default function RecurrenceEditor({ model, onChange, allowScope = false }
             <select className="input" value={repeatValue} onChange={(e) => setRepeat(e.target.value)} aria-label="Repeat frequency">
               <option value="1">every week</option>
               <option value="weekday">every weekday (Mon–Fri)</option>
-              <option value="2">every 2nd week</option>
+              {/* "every other week", not "every 2nd week" — it's what people say,
+                  and the numeric wording made a fortnightly pattern hard enough
+                  to spot that the user asked whether it existed at all. The
+                  stored value is unchanged. */}
+              <option value="2">every other week</option>
               <option value="3">every 3rd week</option>
               <option value="4">every 4th week</option>
             </select>

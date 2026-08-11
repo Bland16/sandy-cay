@@ -244,7 +244,7 @@ describe('the Repeats frequency control', () => {
     // ...then one selection instead of four more rows.
     fireEvent.change(within(panel).getByLabelText('Repeat frequency'), { target: { value: 'weekday' } });
 
-    fireEvent.click(within(panel).getByText(/add to the week/i));
+    fireEvent.click(within(panel).getByText('Add'));
 
     act(() => { vi.advanceTimersByTime(2500); });
     const saved = JSON.parse(window.localStorage.getItem(STORAGE_KEY));

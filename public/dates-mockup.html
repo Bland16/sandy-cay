@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sandy Cay — dates &amp; recurrence mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Rye&family=Special+Elite&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet" />
+<style>
+/* Palette + primitives lifted verbatim from src/ui/styles.css so this mockup
+   reads exactly as the real panel does. Nothing here is invented. */
+:root {
+  color-scheme: light;
+  --paper: #F1E9D8; --paper-shade: #E7DCC6; --ink: #2A2620; --ink-soft: #6E665A; --film: #141210;
+  --hair: #D2C6A9;
+  --primary: #2E8C99; --fixed: #5FB8B0; --flexible: #A9CDD1; --pinned: #C9A96E;
+  --rest: #7FBE8B; --warning: #E2685F; --cta: #E8B94D; --info: #8AA7C2;
+  --font-display: 'Rye', 'Playfair Display', Georgia, serif;
+  --font-type: 'Special Elite', 'Courier New', monospace;
+  --font-body: 'Nunito', system-ui, -apple-system, sans-serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--film); font-family: var(--font-body); color: var(--paper); padding: 26px 20px 60px; }
+h1 { font-family: var(--font-display); font-size: 25px; color: var(--cta); margin: 0 0 3px; }
+.lede { font-family: var(--font-type); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: #b8ac96; margin: 0 0 26px; }
+h2 { font-family: var(--font-display); font-size: 18px; color: var(--cta); margin: 34px 0 4px; }
+h2 .ph { font-family: var(--font-type); font-size: 10px; letter-spacing: .08em; color: var(--paper-shade); background: rgba(255,255,255,.1); border: 1px solid #6d604a; border-radius: 5px; padding: 2px 7px; vertical-align: 3px; margin-right: 8px; }
+.note { font-size: 12.5px; line-height: 1.6; color: #d8cdb8; max-width: 900px; margin: 0 0 16px; }
+.note b { color: var(--cta); }
+.note code { font-family: var(--font-type); font-size: 11.5px; color: #f0dcae; }
+.pair { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+.pane { }
+.tag { font-family: var(--font-type); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 7px; display: inline-block; padding: 3px 9px; border-radius: 5px; }
+.tag.now { color: #e8b3ae; border: 1px solid #7a4a46; background: rgba(226,104,95,.13); }
+.tag.new { color: #a9d9c6; border: 1px solid #3f7a63; background: rgba(127,190,139,.13); }
+
+/* ---- the panel, as the app draws it ---- */
+.panel { width: 322px; border: 2px solid var(--ink); background: var(--paper-shade); padding: 14px 14px 20px; color: var(--ink); border-radius: 4px; }
+.ph2 { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 10px; }
+.ph2 .pt { font-family: var(--font-display); font-size: 17px; line-height: 1.1; flex: 1; }
+.ph2 .psub { font-family: var(--font-type); font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-soft); }
+.px { width: 26px; height: 26px; border: 2px solid var(--ink); background: var(--paper); border-radius: 8px; display: grid; place-items: center; flex: none; font-size: 12px; }
+.fieldrow { margin: 11px 0; }
+.fieldrow.split { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
+.flabel { font-family: var(--font-type); font-size: 9px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-soft); margin-bottom: 5px; }
+.flabel .lc { text-transform: none; letter-spacing: 0; }
+.input, select.input { background: var(--paper); border: 2px solid var(--ink); border-radius: 9px; padding: 7px 10px; font-family: var(--font-body); font-size: 13px; width: 100%; color: var(--ink); }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.pill { font-family: var(--font-body); font-weight: 700; font-size: 11px; padding: 5px 11px; border: 2px solid var(--ink); border-radius: 20px; background: var(--paper); cursor: pointer; color: var(--ink); }
+.pill.on { background: var(--ink); color: var(--paper); }
+.pill.tag2 { border-color: var(--hair); font-weight: 600; background: var(--paper); color: var(--ink-soft); border-radius: 8px; }
+.pill.sm { padding: 3px 8px; font-size: 10px; }
+.toggle { display: inline-flex; align-items: center; gap: 8px; }
+.tw { width: 44px; height: 24px; border: 2px solid var(--ink); border-radius: 14px; background: var(--paper); position: relative; cursor: pointer; padding: 0; flex: none; }
+.tw .knob { position: absolute; top: 1.5px; left: 2px; width: 17px; height: 17px; border-radius: 50%; background: var(--ink); transition: left .14s; }
+.tw.on { background: var(--pinned); } .tw.on .knob { left: 22px; }
+.btn { font-family: var(--font-body); font-weight: 800; font-size: 12px; letter-spacing: .03em; padding: 9px 12px; border: 2px solid var(--ink); border-radius: 10px; background: var(--paper); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; color: var(--ink); }
+.btn.cta { background: var(--cta); }
+.winrow { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin: 5px 0; }
+.winrow .arr { font-family: var(--font-type); color: var(--ink-soft); }
+.timein { width: 74px; border: 2px solid var(--ink); border-radius: 8px; padding: 5px 6px; font-family: var(--font-type); font-size: 12px; text-align: center; background: var(--paper); color: var(--ink); }
+.winrow select.daysel { width: 64px; border: 2px solid var(--ink); border-radius: 8px; padding: 5px 4px; font-family: var(--font-type); font-size: 12px; background: var(--paper); color: var(--ink); }
+.winrow .rm { border: none; background: none; color: var(--warning); font-weight: 800; cursor: pointer; font-size: 15px; padding: 0 4px; }
+.recbox { border: 1.5px solid var(--hair); border-radius: 10px; padding: 9px; background: var(--paper); }
+.psub-note { text-transform: none; letter-spacing: 0; font-family: var(--font-body); font-size: 11px; color: var(--ink-soft); line-height: 1.5; margin: 5px 0 0; }
+.linkish { background: none; border: none; color: var(--ink-soft); font-weight: 800; font-size: 11.5px; cursor: pointer; padding: 6px 0; text-align: left; font-family: var(--font-body); }
+
+/* the new bits this spec proposes — marked so they're easy to spot */
+.datein { width: 132px; border: 2px solid var(--ink); border-radius: 8px; padding: 5px 6px; font-family: var(--font-type); font-size: 12px; text-align: center; background: var(--paper); color: var(--ink); }
+.readback { font-family: var(--font-type); font-size: 10.5px; letter-spacing: .04em; color: var(--ink-soft); margin-top: 6px; }
+.readback b { color: var(--primary); font-weight: 400; }
+.new { outline: 2px dashed var(--primary); outline-offset: 3px; border-radius: 6px; }
+.moreopts { border-top: 1.5px dashed var(--hair); margin-top: 12px; padding-top: 4px; }
+.disclose { display: flex; align-items: center; gap: 6px; font-family: var(--font-type); font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-soft); background: none; border: none; cursor: pointer; padding: 6px 0; }
+.optbody { padding: 2px 0 4px; }
+.preview { margin-top: 10px; padding-top: 9px; border-top: 1.5px dashed var(--hair); font-family: var(--font-type); font-size: 10.5px; color: var(--ink-soft); line-height: 1.75; }
+.preview b { color: var(--primary); font-weight: 400; }
+.preview .warn { color: var(--warning); display: block; margin-top: 5px; line-height: 1.5; }
+.preview .lbl { display: block; text-transform: uppercase; letter-spacing: .07em; font-size: 9px; margin-bottom: 2px; }
+.radiorow { display: flex; align-items: center; gap: 7px; margin: 6px 0; font-size: 12px; }
+.radiorow input { accent-color: var(--primary); width: 15px; height: 15px; }
+
+/* toast */
+.toast { width: 322px; background: var(--paper); border: 2px solid var(--ink); border-radius: 11px; padding: 10px 12px; color: var(--ink); font-size: 12.5px; display: flex; align-items: center; gap: 10px; box-shadow: 0 5px 0 rgba(0,0,0,.35); }
+.toast .go { font-family: var(--font-body); font-weight: 800; font-size: 11.5px; color: var(--primary); background: none; border: 2px solid var(--primary); border-radius: 8px; padding: 4px 9px; cursor: pointer; margin-left: auto; flex: none; }
+.callout { border-left: 3px solid var(--cta); padding: 3px 0 3px 13px; margin: 14px 0 18px; max-width: 900px; }
+.callout p { margin: 0 0 6px; font-size: 12.5px; line-height: 1.6; color: #d8cdb8; }
+table.d { border-collapse: collapse; font-size: 12px; margin: 10px 0 20px; max-width: 900px; }
+table.d th, table.d td { border: 1px solid #4a4034; padding: 6px 11px; text-align: left; color: #d8cdb8; }
+table.d th { font-family: var(--font-type); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--cta); }
+table.d code { font-family: var(--font-type); color: #f0dcae; }
+hr.s { border: none; border-top: 1px solid #3a332a; margin: 34px 0 0; }
+</style>
+</head>
+<body>
+
+<h1>Dates &amp; recurrence</h1>
+<p class="lede">Mockup · session 6 · nothing built yet · spec: design/DATES-AND-RECURRENCE.md</p>
+
+<p class="note">
+Everything below is drawn with the app's own stylesheet values, so what you see is what it will look like.
+Dashed teal outlines mark <b>what is new</b>. Controls are live — click them.
+</p>
+
+<h2><span class="ph">P1</span>The “When” field</h2>
+<p class="note">
+Today the panel asks for a <b>day of the week</b>, and silently means <em>the week you are currently looking at</em>.
+That is why adding a September event from an August view is impossible without navigating there first.
+The fix is a real date, plus a readback that tells you what day of the week it lands on — because a bare
+<code>2026-09-03</code> does not tell you it is a Thursday, and that is what you are actually thinking in.
+</p>
+
+<div class="pair">
+  <div class="pane">
+    <span class="tag now">Now</span>
+    <div class="panel">
+      <div class="ph2"><div><div class="pt">Add task</div><div class="psub">quick capture</div></div><div class="px">✕</div></div>
+      <div class="fieldrow"><div class="chips"><button class="pill">Fixed</button><button class="pill on">Flexible</button></div></div>
+      <div class="fieldrow"><div class="flabel">Title <span class="lc">(only required field)</span></div><input class="input" value="Orientation" /></div>
+      <div class="fieldrow"><div class="flabel">Duration</div><input class="input" value="1 h" style="width:100px" /></div>
+      <div class="fieldrow">
+        <div class="flabel">When <label style="text-transform:none;letter-spacing:0;font-weight:600"><input type="checkbox" checked style="margin-right:5px;vertical-align:-2px" />pick a time</label></div>
+        <div class="winrow">
+          <select class="input" style="flex:1"><option>Mon</option><option>Tue</option><option selected>Wed</option><option>Thu</option><option>Fri</option><option>Sat</option><option>Sun</option></select>
+          <input class="timein" type="time" value="14:00" />
+        </div>
+        <p class="psub-note" style="color:var(--warning)">↑ which Wednesday? Whichever week the grid happens to show.</p>
+      </div>
+      <button class="btn cta" style="margin-top:8px">Add to the week</button>
+    </div>
+  </div>
+
+  <div class="pane">
+    <span class="tag new">Proposed</span>
+    <div class="panel">
+      <div class="ph2"><div><div class="pt">Add task</div><div class="psub">quick capture</div></div><div class="px">✕</div></div>
+      <div class="fieldrow"><div class="chips"><button class="pill">Fixed</button><button class="pill on" id="typeflex">Flexible</button></div></div>
+      <div class="fieldrow"><div class="flabel">Title <span class="lc">(only required field)</span></div><input class="input" value="Orientation" /></div>
+      <div class="fieldrow"><div class="flabel">Duration</div><input class="input" value="1 h" style="width:100px" /></div>
+      <div class="fieldrow">
+        <div class="flabel">When <label style="text-transform:none;letter-spacing:0;font-weight:600"><input type="checkbox" checked style="margin-right:5px;vertical-align:-2px" />pick a time</label></div>
+        <div class="winrow new">
+          <input class="datein" type="date" id="d1" value="2026-09-03" />
+          <input class="timein" type="time" value="14:00" />
+        </div>
+        <div class="readback" id="rb1">Thursday · 3 weeks ahead</div>
+      </div>
+
+      <div class="moreopts new">
+        <button class="disclose" id="disc">＋ more options</button>
+        <div class="optbody" id="opts" hidden>
+          <div class="flabel">Place it</div>
+          <label class="radiorow"><input type="radio" name="range" checked /> that week</label>
+          <label class="radiorow"><input type="radio" name="range" /> any time before <input class="datein" type="date" value="2026-09-18" style="width:124px" /></label>
+          <p class="psub-note">A search window, not a deadline — it only says where to look.</p>
+        </div>
+      </div>
+
+      <button class="btn cta" style="margin-top:8px">Add</button>
+    </div>
+    <div style="height:12px"></div>
+    <div class="toast">Added “Orientation” · Thu 3 Sep <button class="go">Go there</button></div>
+  </div>
+</div>
+
+<div class="callout">
+  <p><b>Why the readback.</b> You will be typing dates months out. “Thursday · 3 weeks ahead” catches the
+  fat-fingered year and the wrong-month slip before you submit, which a bare ISO date cannot.</p>
+  <p><b>Why “more options” is collapsed.</b> Your call — the wider placement range is real but rare,
+  so the panel stays one field for the common case and opens for the case that needs it.</p>
+  <p><b>Why the toast changed.</b> Once a date can be outside the viewed week, a task can land somewhere
+  you cannot see. The toast names the date and offers to take you there rather than letting it vanish.</p>
+</div>
+
+<hr class="s" />
+
+<h2><span class="ph">P2</span>Monthly, ordinal, yearly</h2>
+<p class="note">
+The frequency list currently tops out at “every 4th week”, and every row is a weekday.
+“The first Tuesday”, “the 15th” and “every September 3rd” are all inexpressible — which is also
+why importing a calendar loses them.
+</p>
+<p class="note">
+<b>There are only two kinds of monthly, and one is far more common.</b>
+“The <b>first Tuesday</b>” keeps the weekday and moves the date (1 Sep, 6 Oct, 3 Nov) — that is
+meetings, clubs, classes. “The <b>15th</b>” keeps the date and moves the weekday — that is rent
+and bills. Rather than make you choose between those two ideas in the abstract, the editor
+<b>writes both options out as finished sentences from the date you already picked</b>, and shows
+the real dates underneath. Change the date on the right and watch every option rewrite itself.
+</p>
+
+<div class="pair">
+  <div class="pane">
+    <span class="tag now">Now</span>
+    <div class="panel">
+      <div class="flabel">Repeat?</div>
+      <div class="recbox">
+        <label class="toggle" style="margin-bottom:6px"><span class="tw on"><span class="knob"></span></span><span style="font-size:12px;font-weight:700">Repeats</span></label>
+        <div class="winrow">
+          <select class="daysel"><option>Mon</option><option selected>Tue</option></select>
+          <input class="timein" type="time" value="18:00" /><span class="arr">→</span><input class="timein" type="time" value="19:30" />
+        </div>
+        <button class="pill tag2 sm">＋ add window</button>
+        <div class="fieldrow"><div class="flabel">Every</div>
+          <select class="input"><option>every week</option><option>every weekday (Mon–Fri)</option><option>every 2nd week</option><option>every 3rd week</option><option>every 4th week</option></select>
+        </div>
+        <p class="psub-note" style="color:var(--warning)">↑ the list ends here. No month. No year.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="pane">
+    <span class="tag new">Proposed</span>
+    <div class="panel">
+      <div class="fieldrow">
+        <div class="flabel">When</div>
+        <div class="winrow"><input class="datein" type="date" id="p2date" value="2026-09-01" /><input class="timein" type="time" value="18:00" /></div>
+        <div class="readback" id="p2rb"></div>
+      </div>
+
+      <div class="flabel">Repeat?</div>
+      <div class="recbox">
+        <label class="toggle" style="margin-bottom:8px"><span class="tw on"><span class="knob"></span></span><span style="font-size:12px;font-weight:700">Repeats</span></label>
+        <div class="fieldrow" style="margin:0">
+          <div class="flabel">How often</div>
+          <select class="input new" id="p2freq"></select>
+        </div>
+        <div id="p2extra"></div>
+        <div class="preview" id="p2prev"></div>
+      </div>
+    </div>
+    <p class="psub-note" style="color:#b8ac96;width:322px;margin-top:10px">
+      ↑ change the date and every option rewrites itself. There is no mode to understand.
+    </p>
+  </div>
+</div>
+
+<div class="callout">
+  <p><b>Why no “mode” picker.</b> The first draft of this mockup asked you to choose “on a date” or
+  “on the …” before showing you anything, and that was confusing — rightly. You should never have to
+  hold the by-date / by-position distinction in your head. Picking a date already tells us both
+  answers, so the editor just offers them as sentences and lets the preview settle it.</p>
+  <p><b>The rule that still needs your eye: months that don’t have the date.</b> Set the date to
+  <b>31 October</b> and pick “every month on the 31st” — the preview says it skips November,
+  February and April, because clamping to the 30th would invent a session on a date you never chose
+  (this is also what RFC 5545 does). “The last day” and “the last Tuesday” are offered precisely
+  because they always fire. You find this out in the panel, not in November.</p>
+</div>
+
+<hr class="s" />
+
+<h2><span class="ph">P3</span>The import that loses your events</h2>
+<p class="note">
+This one is not a missing feature, it is silent data loss. <code>ical.js:84</code> drops any RRULE that
+is not <code>FREQ=WEEKLY</code> — but the event still imports, just without its pattern. Proven by probe
+against a four-event calendar on 2026-08-11:
+</p>
+
+<table class="d">
+  <tr><th>Event in the .ics</th><th>Pattern</th><th>What Sandy Cay stored</th></tr>
+  <tr><td>Rent due</td><td><code>FREQ=MONTHLY;BYMONTHDAY=1</code></td><td style="color:#e8b3ae">one event, 1 Sep, no repeat</td></tr>
+  <tr><td>Book club</td><td><code>FREQ=MONTHLY;BYDAY=3TU</code></td><td style="color:#e8b3ae">one event, 15 Sep, no repeat</td></tr>
+  <tr><td>Mum’s birthday</td><td><code>FREQ=YEARLY</code></td><td style="color:#e8b3ae">one event, 3 Sep, no repeat</td></tr>
+  <tr><td>Lecture</td><td><code>FREQ=WEEKLY;BYDAY=MO,WE</code></td><td style="color:#a9d9c6">kept correctly</td></tr>
+</table>
+
+<p class="note">
+P2 makes the first three importable. But some RRULEs will still be unreadable
+(<code>FREQ=DAILY</code>, <code>BYWEEKNO</code>), so import must also <b>report</b> what it flattened
+instead of staying quiet. That half is worth shipping even on its own:
+</p>
+
+<div class="toast" style="width:420px">3 events came in as one-offs — their repeat patterns couldn’t be read. <button class="go">Show me</button></div>
+
+<hr class="s" />
+<p class="lede" style="margin-top:24px">Five open decisions (D-1…D-5) are listed at the end of the spec — the two worth your attention are whether day headers should get an “add on this day” button, and whether Zones get the same frequency options.</p>
+
+<script>
+// Readback for the date field — weekday + distance, computed the way the spec says.
+const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+function mondayOf(d){ const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); const i = (x.getDay()+6)%7; x.setDate(x.getDate()-i); return x; }
+function readback(){
+  const v = document.getElementById('d1').value;
+  const el = document.getElementById('rb1');
+  if (!v) { el.textContent = 'pick a date'; return; }
+  const [y,m,dd] = v.split('-').map(Number);
+  const date = new Date(y, m-1, dd);              // local, never new Date(str) — sharp edge #4
+  const weeks = Math.round((mondayOf(date) - mondayOf(new Date())) / 604800000);
+  const dist = weeks === 0 ? 'this week' : weeks === 1 ? 'next week' : weeks === -1 ? 'last week'
+    : weeks > 0 ? weeks + ' weeks ahead' : Math.abs(weeks) + ' weeks ago';
+  el.innerHTML = DAYS[date.getDay()] + ' · <b>' + dist + '</b>';
+}
+document.getElementById('d1').addEventListener('input', readback);
+readback();
+
+const disc = document.getElementById('disc'), opts = document.getElementById('opts');
+disc.addEventListener('click', () => { opts.hidden = !opts.hidden; disc.textContent = opts.hidden ? '＋ more options' : '－ fewer options'; });
+
+/* ------------------------------------------------------------------
+   P2: every option is a finished sentence generated from the chosen
+   date, so there is no abstract "by date vs by position" mode to
+   understand. Same approach Google and Apple Calendar use. The preview
+   underneath is what actually removes the doubt — you read the dates.
+   ------------------------------------------------------------------ */
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const ORDW = ['first','second','third','fourth','fifth'];
+const DSHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const dim = (y,m) => new Date(y, m+1, 0).getDate();
+const ordNum = (n) => { const s=['th','st','nd','rd'], v=n%100; return n + (s[(v-20)%10] || s[v] || s[0]); };
+const nthOf = (d) => Math.ceil(d.getDate()/7);
+const isLastOf = (d) => d.getDate() + 7 > dim(d.getFullYear(), d.getMonth());
+function nthWeekday(y, m, wd, nth){                    // nth 1..5, null if absent
+  const offset = (wd - new Date(y,m,1).getDay() + 7) % 7;
+  const day = 1 + offset + (nth-1)*7;
+  return day <= dim(y,m) ? new Date(y,m,day) : null;
+}
+function lastWeekday(y, m, wd){
+  const last = new Date(y, m, dim(y,m));
+  return new Date(y, m, last.getDate() - ((last.getDay() - wd + 7) % 7));
+}
+const fmtD = (d) => DSHORT[d.getDay()] + ' ' + d.getDate() + ' ' + MONTHS[d.getMonth()].slice(0,3);
+
+function parseLocal(v){ const [y,m,d] = v.split('-').map(Number); return new Date(y, m-1, d); }
+
+/** The option list, written out of the date itself. */
+function optionsFor(d){
+  const wd = d.getDay(), dayName = DAYS[wd], n = nthOf(d), last = isLastOf(d);
+  const opts = [
+    { v:'w1', label:'every week on ' + dayName },
+    { v:'wd', label:'every weekday (Mon–Fri)' },
+    // "every other week", not "every 2nd week" — it is what people say, and the
+    // old wording made a fortnightly pattern hard to spot in the list.
+    { v:'w2', label:'every other week on ' + dayName },
+    { v:'w3', label:'every 3rd week on ' + dayName },
+    { v:'w4', label:'every 4th week on ' + dayName },
+    { v:'mnth', label:'every month on the ' + ORDW[n-1] + ' ' + dayName },
+  ];
+  if (last) opts.push({ v:'mlast', label:'every month on the last ' + dayName });
+  opts.push({ v:'mdate', label:'every month on the ' + ordNum(d.getDate()) });
+  opts.push({ v:'y', label:'every year on ' + d.getDate() + ' ' + MONTHS[d.getMonth()] });
+  return opts;
+}
+
+/** Next few real dates for an option — plus any months it skips. */
+function occurrences(kind, d, want = 4){
+  const out = [], skipped = [], wd = d.getDay(), n = nthOf(d), dnum = d.getDate();
+  if (kind[0] === 'w') {
+    const step = kind === 'wd' ? 0 : Number(kind[1]);
+    if (kind === 'wd') {
+      const c = new Date(d);
+      while (out.length < want) { if (c.getDay() >= 1 && c.getDay() <= 5) out.push(new Date(c)); c.setDate(c.getDate()+1); }
+    } else {
+      const c = new Date(d);
+      while (out.length < want) { out.push(new Date(c)); c.setDate(c.getDate() + 7*step); }
+    }
+  } else if (kind === 'y') {
+    let y = d.getFullYear();
+    while (out.length < want) {
+      const cand = dim(y, d.getMonth()) >= dnum ? new Date(y, d.getMonth(), dnum) : null;
+      if (cand) out.push(cand); else skipped.push(String(y));
+      y++;
+    }
+  } else {
+    let y = d.getFullYear(), m = d.getMonth(), guard = 0;
+    while (out.length < want && guard++ < 40) {
+      let cand = null;
+      if (kind === 'mnth') cand = nthWeekday(y, m, wd, n);
+      else if (kind === 'mlast') cand = lastWeekday(y, m, wd);
+      else cand = dim(y,m) >= dnum ? new Date(y, m, dnum) : null;
+      if (cand) out.push(cand); else skipped.push(MONTHS[m]);
+      m++; if (m > 11) { m = 0; y++; }
+    }
+  }
+  return { out, skipped };
+}
+
+const p2date = document.getElementById('p2date'), p2freq = document.getElementById('p2freq'),
+      p2prev = document.getElementById('p2prev'), p2rb = document.getElementById('p2rb'),
+      p2extra = document.getElementById('p2extra');
+
+function syncP2(keep){
+  const d = parseLocal(p2date.value || '2026-09-01');
+  p2rb.innerHTML = DAYS[d.getDay()] + ' · the <b>' + ORDW[nthOf(d)-1] + ' ' + DAYS[d.getDay()] + '</b> of the month'
+    + (isLastOf(d) ? ' (also the last)' : '');
+
+  const opts = optionsFor(d);
+  const want = keep && opts.some(o => o.v === keep) ? keep : 'mnth';
+  p2freq.innerHTML = opts.map(o => '<option value="'+o.v+'"'+(o.v===want?' selected':'')+'>'+o.label+'</option>').join('');
+
+  // Only the weekly options need extra rows — you can want Mon AND Wed.
+  // Monthly and yearly need nothing: the sentence already said it all.
+  p2extra.innerHTML = want[0] === 'w' && want !== 'wd'
+    ? '<div class="winrow" style="margin-top:7px"><button class="pill tag2 sm">＋ also on another day</button></div>'
+    : '';
+
+  const { out, skipped } = occurrences(want, d);
+  let html = '<span class="lbl">it will run on</span>' + out.map(x => '<b>' + fmtD(x) + '</b>').join(' · ');
+  if (want === 'w2' || want === 'w3' || want === 'w4') {
+    html += '<span style="display:block;margin-top:4px">Counted from the date you picked — not from the start of the month.</span>';
+  }
+  if (skipped.length) {
+    const what = want === 'mdate' ? 'the ' + ordNum(d.getDate())
+      : want === 'mnth' ? 'a ' + ORDW[nthOf(d)-1] + ' ' + DAYS[d.getDay()]
+      : d.getDate() + ' ' + MONTHS[d.getMonth()];
+    html += '<span class="warn">Skips ' + skipped.slice(0,3).join(', ') + ' — ' + (want==='y'?'that year has':'those months have') + ' no ' + what + '.'
+      + (want === 'mdate' ? ' Pick “the last day” if you mean the end of the month.' : '') + '</span>';
+  }
+  p2prev.innerHTML = html;
+}
+p2date.addEventListener('input', () => syncP2(p2freq.value));
+p2freq.addEventListener('change', () => syncP2(p2freq.value));
+syncP2();
+</script>
+</body>
+</html>
