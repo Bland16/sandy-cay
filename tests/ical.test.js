@@ -67,8 +67,37 @@ describe('recurrence maps to RRULE both ways', () => {
     ]);
   });
 
-  it('a non-weekly rule is refused rather than mangled into our model', () => {
-    expect(fromRRULE('FREQ=MONTHLY;BYMONTHDAY=1', D(13, 8), D(13, 9))).toBeNull();
+  // Until P2 this read "a non-weekly rule is refused rather than mangled",
+  // which was true and was the bug: fromRRULE returned null but eventToTask
+  // still built the task, so "rent, monthly" imported as ONE event on one day
+  // with no warning. Monthly and yearly now map; what genuinely cannot be
+  // expressed is still refused, and now also reported.
+  it('a monthly rule by date is read, not dropped', () => {
+    const rec = fromRRULE('FREQ=MONTHLY;BYMONTHDAY=1', D(13, 8), D(13, 9));
+    expect(rec.periods[0].freq).toBe('monthly');
+    expect(rec.periods[0].windows).toEqual([{ monthDay: 1, start: '08:00', end: '09:00' }]);
+  });
+
+  it('a monthly rule by ordinal weekday is read', () => {
+    const rec = fromRRULE('FREQ=MONTHLY;BYDAY=3TU', D(13, 8), D(13, 9));
+    expect(rec.periods[0].freq).toBe('monthly');
+    expect(rec.periods[0].windows[0]).toMatchObject({ day: 'tue', nth: 3 });
+  });
+
+  it('BYMONTHDAY=-1 and BYDAY=-1FR carry RFC 5545\'s "last" straight across', () => {
+    expect(fromRRULE('FREQ=MONTHLY;BYMONTHDAY=-1', D(13, 8), D(13, 9)).periods[0].windows[0].monthDay).toBe(-1);
+    expect(fromRRULE('FREQ=MONTHLY;BYDAY=-1FR', D(13, 8), D(13, 9)).periods[0].windows[0].nth).toBe(-1);
+  });
+
+  it('a yearly rule keeps its month and day', () => {
+    const rec = fromRRULE('FREQ=YEARLY', D(13, 8), D(13, 9));
+    expect(rec.periods[0].freq).toBe('yearly');
+    expect(rec.periods[0].windows[0]).toMatchObject({ monthDay: 13 });
+  });
+
+  it('what still cannot be expressed is refused', () => {
+    expect(fromRRULE('FREQ=DAILY', D(13, 8), D(13, 9))).toBeNull();
+    expect(fromRRULE('FREQ=MONTHLY;BYWEEKNO=3', D(13, 8), D(13, 9))).toBeNull();
   });
 
   it('a task survives an export → import round trip', () => {
@@ -232,5 +261,49 @@ describe('EXDATE/RECURRENCE-ID use the period in force, not periods[0]', () => {
     // Points at where the occurrence WOULD have been under the live period.
     expect(recId).toContain('20260727T180000');
     expect(recId).not.toContain('20260727T080000');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// P3 — the import that used to lose your repeating events, and now says so.
+// ---------------------------------------------------------------------------
+describe('monthly + yearly survive the wire (P3)', () => {
+  const cal = (rrule, summary) => [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'BEGIN:VEVENT',
+    'UID:x@t', 'DTSTART:20260901T090000', 'DTEND:20260901T093000',
+    `SUMMARY:${summary}`, `RRULE:${rrule}`, 'END:VEVENT', 'END:VCALENDAR',
+  ].join('\r\n');
+
+  it('a monthly event imports WITH its pattern, not as a lone one-off', () => {
+    const [t] = importEvents(parseICS(cal('FREQ=MONTHLY;BYMONTHDAY=1', 'Rent')));
+    expect(t.recurrence).toBeTruthy();
+    expect(t.recurrence.periods[0].freq).toBe('monthly');
+  });
+
+  it('round-trips monthly, ordinal and yearly rules unchanged', () => {
+    for (const rule of [
+      'FREQ=MONTHLY;BYMONTHDAY=15',
+      'FREQ=MONTHLY;BYDAY=3TU',
+      'FREQ=MONTHLY;BYMONTHDAY=-1',
+      'FREQ=YEARLY;BYMONTH=9;BYMONTHDAY=3',
+    ]) {
+      const [t] = importEvents(parseICS(cal(rule, 'Thing')));
+      const out = toICS([t]).split(/\r?\n/).find((l) => l.startsWith('RRULE:'));
+      expect(out).toBe(`RRULE:${rule}`);
+    }
+  });
+
+  it('an unreadable pattern is REPORTED, not silently flattened', () => {
+    const tasks = importEvents(parseICS(cal('FREQ=DAILY', 'Standup')));
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].recurrence).toBeNull(); // still imported, as a one-off
+    expect(tasks.dropped).toEqual([{ title: 'Standup', rule: 'FREQ=DAILY' }]);
+  });
+
+  it('an event with no rule at all is not reported as dropped', () => {
+    const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'BEGIN:VEVENT', 'UID:y@t',
+      'DTSTART:20260901T090000', 'DTEND:20260901T093000', 'SUMMARY:One off',
+      'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+    expect(importEvents(parseICS(ics)).dropped).toEqual([]);
   });
 });

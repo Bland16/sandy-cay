@@ -19,7 +19,7 @@ import {
   addDays, addMinutes, atTime, dateFromKey, dateKey, formatHHMM,
   weekStart as weekStartOf, weekdayIndex,
 } from '../../../core/index.js';
-import { buildRecurrence, emptyRecurrence } from '../../recurrenceModel.js';
+import { buildRecurrence, emptyRecurrence, seedForDate } from '../../recurrenceModel.js';
 import { DAY_NAMES, DAY_FULL, MONTHS } from '../../format.js';
 import PanelHeader from '../PanelHeader.jsx';
 import DurationControl from '../DurationControl.jsx';
@@ -326,7 +326,14 @@ export default function AddTaskPanel({ sched, mutate, weekStart, onClose, showTo
       </div>
       <div className="fieldrow">
         <div className="flabel">Repeat?</div>
-        <RecurrenceEditor model={recModel} onChange={setRecModel} />
+        {/* The options are written out of the chosen date — "the first Tuesday"
+            only means anything relative to it. */}
+        <RecurrenceEditor
+          model={recModel}
+          anchorDate={chosen}
+          // Turning Repeats on assumes the day already chosen, not Monday.
+          onChange={(m) => setRecModel(m.enabled && !recModel.enabled ? seedForDate(m, chosen) : m)}
+        />
       </div>
       <button type="button" className="btn cta" style={{ marginTop: 8 }} disabled={!canSubmit} onClick={submit}>Add</button>
     </>

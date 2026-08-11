@@ -591,6 +591,18 @@ body.sc-dragging { user-select: none; }
 .winrow .rm { border: none; background: none; color: var(--warning); font-weight: 800; cursor: pointer; font-size: 15px; line-height: 1; padding: 0 4px; }
 .recbox { border: 1.5px solid var(--hair); border-radius: 10px; padding: 9px; background: var(--paper); }
 
+/* The repeat preview — four real dates under the control. This is what makes
+   "the first Tuesday" and "the 31st" legible without explaining a rule, and
+   where a skipped month is discovered in the panel rather than in November. */
+.recpreview {
+  margin-top: 9px; padding-top: 8px; border-top: 1.5px dashed var(--hair);
+  font-family: var(--font-type); font-size: 10.5px; color: var(--ink-soft); line-height: 1.75;
+}
+.recpreview .lbl { display: block; text-transform: uppercase; letter-spacing: .07em; font-size: 9px; margin-bottom: 1px; }
+.recpreview b { color: var(--primary); font-weight: 400; }
+.recpreview .warn { color: var(--warning); display: block; margin-top: 4px; line-height: 1.5; }
+.recpreview .from { display: block; margin-top: 4px; }
+
 /* ---------- the "when" date field (DATES-AND-RECURRENCE P1) ----------
    Panel scope, deliberately: .field/.control (EDITOR-REDESIGN §4) carry the
    Cabana's dark palette, so borrowing them into this light panel would read as

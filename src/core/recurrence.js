@@ -10,7 +10,13 @@ import {
   atTime,
   dateKey,
   weeksBetween,
+  monthsBetween,
   dayStart,
+  jsDayOfKey,
+  nthWeekdayDate,
+  lastWeekdayDate,
+  monthDayDate,
+  monthsInWeek,
 } from './time.js';
 
 /** Is a period active on a given calendar date? */
@@ -21,12 +27,78 @@ export function periodActiveOn(period, date) {
   return true;
 }
 
-/** Interval parity: does this week materialize for the period? (4D) */
-function intervalMatches(recurrence, period, weekStartDate) {
+/** A period's frequency. Absent means 'weekly', so every save written before
+ *  P2 loads and expands exactly as it always did (sharp edge #15: new state is
+ *  additive, schemaVersion stays 1). */
+export function freqOf(period) {
+  return period.freq || 'weekly';
+}
+
+/**
+ * Interval parity: does this occurrence materialize? (4D)
+ *
+ * "Every Nth" counts in the period's own unit — weeks for a weekly pattern,
+ * months for a monthly one, years for a yearly one — always measured from
+ * `anchorDate`, so "every other week from the 15th" means the 15th and the 29th.
+ */
+function intervalMatches(recurrence, period, date) {
   const interval = period.interval ?? 1;
   if (interval <= 1) return true;
-  const anchor = recurrence.anchorDate || weekStartDate;
-  return ((weeksBetween(anchor, weekStartDate) % interval) + interval) % interval === 0;
+  const anchor = recurrence.anchorDate || date;
+  const freq = freqOf(period);
+  const n = freq === 'monthly' ? monthsBetween(anchor, date)
+    : freq === 'yearly' ? date.getFullYear() - anchor.getFullYear()
+      : weeksBetween(anchor, date);
+  return ((n % interval) + interval) % interval === 0;
+}
+
+/**
+ * The candidate dates a single window lands on inside the given week. Returns
+ * [] when the month genuinely has no such day — the skip rule, not a clamp.
+ *
+ * A week can straddle two months (and two years), so monthly and yearly windows
+ * are resolved against every month/year the week touches; `emit` then drops
+ * anything outside the week. Checking only the week's own month is how a
+ * straddled session silently disappears.
+ */
+function datesForWindow(freq, w, weekStartDate) {
+  if (freq === 'weekly') {
+    const dayIdx = DAY_KEYS.indexOf(w.day);
+    return dayIdx < 0 ? [] : [addDays(weekStartDate, dayIdx)];
+  }
+
+  if (freq === 'monthly') {
+    const out = [];
+    for (const { y, m } of monthsInWeek(weekStartDate)) {
+      let d = null;
+      if (w.monthDay != null) {
+        d = monthDayDate(y, m, w.monthDay);            // "the 15th" / "the last day"
+      } else if (w.nth != null) {
+        const wd = jsDayOfKey(w.day);
+        if (wd >= 0) {
+          d = w.nth === -1 ? lastWeekdayDate(y, m, wd) // "the last Tuesday"
+            : nthWeekdayDate(y, m, wd, w.nth);         // "the third Tuesday"
+        }
+      }
+      if (d) out.push(d);
+    }
+    return out;
+  }
+
+  if (freq === 'yearly') {
+    const out = [];
+    const seen = new Set();
+    for (const { y } of monthsInWeek(weekStartDate)) {
+      if (seen.has(y)) continue;
+      seen.add(y);
+      // month is 1-based in the stored window, 0-based in Date.
+      const d = monthDayDate(y, (w.month ?? 1) - 1, w.monthDay ?? 1);
+      if (d) out.push(d);
+    }
+    return out;
+  }
+
+  return [];
 }
 
 /** 'YYYY-MM-DD' → local Date at 00:00. */
@@ -69,28 +141,32 @@ export function expandRecurrence(task, weekStartDate) {
     out.push(buildOccurrence(task, identity, key, start, end, od));
   };
 
-  // 1) Pattern occurrences on this week's own dates.
+  // 1) Pattern occurrences on this week's own dates. The frequency decides only
+  //    WHICH dates a window lands on; everything after that — periods,
+  //    exceptions, identity, lived data — is frequency-independent.
   for (const period of rec.periods || []) {
-    if (!intervalMatches(rec, period, weekStartDate)) continue;
+    const freq = freqOf(period);
     for (const w of period.windows || []) {
-      const dayIdx = DAY_KEYS.indexOf(w.day);
-      if (dayIdx < 0) continue;
-      const date = addDays(weekStartDate, dayIdx);
-      if (!periodActiveOn(period, date)) continue;
-      const key = dateKey(date);
+      for (const date of datesForWindow(freq, w, weekStartDate)) {
+        if (!periodActiveOn(period, date)) continue;
+        // Parity is per-occurrence, so a monthly pattern counts months and a
+        // weekly one counts weeks off the same anchor.
+        if (!intervalMatches(rec, period, date)) continue;
+        const key = dateKey(date);
 
-      const ex = exceptions.find((e) => e.date === key);
-      if (ex && ex.action === 'skip') continue;
-      // Relocated elsewhere → emitted by pass 2 against its host week.
-      if (ex && ex.action === 'move' && ex.toDate && ex.toDate !== key) continue;
+        const ex = exceptions.find((e) => e.date === key);
+        if (ex && ex.action === 'skip') continue;
+        // Relocated elsewhere → emitted by pass 2 against its host week.
+        if (ex && ex.action === 'move' && ex.toDate && ex.toDate !== key) continue;
 
-      let start = atTime(date, w.start);
-      let end = atTime(date, w.end);
-      if (ex && ex.action === 'move') {
-        if (ex.start) start = resolveTime(date, ex.start);
-        if (ex.end) end = resolveTime(date, ex.end);
+        let start = atTime(date, w.start);
+        let end = atTime(date, w.end);
+        if (ex && ex.action === 'move') {
+          if (ex.start) start = resolveTime(date, ex.start);
+          if (ex.end) end = resolveTime(date, ex.end);
+        }
+        emit(key, start, end);
       }
-      emit(key, start, end);
     }
   }
 
@@ -166,7 +242,11 @@ export function splitPeriod(task, fromDate, newWindows, opts = {}) {
   const from = dayStart(fromDate);
   const active = task.recurrence.periods.find((p) => periodActiveOn(p, from));
   if (active) active.effectiveUntil = from;
+  // A new period inherits the old period's frequency unless told otherwise —
+  // changing the times of a monthly pattern must not silently make it weekly.
+  const freq = opts.freq || (active ? freqOf(active) : 'weekly');
   task.recurrence.periods.push({
+    ...(freq !== 'weekly' ? { freq } : {}),
     windows: newWindows.map((w) => ({ ...w })),
     interval: opts.interval ?? (active ? active.interval : 1),
     effectiveFrom: from,
@@ -184,16 +264,22 @@ export function temporaryChange(task, fromDate, untilDate, tempWindows, opts = {
   const base = task.recurrence.periods.find((p) => periodActiveOn(p, from)) || task.recurrence.periods[0];
   const interval = opts.interval ?? (base ? base.interval : 1);
   const baseWindows = base ? base.windows.map((w) => ({ ...w })) : [];
+  const baseFreq = base ? freqOf(base) : 'weekly';
+  const tempFreq = opts.freq || baseFreq;
   const originalUntil = base ? base.effectiveUntil : null; // capture BEFORE mutating
-  // Close the base at `from`, add temp period, reopen base at `until`.
+  // Close the base at `from`, add temp period, reopen base at `until`. The
+  // reopened slice must carry the BASE frequency, not the temporary one — the
+  // surrounding pattern is what resumes.
   if (base) base.effectiveUntil = from;
   task.recurrence.periods.push({
+    ...(tempFreq !== 'weekly' ? { freq: tempFreq } : {}),
     windows: tempWindows.map((w) => ({ ...w })),
     interval,
     effectiveFrom: from,
     effectiveUntil: until,
   });
   task.recurrence.periods.push({
+    ...(baseFreq !== 'weekly' ? { freq: baseFreq } : {}),
     windows: baseWindows,
     interval,
     effectiveFrom: until,
