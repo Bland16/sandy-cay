@@ -139,8 +139,14 @@ export function untilAfterLastRun(lastDay) {
 /**
  * ISO-8601 week number → { year, week }. The year is the ISO week-numbering
  * year, which is NOT always the calendar year: 2027-01-01 is a Friday, so it
- * belongs to 2026-W53, and 2026-12-28 is a Monday already in 2027-W01. The
- * Wrap report's filename sorts chronologically only if we honour that.
+ * belongs to 2026-W53 — as does the Monday before it, 2026-12-28, because they
+ * are the same ISO week. Going the other way, 2024-12-30 is a Monday already in
+ * 2025-W01. The Wrap report's filename sorts chronologically only if we honour
+ * that.
+ *
+ * (The old comment gave 2026-12-28 as an example of a date in 2027-W01. It
+ * isn't — it's in 2026-W53, one week earlier, so the example contradicted
+ * itself. Verified against this function, which was right all along.)
  *
  * Method: the Thursday of a week always falls in that week's ISO year, so we
  * count weeks from the Thursday of the target week back to Jan 1 of that

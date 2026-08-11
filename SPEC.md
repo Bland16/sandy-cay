@@ -167,7 +167,7 @@ This occurrence (skip exception) / This and future (`effectiveUntil: now`) / Ent
 
 **4.1 Periods:** windows (R-4 shape) + `interval` (every Nth week, parity vs `anchorDate`) + `effectiveFrom/Until`. Permanent change = period split ("From now on, or including the past?" — default from now on). Temporary change = editor builds period sandwich from "from…until…".
 **4.2 Exceptions:** per-date `skip` / `move`.
-**4.3 Editor:** one shared window-row component (day+start+end+remove) used by zones and recurrence.
+**4.3 Editor:** one shared window-row component (day+start+end+remove) used by zones and recurrence. — ⚠️ **NOT TRUE AS BUILT (verified 2026-08-11).** `RecurrenceEditor.jsx` is imported by the Add-task and Task panels only; `ZonesEditor.jsx` builds its own `.winrow` markup and never imports it, so the weekday affordance exists **twice** and has already drifted (`toWeekdayWindows`/`isWeekdayPattern` in one, a "＋ every weekday" button in the other). Either extract the row for real or drop this claim — decision **D-7** in `design/SPEC-COMB-2026-08.md`. Worth settling *before* P2 touches this component.
 **4.4 Virtual occurrences (OD-12):** materialized at read time, id `taskId@date`, behave as fixed anchors; lived data in `occurrenceData`; editing an occurrence writes exceptions/occurrenceData, never the pattern. One task = one identity = continuous ML history across pattern changes.
 
 ---
@@ -228,7 +228,7 @@ config = {
 
 ## 10. Design system
 
-**Palette (CSS custom properties):** `--color-bg #F0F8FF · surface #FFFDF7 · primary #1A9BAB · accent #F4A259 · cta #FFD166 · success #6BCB77 · warning #FF6B6B · muted #7A8C99 · dark #1E2D3D · badge-pinned #C9A96E · badge-fixed #4ECDC4 · badge-flexible #A8DADC · burnout-tint rgba(255,107,107,.12)` + Cabana: `--cabana-bg #4E3B2A · surface #6B5138 · trim #8B6F52 · text #F5E9D9 · accent #FFD166`.
+**Palette:** **`src/ui/styles.css` `:root` is the source of truth — read it there, not here.** The app was reskinned to the "hand-tinted film" palette (ported from `design/layout-interactive.html`), and the list this section used to carry was never updated: none of its `--color-*` names exist in the app and five of six values had drifted (`primary` `#1A9BAB`→`#2E8C99`, `cta` `#FFD166`→`#E8B94D`, `warning` `#FF6B6B`→`#E2685F`, and so on). Duplicating the values here just grows a second one to drift. Names are `--paper/--paper-shade/--ink/--ink-soft/--hair`, `--primary/--fixed/--flexible/--pinned`, `--rest/--warning/--cta/--info`, and the Cabana's `--cab-*`. *(Corrected 2026-08-11 — see `design/SPEC-COMB-2026-08.md` §3.)*
 **Fonts:** Nunito (UI), Playfair Display (app title + section headers only), Google Fonts.
 **Card language:** frosted glass = pinned (R-2: blur 3px + wash rgba(255,253,247,.55); badges/chips on crisp layer above; AA contrast; reduced-transparency fallback) · full sea-glass tint = protected (tag chip is the non-color indicator; `--color-dark` text) · **wave strip top border** = resize start · **sand strip bottom border** = resize end (8 px, ns-resize cursor, 15-min snap, min duration 15; body drag = move) · coral badge = schedulingWarning · gold badge = pinned · due-date chip · info badge (outside-zone). Zones: tinted background regions (~12% opacity, label on hover).
 **Rating glyphs: shells** (filled/outline via opacity+grayscale on one sprite).
