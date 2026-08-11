@@ -1,9 +1,21 @@
 # Sandy Cay — handoff
 
-**Updated:** 2026-08-11, session 6. **`main` is the trunk and everything is
-merged into it** — it is live on Pages (https://bland16.github.io/sandy-cay/).
-**516 tests green.** No outstanding branches; the worktrees under
-`.claude/worktrees/` are spent.
+**Updated:** 2026-08-11, session 6. **`main` is the trunk and the ONLY branch** —
+it is live on Pages (https://bland16.github.io/sandy-cay/). **518 tests green.**
+
+The spent worktrees and all six merged branches were removed at the end of
+session 6, each verified at **0 unmerged commits and 0 dirty files** first.
+Every commit remains reachable from `main`; the tips were
+`dates-and-recurrence 010e258`, `worktree-activity-library 4e472e6`,
+`worktree-bugfix-sweep d97c38d`, `worktree-core-bugfixes f2db179`,
+`worktree-precedence-zones 0628dd4`, `wrap-report d97c38d`, recorded here so a
+branch can be recreated by SHA if it is ever wanted.
+
+**`public/` holds only what the app ships** (`icon.svg`, the manifest, `sw.js`).
+The design viewers moved to `design/` — `dates-mockup.html` and
+`wave-handle-viewer.html` — because anything in `public/` is served publicly
+from the Pages site, and a working mockup is not something to publish. Open
+them from disk, or copy one into `public/` temporarily while iterating.
 
 That covers: the wrap report, recurrence/zones, responsive, the past-placement
 floor, unique ids, the de-flaked suite, ripple/zone exclusivity, the whole
@@ -263,13 +275,12 @@ record, arbitrates — 75KB, **grep it, never read it whole**) · `FRONTEND-SPEC
 
 ---
 
-## Where the work is — all of it is on `main` (as of 2026-07-21)
+## Where the work is — all of it is on `main` (as of 2026-08-11)
 
-Every branch is merged and every PR closed. `wrap-report`,
-`worktree-core-bugfixes`, `worktree-precedence-zones` and
-`worktree-activity-library` are all ancestors of `main`;
-`worktree-bugfix-sweep` never held anything. The worktrees under
-`.claude/worktrees/` are spent and safe to remove with `git worktree remove`.
+**`main` is the only branch, local and remote.** Everything ever built here is
+an ancestor of it. The old branches and their worktrees were removed in session
+6 after each was verified fully merged; their tips are listed at the top of this
+file if one ever needs recreating.
 
 **Start new work from `main`.** Note that `main` auto-deploys to Pages on push
 (`.github/workflows/deploy.yml`, gated on `npm run test:run`), so a push is a
