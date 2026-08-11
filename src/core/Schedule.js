@@ -35,7 +35,7 @@ import { addProject as runAddProject } from './projects.js';
 import { getWeekLoad as runWeekLoad, getTagBreakdown as runTagBreakdown, snapshot as runSnapshot } from './queries.js';
 import { whatToDo as runWhatToDo } from './whatToDo.js';
 import { suggestActivities as runSuggest, placeActivity as runPlaceActivity } from './suggest.js';
-import { energyBudget as runEnergyBudget, energyCalibration as runEnergyCalibration } from './energy.js';
+import { energyBudget as runEnergyBudget, energyCalibration as runEnergyCalibration, reserveAt } from './energy.js';
 import { overpackCheck } from './detectors.js';
 
 const UPDATE_WHITELIST = [
@@ -200,8 +200,32 @@ export class Schedule {
       t[key] = changes[key];
     }
     if (timeChanged) t.placedBy = 'user';
+    this._snapshotEnergy(t, changes);
     this._touch();
     return t;
+  }
+
+  /**
+   * Record the energy reserve a task was begun under, at the moment it is first
+   * rated. This is the substrate the learning model needs to answer "did I rate
+   * this badly because I was already drained?" — a question it cannot ask today,
+   * because `featureVector` has no energy terms and no history to give them.
+   *
+   * It MUST be captured at rating time and never recomputed. Deriving it later
+   * from the current schedule would train the model on a day that never
+   * happened, since tasks have since been added, moved and deleted.
+   *
+   * Taken one millisecond BEFORE the task starts, so it is the state you
+   * arrived in rather than the state the task itself left you in — otherwise
+   * cause and effect are conflated and the feature learns nothing.
+   *
+   * Written once. A later re-rating keeps the original snapshot, because the
+   * reserve you were under has not changed just because your opinion has.
+   */
+  _snapshotEnergy(task, changes) {
+    if (!changes || changes.satisfaction === undefined) return;
+    if (task.energyAt || !task.startTime) return;
+    task.energyAt = reserveAt(this, new Date(task.startTime.getTime() - 1));
   }
 
   addZone(data) {

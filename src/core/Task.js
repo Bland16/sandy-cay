@@ -68,6 +68,14 @@ export class Task {
     this.missedDeadline = data.missedDeadline ?? false;
     this.completion = data.completion ?? null;
     this.satisfaction = data.satisfaction ? { ...data.satisfaction } : null;
+    // The four-axis energy reserve you were CARRYING when this task began,
+    // snapshotted at the moment it was rated. Engine-recorded, never user-set,
+    // and never recomputed — the whole point is that it captures the day as it
+    // actually was. Recomputing it later from the current schedule would be
+    // retroactive fiction, because tasks have since been added, moved and
+    // deleted. `dayFill` has sat dead in the learning model for exactly this
+    // reason; this is the fix for that class of problem.
+    this.energyAt = data.energyAt ? { ...data.energyAt } : null;
     this.history = data.history ? { ...emptyHistory(), ...data.history } : emptyHistory();
     this.recurrence = data.recurrence ? reviveRecurrence(data.recurrence) : null;
     this.occurrenceData = data.occurrenceData ? { ...data.occurrenceData } : {};
@@ -192,6 +200,10 @@ export class Task {
       missedDeadline: this.missedDeadline,
       completion: this.completion,
       satisfaction: this.satisfaction ? { ...this.satisfaction } : null,
+      // Must be written here AND read in the constructor — a field present in
+      // only one of the two is silently dropped (that is exactly how `freq` was
+      // lost from recurrence periods, and `snapshots` from a footlocker import).
+      energyAt: this.energyAt ? { ...this.energyAt } : null,
       history: { ...this.history },
       recurrence: recurrenceToJSON(this.recurrence),
       occurrenceData: { ...this.occurrenceData },
