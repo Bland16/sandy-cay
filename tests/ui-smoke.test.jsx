@@ -110,15 +110,19 @@ describe('7B — a fixed task goes where you say', () => {
     expect(Number(card.closest('[data-dropzone]').dataset.dayIndex)).toBe(4); // Friday
   });
 
-  it('a flexible task is still auto-placed unless you ask to pick a time', () => {
+  it('a flexible task is still auto-placed unless you ask to pick a date', () => {
     render(<App />);
     fireEvent.click(screen.getByLabelText('Add task'));
     const panel = document.querySelector('.panel');
     // Flexible is the default, and offers no when-fields until asked.
+    expect(within(panel).queryByLabelText('Date')).toBeNull();
     expect(within(panel).queryByLabelText('Start time')).toBeNull();
     expect(within(panel).getByText(/no unscheduled tray/i)).toBeTruthy();
 
-    fireEvent.click(within(panel).getByText('pick a time'));
-    expect(within(panel).getByLabelText('Start time')).toBeTruthy();
+    // The opt-in is a DATE; the time is then optional on top of it, and blank
+    // means "that day, you choose when" — which is what flexible means.
+    fireEvent.click(within(panel).getByText('pick a date'));
+    expect(within(panel).getByLabelText('Date')).toBeTruthy();
+    expect(within(panel).getByLabelText('Start time').value).toBe('');
   });
 });

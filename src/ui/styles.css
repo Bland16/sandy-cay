@@ -603,7 +603,9 @@ body.sc-dragging { user-select: none; }
 .datein:focus { outline: 2px solid var(--primary); outline-offset: 1px; }
 /* The readback — which weekday, and how far off. A bare ISO date says neither. */
 .whennote { font-family: var(--font-type); font-size: 10.5px; letter-spacing: .04em; color: var(--ink-soft); margin-top: 6px; }
-.inlinecheck { text-transform: none; letter-spacing: 0; cursor: pointer; font-weight: 600; }
+/* The "pick a date" opt-in, sitting inside a .flabel. margin-left is load-bearing:
+   without it the label and this ran together as "Whenpick a date". */
+.inlinecheck { text-transform: none; letter-spacing: 0; cursor: pointer; font-weight: 600; margin-left: 9px; }
 .inlinecheck input { margin-right: 5px; vertical-align: -2px; }
 
 /* progressive disclosure for the placement range — collapsed by default, so the

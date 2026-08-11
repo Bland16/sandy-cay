@@ -6,97 +6,172 @@
 // whichever week the grid was showing. Adding "Orientation, 3 September" from an
 // August view was impossible without navigating there first.
 //
+// Who shows what (revised 2026-08-11 after the first cut got it wrong):
+//   flexible  — nothing, until you tick "pick a date"; then a date, and a time
+//               ONLY if you want one. A blank time means "that day, you choose".
+//   fixed     — a date AND a time. A fixed task is a time (7B).
+//   repeating — a date, meaning the week the pattern starts. Never hidden: the
+//               first cut hid the whole block, which read as "never built".
+//
 // The clock is frozen to a WEDNESDAY (2026-07-15) for the same reason the drag
-// and bulk suites are: a fresh flexible's placement origin is "now", so the
-// weekday the suite runs on changes where things land. See HANDOFF.
+// and bulk suites are: a fresh flexible's placement origin is "now". See HANDOFF.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, cleanup, screen, within, fireEvent } from '@testing-library/react';
+import { render, cleanup, screen, within, fireEvent, act } from '@testing-library/react';
 import App from '../src/App.jsx';
 import { weekStart, addDays, dateKey } from '../src/core/index.js';
 import { whenNote, fmtDay } from '../src/ui/components/panels/AddTaskPanel.jsx';
+import { STORAGE_KEY } from '../src/ui/useEngine.js';
 
 const WEDNESDAY = new Date(2026, 6, 15, 9, 0, 0); // Wed 15 Jul 2026, 09:00
 
 beforeEach(() => {
   window.localStorage.clear();
-  vi.useFakeTimers({ toFake: ['Date'] }); // fake Date only — async timers must live
+  // shouldAdvanceTime keeps async work alive while letting us step the save
+  // debounce on demand — the same setup ui-report.test.jsx uses.
+  vi.useFakeTimers({ shouldAdvanceTime: true });
   vi.setSystemTime(WEDNESDAY);
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
-/** Open the add-task panel and return it. */
 function openAdd() {
   render(<App />);
   fireEvent.click(screen.getByLabelText('Add task'));
   return document.querySelector('.panel');
 }
-
+const titled = (panel, v) =>
+  fireEvent.change(within(panel).getByPlaceholderText(/Call plumber/i), { target: { value: v } });
 const setDate = (panel, key) =>
   fireEvent.change(within(panel).getByLabelText('Date'), { target: { value: key } });
+const pickADate = (panel) => fireEvent.click(within(panel).getByText('pick a date'));
+/** Step past the save debounce, then read what actually persisted. */
+const savedTask = (title) => {
+  act(() => { vi.advanceTimersByTime(2500); });
+  return JSON.parse(window.localStorage.getItem(STORAGE_KEY)).tasks.find((t) => t.title === title);
+};
+
+describe('P1 — which fields each kind of task shows', () => {
+  it('a flexible task shows NO date until you ask for one', () => {
+    const panel = openAdd();
+    expect(within(panel).queryByLabelText('Date')).toBeNull();
+    expect(within(panel).queryByLabelText('Start time')).toBeNull();
+    expect(within(panel).getByText(/Placed by score this week/)).toBeTruthy();
+
+    pickADate(panel);
+    expect(within(panel).getByLabelText('Date')).toBeTruthy();
+    // The time is optional ON TOP of the date, and starts blank.
+    expect(within(panel).getByLabelText('Start time').value).toBe('');
+    expect(within(panel).getByText(/leave the time blank for any time/)).toBeTruthy();
+  });
+
+  it('a fixed task shows both, with a time already filled in', () => {
+    const panel = openAdd();
+    fireEvent.click(within(panel).getByText('Fixed'));
+    expect(within(panel).getByLabelText('Date')).toBeTruthy();
+    expect(within(panel).getByLabelText('Start time').value).not.toBe('');
+  });
+
+  it('a repeating task still shows its date, labelled Starts — it must never vanish', () => {
+    const panel = openAdd();
+    titled(panel, 'Gym');
+    fireEvent.click(within(panel).getByLabelText('Repeat this task'));
+
+    // The bug this replaces: the whole When block was hidden while repeating,
+    // so the feature looked unbuilt.
+    expect(within(panel).getByLabelText('Date')).toBeTruthy();
+    expect(within(panel).getByText('Starts')).toBeTruthy();
+    expect(within(panel).getByText(/first week the pattern runs/)).toBeTruthy();
+    // A pattern carries its own times, so no separate start time is asked for.
+    expect(within(panel).queryByLabelText('Start time')).toBeNull();
+  });
+
+  it('the When label and the opt-in are separate elements, not run together', () => {
+    const panel = openAdd();
+    // "Whenpick a date" was the rendered result of dropping a trailing space.
+    expect(within(panel).getByText('When')).toBeTruthy();
+    expect(within(panel).getByText('pick a date')).toBeTruthy();
+  });
+});
 
 describe('P1 — a task can be dated outside the viewed week', () => {
   it('a fixed task lands on the DATE given, not the same weekday of the viewed week', () => {
     const panel = openAdd();
     fireEvent.click(within(panel).getByText('Fixed'));
-    fireEvent.change(within(panel).getByPlaceholderText(/Call plumber/i), { target: { value: 'Orientation' } });
-    // Seven weeks past the viewed week — the old panel could not express this.
-    setDate(panel, '2026-09-03');
+    titled(panel, 'Orientation');
+    setDate(panel, '2026-09-03'); // seven weeks out
     fireEvent.change(within(panel).getByLabelText('Start time'), { target: { value: '14:00' } });
     fireEvent.click(within(panel).getByText('Add'));
 
-    // It is NOT in the viewed week, so the grid (still on July) must not show it.
-    expect(screen.queryByText('Orientation')).toBeNull();
-
-    // Follow the toast's offer, and there it is — on the 3rd, at the time given.
+    expect(screen.queryByText('Orientation')).toBeNull(); // not in the viewed week
     fireEvent.click(screen.getByText('Go there'));
     const card = screen.getByText('Orientation').closest('.card');
     expect(card.getAttribute('aria-label')).toContain('14:00–15:00');
-    // 3 Sep 2026 is a Thursday: day index 3, not "whatever weekday July showed".
-    expect(Number(card.closest('[data-dropzone]').dataset.dayIndex)).toBe(3);
+    expect(Number(card.closest('[data-dropzone]').dataset.dayIndex)).toBe(3); // Thu
   });
 
-  it('the toast names the day and offers to jump ONLY when it lands off-week', () => {
+  it('a dated flexible task is placed ON THAT DAY, by score — not just that week', () => {
+    const panel = openAdd();
+    titled(panel, 'Read chapter');
+    pickADate(panel);
+    setDate(panel, '2026-09-03'); // a Thursday, no time given
+    fireEvent.click(within(panel).getByText('Add'));
+
+    const t = savedTask('Read chapter');
+    expect(t).toBeTruthy();
+    // The whole point: the day is honoured, not merely the week it falls in.
+    expect(dateKey(new Date(t.startTime))).toBe('2026-09-03');
+  });
+
+  it('adding a time to a dated flexible task pins it there', () => {
+    const panel = openAdd();
+    titled(panel, 'Study group');
+    pickADate(panel);
+    setDate(panel, '2026-09-03');
+    fireEvent.change(within(panel).getByLabelText('Start time'), { target: { value: '16:30' } });
+    fireEvent.click(within(panel).getByText('Add'));
+
+    const t = savedTask('Study group');
+    expect(dateKey(new Date(t.startTime))).toBe('2026-09-03');
+    expect(new Date(t.startTime).getHours()).toBe(16);
+    expect(new Date(t.startTime).getMinutes()).toBe(30);
+    expect(t.placedBy).toBe('user'); // you chose it; re-optimize leaves it be
+  });
+
+  it('the toast names the day, and offers to jump ONLY when it lands off-week', () => {
     const panel = openAdd();
     fireEvent.click(within(panel).getByText('Fixed'));
-    fireEvent.change(within(panel).getByPlaceholderText(/Call plumber/i), { target: { value: 'Dentist' } });
+    titled(panel, 'Dentist');
     setDate(panel, dateKey(addDays(weekStart(WEDNESDAY), 4))); // Friday, this week
     fireEvent.click(within(panel).getByText('Add'));
 
     expect(document.querySelector('.toast').textContent).toContain('Fri 17 Jul');
-    // In the viewed week there is nowhere to go — the affordance must not appear.
-    expect(screen.queryByText('Go there')).toBeNull();
+    expect(screen.queryByText('Go there')).toBeNull(); // nowhere to go
   });
 
-  it('a flexible task is placed in the week of the date given, by score', () => {
+  it('the untouched default is the old behaviour: this week, placed by score', () => {
     const panel = openAdd();
-    fireEvent.change(within(panel).getByPlaceholderText(/Call plumber/i), { target: { value: 'Read chapter' } });
-    setDate(panel, '2026-09-03'); // no time picked — placement stays scored
-    expect(within(panel).queryByLabelText('Start time')).toBeNull();
-    fireEvent.click(within(panel).getByText('Add'));
-
-    fireEvent.click(screen.getByText('Go there'));
-    const card = screen.getByText('Read chapter').closest('.card');
-    expect(card).toBeTruthy();
-    // Scored placement, not pinned to the exact date — but inside that week.
-    const day = Number(card.closest('[data-dropzone]').dataset.dayIndex);
-    expect(day).toBeGreaterThanOrEqual(0);
-    expect(day).toBeLessThanOrEqual(6);
-  });
-
-  it('leaving the date alone reproduces the old behaviour exactly (today, this week)', () => {
-    const panel = openAdd();
-    fireEvent.change(within(panel).getByPlaceholderText(/Call plumber/i), { target: { value: 'Break' } });
-    // Default is today when the viewed week is the current one.
-    expect(within(panel).getByLabelText('Date').value).toBe(dateKey(WEDNESDAY));
+    titled(panel, 'Break');
     fireEvent.click(within(panel).getByText('Add'));
 
     expect(screen.getByText('Break')).toBeTruthy(); // visible without jumping
     expect(screen.queryByText('Go there')).toBeNull();
+    const t = savedTask('Break');
+    const ws = weekStart(WEDNESDAY).getTime();
+    expect(new Date(t.startTime).getTime()).toBeGreaterThanOrEqual(ws);
+    expect(new Date(t.startTime).getTime()).toBeLessThan(addDays(weekStart(WEDNESDAY), 7).getTime());
   });
 
-  it('submit is blocked without a date, rather than silently defaulting', () => {
+  it('a fixed task without a time cannot be submitted — that is what fixed means', () => {
     const panel = openAdd();
-    fireEvent.change(within(panel).getByPlaceholderText(/Call plumber/i), { target: { value: 'Thing' } });
+    fireEvent.click(within(panel).getByText('Fixed'));
+    titled(panel, 'Thing');
+    fireEvent.change(within(panel).getByLabelText('Start time'), { target: { value: '' } });
+    expect(within(panel).getByText('Add').disabled).toBe(true);
+  });
+
+  it('a cleared date blocks submit rather than silently defaulting', () => {
+    const panel = openAdd();
+    titled(panel, 'Thing');
+    pickADate(panel);
     setDate(panel, '');
     expect(within(panel).getByText('Add').disabled).toBe(true);
   });
@@ -114,6 +189,7 @@ describe('P1 — the readback', () => {
 
   it('renders under the field and follows the date', () => {
     const panel = openAdd();
+    pickADate(panel);
     expect(within(panel).getByText('Wednesday · this week')).toBeTruthy();
     setDate(panel, '2026-09-03');
     expect(within(panel).getByText('Thursday · 7 weeks ahead')).toBeTruthy();
@@ -128,43 +204,57 @@ describe('P1 — the readback', () => {
 });
 
 describe('P4 — the placement range is behind a disclosure', () => {
-  it('is collapsed by default, so the common case stays one field', () => {
+  it('is collapsed by default, and reads "that week" until a date narrows it', () => {
     const panel = openAdd();
     expect(within(panel).queryByText('Place it')).toBeNull();
     fireEvent.click(within(panel).getByText(/more options/));
-    expect(within(panel).getByText('Place it')).toBeTruthy();
     expect(within(panel).getByText('that week')).toBeTruthy();
+
+    pickADate(panel); // now the default really is one day, so say so
+    expect(within(panel).getByText('that day')).toBeTruthy();
   });
 
-  it('is offered only where it means something — never for a task you timed yourself', () => {
+  it('is never offered for a task you timed yourself', () => {
     const panel = openAdd();
-    fireEvent.click(within(panel).getByText('Fixed')); // a fixed task IS its time
+    fireEvent.click(within(panel).getByText('Fixed'));
     expect(within(panel).queryByText(/more options/)).toBeNull();
+
+    cleanup();
+    const p2 = openAdd();
+    pickADate(p2);
+    fireEvent.change(within(p2).getByLabelText('Start time'), { target: { value: '10:00' } });
+    expect(within(p2).queryByText(/more options/)).toBeNull(); // pinned now
   });
 
-  it('widens the search past the chosen week when asked', () => {
+  it('widens the search past the chosen day when asked', () => {
     const panel = openAdd();
-    fireEvent.change(within(panel).getByPlaceholderText(/Call plumber/i), { target: { value: 'Essay' } });
-    setDate(panel, dateKey(addDays(weekStart(WEDNESDAY), 7))); // next week
+    titled(panel, 'Essay');
+    pickADate(panel);
+    setDate(panel, '2026-08-10'); // a Monday, four weeks out
     fireEvent.click(within(panel).getByText(/more options/));
-    fireEvent.change(within(panel).getByLabelText('Place it before'), { target: { value: '2026-08-14' } });
+    fireEvent.change(within(panel).getByLabelText('Place it before'), { target: { value: '2026-08-21' } });
     fireEvent.click(within(panel).getByText('Add'));
 
-    // It lands somewhere in that window rather than being clamped to one week.
-    fireEvent.click(screen.getByText('Go there'));
-    expect(screen.getByText('Essay')).toBeTruthy();
+    const t = savedTask('Essay');
+    expect(t).toBeTruthy();
+    const at = new Date(t.startTime);
+    // Free to land anywhere in the window, rather than clamped to the 10th.
+    expect(at.getTime()).toBeGreaterThanOrEqual(new Date(2026, 7, 10).getTime());
+    expect(at.getTime()).toBeLessThan(new Date(2026, 7, 22).getTime());
   });
 });
 
-describe('P1 — repeating still takes its times from the pattern', () => {
-  it('hides the date field but says which week the pattern starts', () => {
+describe('P1 — the repeating pattern starts from the date you gave', () => {
+  it('seeds effectiveFrom from the chosen date, not the week being viewed', () => {
     const panel = openAdd();
-    fireEvent.change(within(panel).getByPlaceholderText(/Call plumber/i), { target: { value: 'Gym' } });
-    setDate(panel, '2026-09-08'); // a Tuesday, seven weeks out
+    titled(panel, 'Gym');
     fireEvent.click(within(panel).getByLabelText('Repeat this task'));
+    setDate(panel, '2026-09-08'); // a Tuesday, seven weeks out
+    fireEvent.click(within(panel).getByText('Add'));
 
-    expect(within(panel).queryByLabelText('Date')).toBeNull();
-    // The hidden date still seeds effectiveFrom, so it must be stated, not assumed.
-    expect(within(panel).getByText(/Starts the week of Mon 7 Sep/)).toBeTruthy();
+    const t = savedTask('Gym');
+    expect(t.recurrence).toBeTruthy();
+    // Monday of the chosen date's week — not Monday of the viewed July week.
+    expect(dateKey(new Date(t.recurrence.periods[0].effectiveFrom))).toBe('2026-09-07');
   });
 });

@@ -73,6 +73,48 @@ sense — a surprise the person did not consent to.
 
 ## 2. P1 — a date, not a weekday
 
+### 2.0 ⚠️ REVISED 2026-08-11 after the first cut was reviewed
+
+The first build of P1 followed §2.1–2.2 as originally written and was **wrong in
+three ways**, all caught by the user looking at the real panel:
+
+1. **The whole "When" block was hidden while Repeats was on** (§2.2 said the date
+   field hides for a repeating task). On screen this reads as *the feature was
+   never built* — you toggle Repeats and the date field you were promised is
+   simply absent. **Fixed:** the date is always shown; when repeating it is
+   labelled **"Starts"** and means the first week the pattern runs. A field that
+   disappears is worse than a field that changes meaning.
+2. **A flexible task showed a date by default, and the date only chose the
+   week.** So the control said "3 September" and the task could land on the 1st.
+   **Fixed:** a flexible task shows nothing until you tick **"pick a date"**, and
+   once you do, the task is placed **on that day** (`from === to`, which bounds
+   the scored search to one day — `to` is inclusive of its own day; proven by
+   probe). The label and the behaviour now agree.
+3. **The opt-in said "pick a time"; it should say "pick a date"**, with the time
+   *optional* on top of it. A blank time means "that day, you choose when",
+   which is what flexible means. Giving a time pins it (`placedBy: 'user'`).
+
+Plus one presentational defect the suite could not see: the label rendered as
+**"Whenpick a time"**, because the original code's trailing space in
+`{type === 'fixed' ? 'When' : 'When '}` was dropped. Now a `<span>` and a
+`margin-left`, so it cannot recur.
+
+**The lesson is the one this project keeps relearning:** all 484 tests were green
+across every one of these. Behaviour tests cannot see a field that isn't there,
+a label that reads wrong, or a control that lies about what it does. The states
+were only found by *dumping what the panel actually renders* in each combination
+— which is now the first thing to do when changing a panel.
+
+**Who shows what, as built:**
+
+| | date | time | placement |
+|---|---|---|---|
+| flexible, default | — | — | scored, the viewed week (unchanged from before P1) |
+| flexible + "pick a date" | ✓ | optional | scored, **that day** |
+| flexible + date + time | ✓ | ✓ | pinned, `placedBy: 'user'` |
+| fixed | ✓ | ✓ (required) | pinned |
+| repeating | ✓ as **"Starts"** | — (pattern carries times) | pattern |
+
 ### 2.1 The control
 
 The weekday `<select>` becomes a **date + time pair**:

@@ -86,24 +86,37 @@ export default function AddTaskPanel({ sched, mutate, weekStart, onClose, showTo
   const [pinned, setPinned] = useState(false);
   const [deadline, setDeadline] = useState('');
   const [recModel, setRecModel] = useState(emptyRecurrence);
-  const [pickTime, setPickTime] = useState(false);
+  // "pick a date" opts a flexible task out of "somewhere this week" and onto a
+  // specific day. The TIME is then optional on top of it — blank means "that
+  // day, you choose when", which is the whole point of a flexible task.
+  const [pickDate, setPickDate] = useState(false);
   const [dateStr, setDateStr] = useState(() => defaultDateKey(weekStart));
-  const [start, setStart] = useState(defaultStart);
+  const [start, setStart] = useState(''); // '' = any time on that day
   // P4 — the wider placement range, behind a disclosure so the common case stays
   // one field. 'week' is today's behaviour and stays the default.
   const [moreOpen, setMoreOpen] = useState(false);
   const [rangeMode, setRangeMode] = useState('week'); // 'week' | 'until'
   const [rangeUntil, setRangeUntil] = useState('');
 
-  const canSubmit = title.trim().length > 0 && !!dateStr;
   const repeats = !!recModel.enabled;
-  // A fixed task IS a time — the choice isn't optional. A repeating task gets
-  // its times from the pattern's windows instead.
-  const timed = !repeats && (type === 'fixed' || pickTime);
-  // The date drives which week gets searched, so a flexible task needs it too.
+  // Who shows what:
+  //   repeating  — a date, meaning the first week the pattern runs. NEVER
+  //                hidden: making the field disappear is what made this look
+  //                unbuilt, and the value still drives effectiveFrom either way.
+  //   fixed      — a date AND a time. A fixed task IS a time (7B).
+  //   flexible   — nothing, until you tick "pick a date"; then a date, and a
+  //                time only if you want one.
+  const showDate = repeats || type === 'fixed' || pickDate;
+  const showTime = !repeats && (type === 'fixed' || pickDate);
+  // Pinned only when a time was actually given. A date on its own still goes
+  // through scored placement — just bounded to that day.
+  const timed = showTime && !!start;
   const chosen = dateStr ? dateFromKey(dateStr) : weekStart;
-  const chosenWeek = weekStartOf(chosen);
-  const canRange = !repeats && !timed;
+  // The range only means something for a task the scorer is still placing.
+  const canRange = !repeats && type === 'flexible' && !timed;
+  const canSubmit = title.trim().length > 0
+    && (!showDate || !!dateStr)
+    && !(type === 'fixed' && !repeats && !start); // a fixed task without a time isn't fixed
 
   const submit = () => {
     if (!canSubmit) return;
@@ -116,16 +129,23 @@ export default function AddTaskPanel({ sched, mutate, weekStart, onClose, showTo
       deadline: deadline ? dateFromKey(deadline) : null,
     };
 
-    // Bound the scored search. By default that's the week holding the date you
-    // picked — which is the viewed week when you haven't touched the field, so
-    // this is unchanged for the common case. "More options" widens it.
+    // Bound the scored search. Three cases, and the default is byte-identical to
+    // what the panel did before there was a date field at all.
+    //   picked a date  → THAT DAY (`to` is inclusive of its own day, which is
+    //                    why from === to means exactly one day — proven by probe)
+    //   no date        → the viewed week, from now if we're living in it
+    //   "before <date>"→ from the start point out to that bound
     const until = rangeMode === 'until' && rangeUntil ? dateFromKey(rangeUntil) : null;
+    const searchStart = pickDate ? (chosen > now ? chosen : now) : placementFrom(weekStart, now);
     if (canRange && until && until >= chosen) {
-      data.from = chosen > now ? chosen : now;
+      data.from = searchStart;
       data.to = until;
+    } else if (pickDate) {
+      data.from = searchStart;
+      data.to = chosen;
     } else {
-      data.from = placementFrom(chosenWeek, now);
-      data.to = addDays(chosenWeek, 6);
+      data.from = placementFrom(weekStart, now);
+      data.to = addDays(weekStart, 6);
     }
 
     // The pattern starts the week of the date you chose, not the week you happen
@@ -181,7 +201,9 @@ export default function AddTaskPanel({ sched, mutate, weekStart, onClose, showTo
       <PanelHeader title="Add task" sub="quick capture" onClose={onClose} />
       <div className="fieldrow">
         <div className="chips">
-          <button type="button" className={`pill${type === 'fixed' ? ' on' : ''}`} onClick={() => setType('fixed')}>Fixed</button>
+          {/* A fixed task is a time, so give it one rather than making the
+              person discover a disabled button. */}
+          <button type="button" className={`pill${type === 'fixed' ? ' on' : ''}`} onClick={() => { setType('fixed'); if (!start) setStart(defaultStart()); }}>Fixed</button>
           <button type="button" className={`pill${type === 'flexible' ? ' on' : ''}`} onClick={() => setType('flexible')}>Flexible</button>
         </div>
       </div>
@@ -194,80 +216,94 @@ export default function AddTaskPanel({ sched, mutate, weekStart, onClose, showTo
         <DurationControl minutes={dur} onChange={setDur} />
       </div>
 
-      {/* When. A fixed task must say the time; a flexible one may. Both need the
-          date, because it decides which week gets searched. A repeating task
-          takes its times from the pattern, so asking twice would contradict it. */}
-      {!repeats && (
-        <div className="fieldrow">
-          <div className="flabel">
-            When
-            {type !== 'fixed' && (
-              <label className="inlinecheck">
-                <input
-                  type="checkbox"
-                  checked={pickTime}
-                  onChange={(e) => setPickTime(e.target.checked)}
-                />
-                pick a time
-              </label>
-            )}
-          </div>
-          <div className="winrow">
-            <input
-              className="datein"
-              type="date"
-              value={dateStr}
-              onChange={(e) => setDateStr(e.target.value)}
-              aria-label="Date"
-            />
-            {timed && (
+      {/* When. Always present — a repeating task shows the date as the week the
+          pattern starts rather than hiding it, because a field that disappears
+          reads as a feature that was never built. */}
+      <div className="fieldrow">
+        <div className="flabel">
+          <span>{repeats ? 'Starts' : 'When'}</span>
+          {/* A flexible task is placed by score; a date opts it onto one day.
+              The <span> above matters: without it the label and this control
+              concatenated into "Whenpick a time". */}
+          {!repeats && type !== 'fixed' && (
+            <label className="inlinecheck">
               <input
-                className="timein"
-                type="time"
-                step="900"
-                value={start}
-                onChange={(e) => setStart(e.target.value)}
-                aria-label="Start time"
+                type="checkbox"
+                checked={pickDate}
+                onChange={(e) => setPickDate(e.target.checked)}
               />
-            )}
-          </div>
-          <div className="whennote">{whenNote(dateStr)}</div>
-          {!timed && <p className="psub-note">Placed by score somewhere that week — no unscheduled tray.</p>}
-
-          {/* P4 — the wider range, collapsed. Default behaviour is unchanged, so
-              the panel stays one field until you ask for more. */}
-          {canRange && (
-            <div className="moreopts">
-              <button type="button" className="disclose" aria-expanded={moreOpen} onClick={() => setMoreOpen(!moreOpen)}>
-                {moreOpen ? '－ fewer options' : '＋ more options'}
-              </button>
-              {moreOpen && (
-                <div className="optbody">
-                  <div className="flabel">Place it</div>
-                  <label className="radiorow">
-                    <input type="radio" name="addrange" checked={rangeMode === 'week'} onChange={() => setRangeMode('week')} />
-                    that week
-                  </label>
-                  <label className="radiorow">
-                    <input type="radio" name="addrange" checked={rangeMode === 'until'} onChange={() => setRangeMode('until')} />
-                    any time before
-                    <input
-                      className="datein sm"
-                      type="date"
-                      value={rangeUntil}
-                      onChange={(e) => { setRangeUntil(e.target.value); setRangeMode('until'); }}
-                      aria-label="Place it before"
-                    />
-                  </label>
-                  {/* A search window is not a promise. Conflating the two would
-                      make the report claim a deadline you never set. */}
-                  <p className="psub-note">A search window, not a deadline — it only says where to look.</p>
-                </div>
-              )}
-            </div>
+              pick a date
+            </label>
           )}
         </div>
-      )}
+
+        {showDate ? (
+          <>
+            <div className="winrow">
+              <input
+                className="datein"
+                type="date"
+                value={dateStr}
+                onChange={(e) => setDateStr(e.target.value)}
+                aria-label="Date"
+              />
+              {showTime && (
+                <input
+                  className="timein"
+                  type="time"
+                  step="900"
+                  value={start}
+                  onChange={(e) => setStart(e.target.value)}
+                  aria-label="Start time"
+                />
+              )}
+            </div>
+            <div className="whennote">{whenNote(dateStr)}</div>
+            {repeats && <p className="psub-note">The first week the pattern runs.</p>}
+            {!repeats && type !== 'fixed' && !start && (
+              <p className="psub-note">Placed by score on that day — leave the time blank for any time.</p>
+            )}
+            {!repeats && type === 'fixed' && !start && (
+              <p className="psub-note">A fixed task needs a time — that&rsquo;s what makes it fixed.</p>
+            )}
+          </>
+        ) : (
+          <p className="psub-note">Placed by score this week — no unscheduled tray.</p>
+        )}
+
+        {/* P4 — the wider range, collapsed. Default behaviour is unchanged, so
+            the panel stays one field until you ask for more. */}
+        {canRange && (
+          <div className="moreopts">
+            <button type="button" className="disclose" aria-expanded={moreOpen} onClick={() => setMoreOpen(!moreOpen)}>
+              {moreOpen ? '－ fewer options' : '＋ more options'}
+            </button>
+            {moreOpen && (
+              <div className="optbody">
+                <div className="flabel">Place it</div>
+                <label className="radiorow">
+                  <input type="radio" name="addrange" checked={rangeMode === 'week'} onChange={() => setRangeMode('week')} />
+                  {pickDate ? 'that day' : 'that week'}
+                </label>
+                <label className="radiorow">
+                  <input type="radio" name="addrange" checked={rangeMode === 'until'} onChange={() => setRangeMode('until')} />
+                  any time before
+                  <input
+                    className="datein sm"
+                    type="date"
+                    value={rangeUntil}
+                    onChange={(e) => { setRangeUntil(e.target.value); setRangeMode('until'); }}
+                    aria-label="Place it before"
+                  />
+                </label>
+                {/* A search window is not a promise. Conflating the two would
+                    make the report claim a deadline you never set. */}
+                <p className="psub-note">A search window, not a deadline — it only says where to look.</p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
       <div className="fieldrow">
         <div className="flabel">Tags</div>
         <TagEditor tags={tags} onChange={setTags} suggestions={tagsInUse(sched).filter((t) => !sched.isTagRetired(t))} />
@@ -291,10 +327,6 @@ export default function AddTaskPanel({ sched, mutate, weekStart, onClose, showTo
       <div className="fieldrow">
         <div className="flabel">Repeat?</div>
         <RecurrenceEditor model={recModel} onChange={setRecModel} />
-        {/* The date field is hidden while repeating, but it still seeds the
-            pattern's first week — so say which week that is rather than
-            deciding it invisibly. */}
-        {repeats && <p className="psub-note">Starts the week of {fmtDay(chosenWeek)}.</p>}
       </div>
       <button type="button" className="btn cta" style={{ marginTop: 8 }} disabled={!canSubmit} onClick={submit}>Add</button>
     </>
