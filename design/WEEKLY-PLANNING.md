@@ -46,11 +46,10 @@ repeatingProject = {
   id, title, tags,
   amountMin,          // 120 — what each period owes
   cadence,            // reuse the P2 recurrence vocabulary: weekly, monthly, …
-  chunking: {         // how the amount may be broken up
-    min, max,         // e.g. 30–90 min per sitting
+  chunking: {         // BOUNDS, not a size — the week decides (§4.1)
+    min, max,         // e.g. never under 30 min, never over 4 h
     maxPerDay,        // e.g. 1 — don't stack two maths sessions on one day
   },
-  spread,             // 'even' | 'asap' | 'late'  — see §4
   lastFilled,         // which period has already been generated
 }
 ```
@@ -103,9 +102,9 @@ editors share (EDITOR-REDESIGN §4), so it costs no new vocabulary:
 ```
 STANDING COMMITMENTS                          ＋ new
 
-  Maths homework        2h / week · 30–90m sittings · spread even
-  Reading               3h / week · 1 sitting       · spread late
-  Gym                   3 × / week                  · spread even
+  Maths homework        2h / week · sittings 30m–4h · max 1/day
+  Reading               3h / week · sittings 1h–3h  · max 1/day
+  Gym                   3h / week · sittings 1h     · max 1/day
 ```
 
 Drilling into one:
@@ -116,10 +115,10 @@ TAGS      ( maths ) ( coursework ) ＋
 
 HOW MUCH  [ 2 ] hours   every  ( week ▾ )        ← P2's cadence vocabulary
 
-SITTINGS  between [ 30 ] and [ 90 ] min
+SITTINGS  no shorter than [ 30 ] min · no longer than [ 4 ] h
           at most [ 1 ] a day
-
-SPREAD    ( even ) ( as early as possible ) ( leave it late )
+          Takes the longest run your week has room for, and
+          splits only when it has to.
 
           It will be planned on Sunday for the week ahead.
 ```
@@ -130,12 +129,122 @@ And a single global setting, on the existing Cabana tuning card:
 PLANNING DAY   ( Sunday ▾ )     ☑ offer to plan the week ahead
 ```
 
-**Why these particular knobs.** Each exists because leaving it fixed would be
-wrong for someone: `maxPerDay` is what stops "2h of maths" becoming one
-exhausting block or two sessions on the same evening; `spread` is the difference
-between a person who front-loads and one who doesn't; the sitting range is the
-same elastic `.rangefield` the activity editor already uses for duration, so it
-is a control that exists.
+**Why these particular knobs.** `maxPerDay` stops "2h of maths" becoming two
+sessions on the same evening, and the sitting range is the elastic `.rangefield`
+the activity editor already uses, so it is a control that exists.
+
+### 4.1 Sittings adapt to the week — they are not a fixed size
+
+**Per the user: "I can work for four hours straight if my week has that chunk
+open, otherwise it can break into multiple sessions depending on my time."**
+
+So sitting length is an *outcome*, not a setting. Generation asks the week what
+it actually has:
+
+- Prefer the **fewest, longest sittings** the open time allows, up to the stated
+  maximum.
+- Split only when no single run is long enough, and into the **fewest pieces
+  that fit** — not a fixed number.
+- Never below the stated minimum. If even the minimum will not fit, that is the
+  under-fill case (§4.3), not a reason to emit a five-minute fragment.
+
+This is what makes the range mean something: "30 min – 4 h" says *never bother
+me for less than half an hour, and I'll happily do four straight if the week has
+it* — a real description of how a person works. `sliceChunks` already takes a
+min and a max; what it does **not** do is look at the week's actual shape before
+choosing. That is the engine work, and it is the interesting part of this build.
+
+### 4.2 Placement: open slots always — until the deadline is at risk
+
+**Per the user, the per-commitment mode knob is dropped.** There is one
+behaviour: **fit into open slots, and never move anything.** Re-optimise already
+exists as a button, and pressing it is the user's move to make.
+
+**One exception, and it is an OFFER.** If the commitment cannot finish before
+its deadline in the open time available, the app says so and offers to
+re-optimise — and in that case it may take the place of **lower-priority
+flexible work**.
+
+Two load-bearing points:
+
+- **Nothing moves until accepted**, with a preview naming what would move. Same
+  shape as the ritual itself (§3), and inherited from the same rollover decision.
+- **This is the first automatic use of `priority`.** `conflicts.js` deliberately
+  does *not* compare priority (R-1: "the dropped task wins by the user's
+  action"), and that stays true — R-1 governs the user's hand. An automatic
+  re-optimise the user explicitly asked for is a different context, and ranking
+  by priority there is exactly what the field is for. It has been close to
+  decorative until now.
+
+### 4.3 When it does not fit
+
+Say it plainly and do nothing else: *"Maths homework — 1h 30m of 2h placed; the
+week had no room for the rest."* No debt, no rollover, no red. §5 covers why.
+
+---
+
+## 4.4 Finish early on purpose — the deadline buffer
+
+**This is not specific to repeating projects. It applies to every deadlined
+task, and it closes a real gap.**
+
+Today a deadline is only a **hard cap on the search window**
+(`placeTask`: `searchOpts.to = task.deadline`). `scoring.js` has **no deadline
+term at all** — its four weights are proximity, balance, stability and
+preference, and proximity measures distance from an *origin*, not from a due
+date. So a task due Friday 17:00 may legitimately be placed finishing 16:59, and
+nothing prefers earlier.
+
+Meanwhile `report.js#buildDeadlineBuffer` already computes
+`deadline − scheduled end` and flags anything under 24 hours as close to the
+wire. **The app reports on a quality it never optimises for.** This rule closes
+that loop, and the existing report becomes the honest feedback on whether it
+works.
+
+### The rule
+
+> Aim to finish **one fifth of the task's own length** before the deadline.
+
+A 5-hour essay wants an hour spare; a 30-minute errand wants six minutes.
+
+**A preference, not a constraint** — per the user, "I don't think it's a must
+but it should definitely have a high weight." So it becomes a **fifth scoring
+weight**, `buffer`, renormalised with the others exactly as `normalizeWeights`
+already does. That single decision is what makes the "obvious exceptions" fall
+out for free: an overburdened week or a two-day deadline simply cannot score
+well on it, and the other weights win. **No special-case logic for the
+exceptions at all** — which is the strongest argument for making it a weight.
+
+### Why one fifth of the TASK, not one fifth of the runway
+
+Both readings were on the table. Taking the task's own length, because:
+
+1. **It is explainable in one sentence:** *if this runs 20% over, you still make
+   it.* It is an overrun allowance, and overrun scales with the size of the job,
+   not with how much notice you happened to get.
+2. **The runway version collapses into something the app already does.** As a
+   *preference*, "finish 1/5 of the remaining runway early" just means "earlier
+   is better, proportionally" — which is what the `proximity` weight already
+   expresses. It would be a second, differently-shaped copy of an existing
+   term, and this codebase has been bitten by exactly that (`format.js` grew a
+   second ISO-week implementation and the two disagreed).
+3. **It is bounded.** It never asks to reserve more slack than the work is
+   worth, so it cannot dominate a tight week.
+
+Three weeks of notice on a 5-hour essay therefore aims at one hour early, not
+four days early — and `proximity` is what pulls it earlier than that anyway.
+
+### The chunked case, which is the one that matters here
+
+**For a repeating project the buffer is computed on the whole remaining amount,
+not per sitting.** Otherwise 30-minute sittings each get a 6-minute cushion and
+the *project* has none. "2h of maths by Sunday" should aim to be done by roughly
+Saturday evening, not to finish each half-hour six minutes early.
+
+**Minor open point (D-6):** whether to floor the buffer for very short tasks. At
+1/5, a 20-minute errand wants four minutes, which is below the 15-minute grid
+snap and so effectively nothing. A floor of one break-padding (30 min default)
+would make it meaningful, at the cost of a rule with two numbers in it.
 
 ---
 
@@ -158,9 +267,13 @@ is a control that exists.
 ## 6. Open decisions — sign-off before build
 
 - **D-1.** Does a repeating project's amount count **hours** (2h/week) or
-  **sessions** (3 gym visits/week)? The sketch above shows both, which is
-  probably one too many. Sessions are a natural fit for the gym; hours are
-  natural for study. Supporting both is more UI; supporting one is a compromise.
+  **sessions** (3 gym visits/week)? Hours are natural for study, sessions for
+  the gym. Supporting both is more UI; supporting one is a compromise. §4.1's
+  adaptive sittings lean toward **hours**, since "3 × 1h" expresses a session
+  count anyway and hours are what the week actually spends.
+- **D-6.** Floor the deadline buffer for very short tasks? At 1/5 a 20-minute
+  errand wants 4 minutes, below the 15-minute snap and so effectively zero. See
+  §4.4.
 - **D-2.** Under-done week: silently let it go (the spec's default above), or
   *offer* the shortfall to next week the way §3.6 offers unfinished work? The
   offer is consistent with existing behaviour; the silence is kinder.
@@ -178,8 +291,12 @@ is a control that exists.
 
 ## 7. Build order, if signed off
 
+0. **The `buffer` scoring weight** (§4.4) — independent of everything else here,
+   useful on its own for every deadlined task, and provable by probe in an
+   afternoon. Worth shipping first and separately.
 1. **Engine**: the repeating-project object + generation for a period, reusing
-   `sliceChunks`/`redistribute`. Testable with no UI at all.
+   `sliceChunks`/`redistribute`, with §4.1's "ask the week what it has" as the
+   genuinely new part. Testable with no UI at all.
 2. **Cabana card**: list + editor on the `Drill` idiom.
 3. **The ritual**: planning-day banner, preview, accept/decline.
 4. **Wrap report line**: the plain fact, no verdict.
