@@ -11,7 +11,7 @@ import TagManager from './TagManager.jsx';
 import EnergyCard from './EnergyCard.jsx';
 import ZonesEditor from './ZonesEditor.jsx';
 
-const WEIGHT_KEYS = [['proximity', 'Proximity'], ['balance', 'Balance'], ['stability', 'Stability'], ['preference', 'Preference (learned)']];
+const WEIGHT_KEYS = [['proximity', 'Proximity'], ['balance', 'Balance'], ['stability', 'Stability'], ['preference', 'Preference (learned)'], ['buffer', 'Finish early']];
 
 export default function Cabana({ sched, mutate, weekStart, onBack, onReplace, onReset, showToast }) {
   const fileRef = useRef(null);
