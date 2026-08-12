@@ -129,9 +129,15 @@ is a holiday.
 - **D-2.** Should an imported **holiday** offer to block the day *at import
   time* ("3 holidays imported — block those days?"), or stay silent until you
   click one? Offering is helpful; asking during an import is a lot of dialogue.
-- **D-3.** **Recurring** day notes — a birthday every year. Reuse the P2
-  `freq: 'yearly'` window shape, or keep notes one-off and let the yearly
-  repeat be an ordinary task? Reuse is tidier but couples two models.
+- **D-3. RESOLVED 2026-08-11 — REUSE.** A recurring day note carries the same
+  `{ freq, windows, interval, effectiveFrom, effectiveUntil }` period shape P2
+  built for tasks, with the yearly window `{ month, monthDay }` doing exactly
+  what it already does for "every 3 September". A birthday is that shape.
+  Building a second, notes-only repeat vocabulary would be the design debt this
+  project keeps paying down — two descriptions of one idea, drifting apart (see
+  `role`, and SPEC §4.3's window-row that exists twice). It also means the skip
+  rules come free: 29 February appears only in leap years, without a line of
+  new code.
 - **D-4.** Does the **wrap report** mention them ("this week contained
   Thanksgiving")? It would explain an unusual week honestly, without judgement —
   which is the kind of fact the report is for.
@@ -142,7 +148,50 @@ is a holiday.
 
 ---
 
-## 7. Build order
+---
+
+## 7. Where they live — the Cabana, with a quick-add on the day
+
+**Decided 2026-08-11.** Zones settle this: they are dated things that render on
+the grid as bands and are **managed in the Cabana**. A day note is the same
+shape — dated, drawn on the grid, standing rather than momentary — so it goes
+where its nearest relative already is.
+
+**The Cabana card is the home.** A `Day notes` card beside `Zones`, on the
+existing `DrillList` → `DrillEditor` idiom the other editors share, so it costs
+no new vocabulary:
+
+```
+DAY NOTES                                     ＋ new
+
+  Thanksgiving          Thu 26 Nov            holiday · imported
+  Reading week          23–27 Nov             note
+  Mum's birthday        3 Sep · every year    note · repeats
+```
+
+Three reasons it is the Cabana and not only the day header:
+
+1. **Imports arrive in bulk.** A Google holidays calendar is ~20 entries a year.
+   Reviewing, pruning and re-tagging that is a list job; a day header shows one
+   day.
+2. **A recurring note is standing configuration**, not a fact about one date —
+   the same argument that puts Zones there.
+3. **You need to see them together** to answer "what have I got this term?",
+   which no per-day surface can do.
+
+**The day header keeps a quick-add.** `＋ note` on the day you are looking at,
+because "Mum's visiting that week" occurs to you while looking at that week.
+This is **quick capture handing off to a full editor**, exactly the split
+`AddTaskPanel` and `TaskPanel` already are — not a second editor. It writes a
+label and a range and nothing else; anything further drills into the card.
+
+**Deliberately NOT a third surface.** Sharp edge #14's warning is that a third
+copy of a day-walk drifts from the other two, and §4.3's window-row proves it —
+it exists twice and the two have already diverged. One editor, one quick-add.
+
+---
+
+## 8. Build order
 
 1. **The model + `.ics` import** — a day note is data; getting holidays in
    correctly is the whole payoff, and it is provable by probe with no UI at all.
