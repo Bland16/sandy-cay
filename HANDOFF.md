@@ -1,7 +1,7 @@
 # Sandy Cay — handoff
 
 **Updated:** 2026-08-11, session 6. **`main` is the trunk and the ONLY branch** —
-it is live on Pages (https://bland16.github.io/sandy-cay/). **558 tests green.**
+it is live on Pages (https://bland16.github.io/sandy-cay/). **569 tests green.**
 
 The spent worktrees and all six merged branches were removed at the end of
 session 6, each verified at **0 unmerged commits and 0 dirty files** first.
@@ -25,7 +25,7 @@ carryOver + iCal fixes, and **session 6's dates-and-recurrence work**.
 ```bash
 npm install
 npm run dev      # http://localhost:5173/sandy-cay/
-npm run test:run # 558 tests, all green any day of the week (flaky tests fixed)
+npm run test:run # 569 tests, all green any day of the week (flaky tests fixed)
 npm run build
 npx eslint src
 ```
@@ -407,9 +407,23 @@ a block is honest there.
 8. **Tests inject fixed dates.** Never let the engine read the wall clock.
 9. **Don't read `design/layout-*.html`** (~330KB base64 fonts) — it killed a
    subagent.
-10. **The app ships EMPTY.** `seed()` is a **test fixture**; UI tests hand it to
-    `<App/>` via `localStorage.setItem(STORAGE_KEY, …)`. Don't reintroduce
-    demo data on first run.
+10. **The app ships with NO TASKS, but WITH starter buckets.** `seed()` is a
+    **test fixture**; UI tests hand it to `<App/>` via
+    `localStorage.setItem(STORAGE_KEY, …)`. Don't reintroduce demo tasks on
+    first run — that rule stands, and it is about *content*: a showroom week you
+    must clear out before your own life fits.
+    **Amended 2026-08-11:** a new schedule now seeds `STARTER_BUCKETS` (via the
+    existing idempotent `seedStarterBuckets`, which no-ops the moment any bucket
+    exists). Buckets are *vocabulary*, not content — no tasks, no times, nothing
+    to delete — and **without them the energy model is inert**: `loadForTask`
+    returns all zeros, so the battery, deepest-dip, reserve-aware suggestions and
+    card tints silently do nothing. A real user was found in exactly that state
+    after weeks of use: 16 tags, 0 buckets, no sign the feature existed. The set
+    also now **ships load values**, reversing "load defaults to neutral (0)" —
+    because a neutral bucket computes to zero and so seeding one never switched
+    anything on. This does **not** breach P-2: what P-2 forbids inventing is
+    *capacity* (what you can handle), which is still learned and still `null`
+    until calibrated.
 11. **Ranges are HALF-OPEN inside, INCLUSIVE at every edge.** `effectiveFrom` is
     inclusive, `effectiveUntil` is **exclusive** — and must stay so:
     `splitPeriod` ends the old period exactly where the new one begins

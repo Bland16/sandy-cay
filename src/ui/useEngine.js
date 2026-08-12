@@ -4,13 +4,30 @@
 // re-render, and debounce-saves through StorageAdapter (SPEC §9).
 
 import { useRef, useState, useCallback, useEffect } from 'react';
-import { Schedule, StorageAdapter, defaultConfig } from '../core/index.js';
+import { Schedule, StorageAdapter, defaultConfig, seedStarterBuckets } from '../core/index.js';
 
 export const STORAGE_KEY = 'sandy-cay:schedule:v1';
 
-/** A real, empty week. The app is for your schedule, not a showroom — seed()
- *  still exists as a test fixture, but nothing demo-shaped ships to a user. */
-const emptySchedule = () => new Schedule({ config: defaultConfig });
+/**
+ * A real, empty week — no tasks. The app is for your schedule, not a showroom:
+ * `seed()` is a test fixture and nothing demo-shaped ships to a user.
+ *
+ * It DOES start with a tag vocabulary (`starterBuckets`), because without any
+ * buckets the whole energy model is inert — every task's load computes to zero,
+ * so the battery, the deepest-dip signal, reserve-aware suggestions and the card
+ * tints silently do nothing. That is not an empty app, it is a switched-off one,
+ * and it is the state a real user was found in after weeks of use. Buckets are
+ * vocabulary, not content: no tasks, no times, nothing to clear out, and every
+ * value editable in the Cabana.
+ */
+const emptySchedule = () => {
+  const s = new Schedule({ config: defaultConfig });
+  // Idempotent by construction — a no-op the moment any bucket exists, so it can
+  // never clobber an edited set. The Cabana keeps its manual button; this just
+  // stops a brand-new schedule starting with the energy model switched off.
+  seedStarterBuckets(s);
+  return s;
+};
 const SAVE_DEBOUNCE_MS = 1500;
 
 export function useEngine() {

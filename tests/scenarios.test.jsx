@@ -6,7 +6,7 @@
 import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest';
 import { useState } from 'react';
 import { render, cleanup, screen, fireEvent } from '@testing-library/react';
-import { Schedule, resetIds } from '../src/core/index.js';
+import { Schedule, resetIds, STARTER_BUCKETS } from '../src/core/index.js';
 import { defaultConfig } from '../src/core/config.js';
 import Cabana from '../src/ui/components/Cabana.jsx';
 import TagManager from '../src/ui/components/TagManager.jsx';
@@ -79,7 +79,7 @@ describe('scenario: the consolidated bucket card, driven', () => {
     render(<Harness sched={s} Comp={TagManager} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Seed starter buckets' }));
-    expect(s.buckets.length).toBe(6);
+    expect(s.buckets.length).toBe(STARTER_BUCKETS.length);
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit bucket Rest' }));
     // set mental restorative on the wave

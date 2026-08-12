@@ -57,16 +57,48 @@ export { findBestSlot, placeTask, dayWindowBounds, intervalsOf } from './placeme
 export { resetIds } from './ids.js';
 
 // Starter buckets (design/ACTIVITY-LIBRARY.md): a proposed set the user edits.
-// Load defaults to neutral (0) — the user authors each bucket's character on the
-// wave control; we never fabricate it. The `tags` are the ones each bucket grabs
-// if they're already in use.
+//
+// ⚠️ REVERSED 2026-08-11 — these now SHIP WITH LOAD VALUES. The original note
+// read "load defaults to neutral (0) — the user authors each bucket's character
+// on the wave control; we never fabricate it", and that was the wrong call for
+// one concrete reason: **a bucket whose load is 0 does nothing at all.**
+// `loadForTask` averages the buckets a task's tags touch, so an all-neutral
+// starter set still computes to an all-zero vector — the battery, the
+// deepest-dip signal, reserve-aware suggestions and the card tints stay inert.
+// Seeding neutral buckets therefore never switched the feature on; it only
+// created empty labels to fill in. A real user was found after weeks of use with
+// sixteen tags, no buckets, and no sign the energy model existed.
+//
+// This does NOT breach P-2. What P-2 forbids inventing is CAPACITY — what you
+// can handle — and that is still learned from your ratings and still returns
+// null until calibrated. Load is the other half, what a thing COSTS, and a
+// starting draft of it is a suggestion you edit, not a verdict about you.
+//
+// Load is a per-HOUR rate in [-2, 2]: + spends, − restores. Anchored so the
+// costliest thing (Study, mental +2) exhausts a default mental day (capacity 8)
+// in four hours, and Exercise (physical +2) a physical one (capacity 6) in
+// three. Both are meant to be argued with — that is what the wave control is for.
+//
+// Exercise and Maintenance are deliberately SEPARATE, and opposite on the mental
+// axis. A gym session and a hospital appointment would both be "health"; one
+// costs the body and pays the head back, the other costs the head and pays
+// nothing. Telling them apart is what a four-axis model is for. "Maintenance"
+// rather than "health" is also the kinder word — an appointment is upkeep, not a
+// verdict — and the kinder word is the one people actually use.
 export const STARTER_BUCKETS = [
-  { label: 'Rest', tags: ['rest', 'leisure', 'nap'] },
-  { label: 'Work / School', tags: ['work', 'study', 'thesis', 'admin'] },
-  { label: 'Creative', tags: ['creative', 'music', 'art', 'personal-project'] },
-  { label: 'Home', tags: ['chores', 'errand', 'home'] },
-  { label: 'Social', tags: ['social', 'family', 'friends'] },
-  { label: 'Health', tags: ['health', 'sports', 'exercise', 'gym'] },
+  // Demanding — these spend.
+  { label: 'Study', color: '#5FB8B0', tags: ['study', 'classes', 'research'], load: { mental: 2, physical: 0, social: 0, creative: 0.5 } },
+  { label: 'Work', color: '#2E8C99', tags: ['work', 'meeting'], load: { mental: 1.5, physical: 0, social: 1, creative: 0 } },
+  { label: 'Making', color: '#C9A96E', tags: ['creative', 'project', 'music', 'art'], load: { mental: 1, physical: 0, social: 0, creative: 1.5 } },
+  { label: 'Maintenance', color: '#8AA7C2', tags: ['appointment', 'admin', 'medical', 'health'], load: { mental: 1, physical: 0.5, social: 0, creative: 0 } },
+  // Mixed — a cost on one axis, a return on another.
+  { label: 'Exercise', color: '#7FBE8B', tags: ['gym', 'exercise', 'sports'], load: { mental: -1, physical: 2, social: 0, creative: 0 } },
+  { label: 'Chores', color: '#D2C6A9', tags: ['chores', 'errand', 'home'], load: { mental: -0.5, physical: 1, social: 0, creative: 0 } },
+  { label: 'Food', color: '#E8B94D', tags: ['cooking', 'food'], load: { mental: -0.5, physical: 0.5, social: 0, creative: 0.5 } },
+  { label: 'People', color: '#E2685F', tags: ['social', 'family', 'friends'], load: { mental: -1, physical: 0, social: 1, creative: 0 } },
+  { label: 'Culture', color: '#A9CDD1', tags: ['reading', 'film', 'culture'], load: { mental: -0.5, physical: 0, social: 0, creative: 1 } },
+  // Restorative — these pay back.
+  { label: 'Rest', color: '#F1E9D8', tags: ['rest', 'break', 'recovery', 'leisure', 'nap'], load: { mental: -1.5, physical: -1, social: 0, creative: -0.5 } },
 ];
 
 /**

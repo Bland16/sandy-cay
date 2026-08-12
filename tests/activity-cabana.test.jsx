@@ -4,7 +4,8 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { useState } from 'react';
 import { render, cleanup, screen, fireEvent } from '@testing-library/react';
-import { Schedule, resetIds } from '../src/core/index.js';
+import { Schedule, resetIds, STARTER_BUCKETS } from '../src/core/index.js';
+import { LOAD_AXES } from '../src/core/energy.js';
 import { defaultConfig } from '../src/core/config.js';
 import { tagsInUse } from '../src/ui/components/TagEditor.jsx';
 import TagManager from '../src/ui/components/TagManager.jsx';
@@ -175,11 +176,14 @@ describe('§7.1 — pasting duplicates', () => {
 });
 
 describe('TagManager', () => {
-  it('seeds the six starter buckets', () => {
+  it('seeds the starter buckets', () => {
+    // Count comes from the constant — the set was widened and given real load
+    // values 2026-08-11, and a hardcoded 6 just re-breaks on the next edit.
     const s = schedWith();
     render(<Harness sched={s} Comp={TagManager} />);
     fireEvent.click(screen.getByRole('button', { name: 'Seed starter buckets' }));
-    expect(s.buckets).toHaveLength(6);
+    expect(s.buckets).toHaveLength(STARTER_BUCKETS.length);
+    expect(s.buckets.every((b) => LOAD_AXES.some((a) => b.load[a] !== 0))).toBe(true);
   });
 
   it('adds a bucket', () => {

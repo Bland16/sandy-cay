@@ -185,16 +185,18 @@ describe('Schedule — persistence', () => {
 describe('seedStarterBuckets', () => {
   beforeEach(() => resetIds());
 
-  it('seeds the six starter buckets when empty, and is idempotent', () => {
+  it('seeds the starter buckets when empty, and is idempotent', () => {
     const s = fresh();
     const added = seedStarterBuckets(s);
     expect(added).toHaveLength(STARTER_BUCKETS.length);
-    expect(s.buckets).toHaveLength(6);
+    expect(s.buckets).toHaveLength(STARTER_BUCKETS.length);
+    // The set was widened and given real load values 2026-08-11 — see the note
+    // on STARTER_BUCKETS. Exercise and Maintenance are separate on purpose.
     expect(s.buckets.map((b) => b.label)).toEqual(
-      expect.arrayContaining(['Rest', 'Work / School', 'Creative', 'Social', 'Health']),
+      expect.arrayContaining(['Rest', 'Study', 'Work', 'People', 'Exercise', 'Maintenance']),
     );
     // A second call never clobbers an edited set.
     expect(seedStarterBuckets(s)).toEqual([]);
-    expect(s.buckets).toHaveLength(6);
+    expect(s.buckets).toHaveLength(STARTER_BUCKETS.length);
   });
 });
