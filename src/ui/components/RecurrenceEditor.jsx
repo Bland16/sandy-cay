@@ -13,7 +13,7 @@
 // a live preview of the real dates settles whatever the wording can't.
 import { DAY_NAMES, DAY_KEYS, MONTHS } from '../format.js';
 import {
-  isWeekdayPattern, toWeekdayWindows, optionsForDate, previewDates, optionOfModel,
+  isWeekdayPattern, toWeekdayWindows, toEveryDayWindows, optionsForDate, previewDates, optionOfModel,
   TOP_FREQUENCIES, monthlyModesForDate, uiChoiceOf, choiceToOption,
 } from '../recurrenceModel.js';
 
@@ -47,10 +47,11 @@ export default function RecurrenceEditor({ model, onChange, anchorDate, allowSco
     const next = { ...choice, ...delta };
     const { option: opt, interval } = choiceToOption(next);
     const patchObj = { option: opt, interval };
-    // The weekday preset WRITES the five windows rather than storing a mode, so
-    // changing one day's time later makes the pattern honestly stop calling
-    // itself "every weekday" (§4.3 readback).
+    // The presets WRITE their windows rather than storing a mode, so changing
+    // one day's time later makes the pattern honestly stop calling itself
+    // "every weekday" / "every day" (§4.3 readback).
     if (opt === 'weekday') patchObj.windows = toWeekdayWindows(model.windows);
+    if (opt === 'daily') patchObj.windows = toEveryDayWindows(model.windows);
     onChange({ ...model, ...patchObj });
   };
 

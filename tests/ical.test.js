@@ -95,9 +95,17 @@ describe('recurrence maps to RRULE both ways', () => {
     expect(rec.periods[0].windows[0]).toMatchObject({ monthDay: 13 });
   });
 
+  it('FREQ=DAILY is a weekly pattern over all seven days', () => {
+    // Refused until the "every day" option existed — importing it would have
+    // produced a pattern the editor could not show you.
+    const rec = fromRRULE('FREQ=DAILY', D(13, 8), D(13, 9));
+    expect(rec.periods[0].windows).toHaveLength(7);
+    expect(rec.periods[0].windows.every((w) => w.start === '08:00')).toBe(true);
+  });
+
   it('what still cannot be expressed is refused', () => {
-    expect(fromRRULE('FREQ=DAILY', D(13, 8), D(13, 9))).toBeNull();
     expect(fromRRULE('FREQ=MONTHLY;BYWEEKNO=3', D(13, 8), D(13, 9))).toBeNull();
+    expect(fromRRULE('FREQ=HOURLY', D(13, 8), D(13, 9))).toBeNull();
   });
 
   it('a task survives an export → import round trip', () => {
@@ -294,10 +302,10 @@ describe('monthly + yearly survive the wire (P3)', () => {
   });
 
   it('an unreadable pattern is REPORTED, not silently flattened', () => {
-    const tasks = importEvents(parseICS(cal('FREQ=DAILY', 'Standup')));
+    const tasks = importEvents(parseICS(cal('FREQ=HOURLY', 'Standup')));
     expect(tasks).toHaveLength(1);
     expect(tasks[0].recurrence).toBeNull(); // still imported, as a one-off
-    expect(tasks.dropped).toEqual([{ title: 'Standup', rule: 'FREQ=DAILY' }]);
+    expect(tasks.dropped).toEqual([{ title: 'Standup', rule: 'FREQ=HOURLY' }]);
   });
 
   it('an event with no rule at all is not reported as dropped', () => {

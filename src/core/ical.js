@@ -129,6 +129,13 @@ export function fromRRULE(rrule, start, end) {
     exceptions: [],
   });
 
+  // FREQ=DAILY is a weekly pattern over all seven days. It was refused until the
+  // "every day" option existed, because importing it would have produced a
+  // pattern the editor could not show you.
+  if (freqRaw === 'DAILY') {
+    return wrap('weekly', Object.values(BYDAY_TO_DAY).map((day) => ({ day, ...times })));
+  }
+
   if (freqRaw === 'WEEKLY') {
     const byday = (kv.BYDAY || '').split(',').map((d) => BYDAY_TO_DAY[d.trim().toUpperCase()]).filter(Boolean);
     const days = byday.length ? byday : [Object.values(BYDAY_TO_DAY)[(start.getDay() + 6) % 7]];

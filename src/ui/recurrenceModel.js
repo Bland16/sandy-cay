@@ -13,6 +13,7 @@ import { DAY_FULL, MONTHS } from './format.js';
 const { nthWeekdayOfMonth, isLastWeekdayOfMonth, daysInMonth, weekdayIndex } = time;
 
 export const WEEKDAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri'];
+export const ALL_DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 
 const ORDINAL_WORDS = ['first', 'second', 'third', 'fourth', 'fifth'];
 const MONTH_FULL = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -35,6 +36,7 @@ export function ordinalNumber(n) {
  * to do before you find the one line you wanted.
  */
 export const TOP_FREQUENCIES = [
+  { value: 'daily', label: 'every day' },
   { value: 'weekday', label: 'every weekday (Mon–Fri)' },
   { value: 'week', label: 'every week' },
   { value: 'month', label: 'every month' },
@@ -65,6 +67,7 @@ export function uiChoiceOf(model) {
   const option = optionOfModel(model);
   const interval = Number(model && model.interval) || 1;
   const base = { monthMode: 'mnth', unit: 'weeks', n: 2 };
+  if (option === 'daily') return { ...base, top: 'daily' };
   if (option === 'weekday') return { ...base, top: 'weekday' };
   if (option === 'y') return { ...base, top: 'year' };
   if (option === 'mnth' || option === 'mlast' || option === 'mdate') {
@@ -80,6 +83,7 @@ export function uiChoiceOf(model) {
 export function choiceToOption(choice) {
   const n = Math.max(2, Number(choice.n) || 2);
   switch (choice.top) {
+    case 'daily': return { option: 'daily', interval: 1 };
     case 'weekday': return { option: 'weekday', interval: 1 };
     case 'month': return { option: choice.monthMode || 'mnth', interval: 1 };
     case 'year': return { option: 'y', interval: 1 };
@@ -145,6 +149,7 @@ export function optionsForDate(date) {
 export function optionOfModel(model) {
   if (model && model.option) return model.option;
   const interval = Number(model && model.interval) || 1;
+  if (interval === 1 && isEveryDayPattern(model && model.windows)) return 'daily';
   if (interval === 1 && isWeekdayPattern(model && model.windows)) return 'weekday';
   return String(interval);
 }
@@ -159,6 +164,8 @@ export function windowsForOption(value, date, times, weeklyWindows, intervalOver
   const dayKey = dayKeyOf(date);
   const every = Math.max(1, Number(intervalOverride) || 1);
   switch (value) {
+    case 'daily':
+      return { freq: 'weekly', interval: 1, windows: ALL_DAY_KEYS.map((day) => ({ day, ...t })) };
     case 'weekday':
       return { freq: 'weekly', interval: 1, windows: WEEKDAY_KEYS.map((day) => ({ day, ...t })) };
     case 'mnth':
@@ -191,6 +198,7 @@ export function optionFromPeriod(period) {
     if (w.monthDay != null) return 'mdate';
     return w.nth === -1 ? 'mlast' : 'mnth';
   }
+  if ((period.interval ?? 1) === 1 && isEveryDayPattern(period.windows)) return 'daily';
   if ((period.interval ?? 1) === 1 && isWeekdayPattern(period.windows)) return 'weekday';
   return String(period.interval ?? 1);
 }
@@ -260,6 +268,21 @@ export function isWeekdayPattern(windows) {
   const days = windows.map((w) => w.day);
   if (!WEEKDAY_KEYS.every((d) => days.includes(d))) return false;
   return windows.every((w) => w.start === windows[0].start && w.end === windows[0].end);
+}
+
+/** All seven days at one time — the "every day" readback, same principle as
+ *  `isWeekdayPattern`: derived from the windows, never a stored flag. */
+export function isEveryDayPattern(windows) {
+  if (!windows || windows.length !== ALL_DAY_KEYS.length) return false;
+  const days = windows.map((w) => w.day);
+  if (!ALL_DAY_KEYS.every((d) => days.includes(d))) return false;
+  return windows.every((w) => w.start === windows[0].start && w.end === windows[0].end);
+}
+
+/** Seven days at a single time, keeping whatever time is on the first row. */
+export function toEveryDayWindows(windows) {
+  const t = (windows && windows[0]) || { start: '09:00', end: '10:00' };
+  return ALL_DAY_KEYS.map((day) => ({ day, start: t.start, end: t.end }));
 }
 
 /**

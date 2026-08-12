@@ -306,7 +306,7 @@ describe('the Repeats frequency control', () => {
     // Five entries at the top, and no monthly detail until you ask for it.
     const freq = within(panel).getByLabelText('Repeat frequency');
     expect([...freq.options].map((o) => o.value))
-      .toEqual(['weekday', 'week', 'month', 'year', 'other']);
+      .toEqual(['daily', 'weekday', 'week', 'month', 'year', 'other']);
     expect(within(panel).queryByLabelText('Which day of the month')).toBeNull();
 
     fireEvent.change(freq, { target: { value: 'month' } });

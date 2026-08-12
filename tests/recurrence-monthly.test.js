@@ -175,3 +175,34 @@ describe('editing a monthly pattern does not silently make it weekly', () => {
       .toEqual(['2026-11-03']);
   });
 });
+
+// ---------------------------------------------------------------------------
+// "Every day", and the twice-a-day gap it sits next to (2026-08-11).
+// ---------------------------------------------------------------------------
+describe('every day', () => {
+  it('is seven weekly windows, and expands to seven occurrences', () => {
+    const DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+    expect(run({ windows: DAYS.map((day) => ({ day, ...T })) }, new Date(2026, 8, 7), 1))
+      .toEqual(['2026-09-07', '2026-09-08', '2026-09-09', '2026-09-10',
+        '2026-09-11', '2026-09-12', '2026-09-13']);
+  });
+
+  it('DOES NOT YET support two sessions on the same day — a known gap', () => {
+    // Meds at 08:00 and 20:00. Both windows are honoured by the pattern walk,
+    // but `emit` dedupes on the identity `taskId@YYYY-MM-DD`, so the second one
+    // is dropped in silence. This is the SAME root cause as the open
+    // `add`-exception bug (D-6 in design/SPEC-COMB-2026-08.md): one identity per
+    // task per date. Fixing that scheme unblocks both.
+    //
+    // This test asserts the CURRENT behaviour deliberately, so the gap is
+    // visible in the suite rather than remembered. When identity is fixed it
+    // will fail, and the expectation becomes 2 — which is the point.
+    const got = run({
+      windows: [
+        { day: 'mon', start: '08:00', end: '08:15' },
+        { day: 'mon', start: '20:00', end: '20:15' },
+      ],
+    }, new Date(2026, 8, 7), 1);
+    expect(got).toEqual(['2026-09-07']); // ← want TWO entries once D-6 is fixed
+  });
+});
