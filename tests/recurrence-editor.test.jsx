@@ -318,3 +318,86 @@ describe('the Repeats frequency control', () => {
     expect(panel.querySelector('.recpreview').textContent).toContain('Thu 1 Oct'); // the 1st
   });
 });
+
+// ---------------------------------------------------------------------------
+// "Twice a day" is TWO TIMES, not a frequency of its own (2026-08-11).
+//
+// The alternative was top-level entries for "twice a day" and "twice a weekday"
+// — but then three-times-a-day wants one too, and twice-a-week, and the list
+// the user already found confusing grows to eight. A times list generalises,
+// works inside either day-spanning branch, and reads back honestly.
+// ---------------------------------------------------------------------------
+describe('several times a day', () => {
+  // This block persists a task, so it needs the save debounce steppable.
+  beforeEach(() => { vi.useFakeTimers({ shouldAdvanceTime: true }); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  const openRepeat = (dateStr) => {
+    render(<App />);
+    fireEvent.click(screen.getByLabelText('Add task'));
+    const panel = document.querySelector('.panel');
+    fireEvent.click(within(panel).getByText('pick a date'));
+    fireEvent.change(within(panel).getByLabelText('Date'), { target: { value: dateStr } });
+    fireEvent.click(within(panel).getByLabelText('Repeat this task'));
+    return panel;
+  };
+
+  it('"every day" offers times, not day rows', () => {
+    const panel = openRepeat('2026-09-07');
+    fireEvent.change(within(panel).getByLabelText('Repeat frequency'), { target: { value: 'daily' } });
+    expect(within(panel).queryAllByLabelText('Day')).toHaveLength(0); // seven rows would be noise
+    expect(within(panel).getByLabelText('Start')).toBeTruthy();
+    expect(within(panel).getByText('＋ add a time')).toBeTruthy();
+  });
+
+  it('adding a second time makes it twice a day, and says so', () => {
+    const panel = openRepeat('2026-09-07');
+    fireEvent.change(within(panel).getByLabelText('Repeat frequency'), { target: { value: 'daily' } });
+    fireEvent.click(within(panel).getByText('＋ add a time'));
+    fireEvent.change(within(panel).getByLabelText('Start 2'), { target: { value: '20:00' } });
+    fireEvent.change(within(panel).getByLabelText('End 2'), { target: { value: '20:15' } });
+
+    const preview = panel.querySelector('.recpreview').textContent;
+    // The phrase is a readback of how many times exist — a control you cannot
+    // find is a control you do not have, and fortnightly was missed once for
+    // exactly that reason.
+    expect(preview).toContain('twice a day');
+    // And the preview must show TIMES here, or two sessions on one day read as
+    // a duplicated date.
+    expect(preview).toContain('Mon 7 Sep 09:00');
+    expect(preview).toContain('Mon 7 Sep 20:00');
+  });
+
+  it('times survive a switch between the day-spanning branches', () => {
+    const panel = openRepeat('2026-09-07');
+    fireEvent.change(within(panel).getByLabelText('Repeat frequency'), { target: { value: 'daily' } });
+    fireEvent.click(within(panel).getByText('＋ add a time'));
+    fireEvent.change(within(panel).getByLabelText('Start 2'), { target: { value: '20:00' } });
+
+    fireEvent.change(within(panel).getByLabelText('Repeat frequency'), { target: { value: 'weekday' } });
+    expect(within(panel).getByLabelText('Start 2').value).toBe('20:00');
+    expect(panel.querySelector('.recpreview').textContent).toContain('twice a weekday');
+  });
+
+  it('removing the extra time returns it to once a day', () => {
+    const panel = openRepeat('2026-09-07');
+    fireEvent.change(within(panel).getByLabelText('Repeat frequency'), { target: { value: 'daily' } });
+    fireEvent.click(within(panel).getByText('＋ add a time'));
+    fireEvent.click(within(panel).getByLabelText('Remove time 2'));
+    expect(within(panel).queryByLabelText('Start 2')).toBeNull();
+    expect(panel.querySelector('.recpreview').textContent).not.toContain('twice');
+  });
+
+  it('saves fourteen windows for twice a day, and expands to fourteen sessions', () => {
+    const panel = openRepeat('2026-09-07');
+    fireEvent.change(within(panel).getByPlaceholderText(/call plumber/i), { target: { value: 'Meds' } });
+    fireEvent.change(within(panel).getByLabelText('Repeat frequency'), { target: { value: 'daily' } });
+    fireEvent.click(within(panel).getByText('＋ add a time'));
+    fireEvent.click(within(panel).getByText('Add'));
+
+    act(() => { vi.advanceTimersByTime(2500); });
+    const saved = JSON.parse(window.localStorage.getItem(STORAGE_KEY));
+    const meds = saved.tasks.find((t) => t.title === 'Meds');
+    expect(meds.recurrence.periods[0].windows).toHaveLength(14); // 7 days × 2 times
+  });
+});

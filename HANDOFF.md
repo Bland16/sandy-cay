@@ -1,7 +1,7 @@
 # Sandy Cay — handoff
 
 **Updated:** 2026-08-11, session 6. **`main` is the trunk and the ONLY branch** —
-it is live on Pages (https://bland16.github.io/sandy-cay/). **553 tests green.**
+it is live on Pages (https://bland16.github.io/sandy-cay/). **558 tests green.**
 
 The spent worktrees and all six merged branches were removed at the end of
 session 6, each verified at **0 unmerged commits and 0 dirty files** first.
@@ -25,7 +25,7 @@ carryOver + iCal fixes, and **session 6's dates-and-recurrence work**.
 ```bash
 npm install
 npm run dev      # http://localhost:5173/sandy-cay/
-npm run test:run # 553 tests, all green any day of the week (flaky tests fixed)
+npm run test:run # 558 tests, all green any day of the week (flaky tests fixed)
 npm run build
 npx eslint src
 ```

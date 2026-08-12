@@ -14,10 +14,20 @@
 import { DAY_NAMES, DAY_KEYS, MONTHS } from '../format.js';
 import {
   isWeekdayPattern, toWeekdayWindows, toEveryDayWindows, optionsForDate, previewDates, optionOfModel,
-  TOP_FREQUENCIES, monthlyModesForDate, uiChoiceOf, choiceToOption,
+  TOP_FREQUENCIES, monthlyModesForDate, uiChoiceOf, choiceToOption, timesOf, withTimes,
 } from '../recurrenceModel.js';
 
-const fmtDate = (d) => `${DAY_NAMES[(d.getDay() + 6) % 7]} ${d.getDate()} ${MONTHS[d.getMonth()]}`;
+/** "twice a day", "three times a day" — a readback of how many times exist,
+ *  never a setting. Named in the preview because a control you cannot find is a
+ *  control you do not have: fortnightly was missed once for exactly that. */
+const TIMES_WORD = ['once', 'twice', 'three times', 'four times', 'five times', 'six times'];
+function timesPhrase(count, top) {
+  const unit = top === 'daily' ? 'a day' : 'a weekday';
+  return `${TIMES_WORD[count - 1] || `${count} times`} ${unit}`;
+}
+
+const fmtDate = (d, withTime) => `${DAY_NAMES[(d.getDay() + 6) % 7]} ${d.getDate()} ${MONTHS[d.getMonth()]}`
+  + (withTime ? ` ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : '');
 
 export default function RecurrenceEditor({ model, onChange, anchorDate, allowScope = false }) {
   const patch = (delta) => onChange({ ...model, ...delta });
@@ -41,6 +51,24 @@ export default function RecurrenceEditor({ model, onChange, anchorDate, allowSco
   // "every weekday" is Mon–Fri by definition, and the monthly and yearly
   // sentences already said which day.
   const showDayRows = choice.top === 'week' || (choice.top === 'other' && choice.unit === 'weeks');
+  // "Every day" and "every weekday" already span their days, so what varies is
+  // the TIMES — one is once a day, two is twice, three is three times. That is
+  // why neither needs a frequency of its own, and why one control serves both.
+  const spansDays = choice.top === 'daily' || choice.top === 'weekday';
+  const times = timesOf(model.windows);
+  const setTimes = (next) => onChange({ ...model, windows: withTimes(choice.top, next) });
+  const setTime = (i, delta) => setTimes(times.map((t, idx) => (idx === i ? { ...t, ...delta } : t)));
+  const addTime = () => {
+    const last = times[times.length - 1];
+    // Offer a sensible second time rather than a duplicate of the first, which
+    // would silently collapse — `timesOf` dedupes identical pairs.
+    const bump = (hhmm, by) => {
+      const [h, m] = String(hhmm).split(':').map(Number);
+      return `${String((h + by) % 24).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    };
+    setTimes([...times, { start: bump(last.start, 12), end: bump(last.end, 12) }]);
+  };
+  const removeTime = (i) => setTimes(times.filter((_, idx) => idx !== i));
 
   /** Apply a change to the two-level choice, writing option + interval. */
   const setChoice = (delta) => {
@@ -55,9 +83,15 @@ export default function RecurrenceEditor({ model, onChange, anchorDate, allowSco
     onChange({ ...model, ...patchObj });
   };
 
+  // Show more entries when a day holds several sessions, or the preview would
+  // only reach two days.
   const preview = model.enabled
-    ? previewDates({ ...model, option, interval: model.interval }, date)
+    ? previewDates({ ...model, option, interval: model.interval }, date, times.length > 1 ? 6 : 4)
     : { dates: [], skipped: [] };
+  // If any date appears twice the preview MUST show times, or "Mon 7 Sep ·
+  // Mon 7 Sep" reads as a duplicate rather than as two sessions.
+  const previewNeedsTimes =
+    new Set(preview.dates.map((d) => d.toDateString())).size !== preview.dates.length;
 
   return (
     <div className="recbox">
@@ -168,7 +202,26 @@ export default function RecurrenceEditor({ model, onChange, anchorDate, allowSco
             <button type="button" className="pill tag sm" onClick={addWindow}>＋ also on another day</button>
           )}
 
-          {!showDayRows && (
+          {/* A day-spanning pattern edits its TIMES: add a second and it is
+              twice a day, a third and it is three times. No extra frequency
+              entries, and it works the same in either branch. */}
+          {spansDays && (
+            <>
+              {times.map((t, i) => (
+                <div className="winrow" key={i}>
+                  <input className="timein" type="time" value={t.start} onChange={(e) => setTime(i, { start: e.target.value })} aria-label={i === 0 ? 'Start' : `Start ${i + 1}`} />
+                  <span className="arr">→</span>
+                  <input className="timein" type="time" value={t.end} onChange={(e) => setTime(i, { end: e.target.value })} aria-label={i === 0 ? 'End' : `End ${i + 1}`} />
+                  {times.length > 1 && (
+                    <button type="button" className="rm" onClick={() => removeTime(i)} aria-label={`Remove time ${i + 1}`}>×</button>
+                  )}
+                </div>
+              ))}
+              <button type="button" className="pill tag sm" onClick={addTime}>＋ add a time</button>
+            </>
+          )}
+
+          {!showDayRows && !spansDays && (
             <div className="winrow">
               <input className="timein" type="time" value={model.windows[0]?.start || '09:00'} onChange={(e) => setWindow(0, { start: e.target.value })} aria-label="Start" />
               <span className="arr">→</span>
@@ -180,9 +233,11 @@ export default function RecurrenceEditor({ model, onChange, anchorDate, allowSco
               wording can't, including which months a pattern skips. Computed by
               running the actual engine, so it cannot disagree with reality. */}
           <div className="recpreview">
-            <span className="lbl">It will run on</span>
+            <span className="lbl">
+              It will run{spansDays && times.length > 1 ? ` ${timesPhrase(times.length, choice.top)}, on` : ' on'}
+            </span>
             {preview.dates.length
-              ? preview.dates.map((d) => <b key={d.getTime()}>{fmtDate(d)}</b>)
+              ? preview.dates.map((d) => <b key={d.getTime()}>{fmtDate(d, previewNeedsTimes)}</b>)
                 .reduce((acc, el, i) => (i ? [...acc, ' · ', el] : [el]), [])
               : <span>nothing yet — check the day and times</span>}
             {preview.skipped.length > 0 && (

@@ -122,6 +122,10 @@ export function optionsForDate(date) {
   // always been, so saved patterns and existing callers keep working; the
   // monthly and yearly ones are new names alongside them.
   const opts = [
+    // `daily` must be here as well as in TOP_FREQUENCIES: this list is what the
+    // editor validates the selected option AGAINST, so an option missing from it
+    // is silently reset to "every week". Caught by dumping the rendered control.
+    { value: 'daily', label: 'every day' },
     { value: '1', label: 'every week' },
     { value: 'weekday', label: 'every weekday (Mon–Fri)' },
     // "every other week", not "every 2nd week" — the numeric wording made a
@@ -164,10 +168,12 @@ export function windowsForOption(value, date, times, weeklyWindows, intervalOver
   const dayKey = dayKeyOf(date);
   const every = Math.max(1, Number(intervalOverride) || 1);
   switch (value) {
+    // Day-spanning presets keep EVERY time the pattern runs at, so "twice a day"
+    // is two times over seven days rather than a frequency of its own.
     case 'daily':
-      return { freq: 'weekly', interval: 1, windows: ALL_DAY_KEYS.map((day) => ({ day, ...t })) };
+      return { freq: 'weekly', interval: 1, windows: toEveryDayWindows(weeklyWindows) };
     case 'weekday':
-      return { freq: 'weekly', interval: 1, windows: WEEKDAY_KEYS.map((day) => ({ day, ...t })) };
+      return { freq: 'weekly', interval: 1, windows: toWeekdayWindows(weeklyWindows) };
     case 'mnth':
       return { freq: 'monthly', interval: every, windows: [{ day: dayKey, nth: nthWeekdayOfMonth(date), ...t }] };
     case 'mlast':
@@ -258,40 +264,70 @@ function skippedFor(model, date) {
 }
 
 /**
- * Is this pattern exactly "every weekday at one time"? Derived from the windows
- * rather than stored as a flag, so the "every weekday" option in the editor is a
- * readback as well as a preset: change Tuesday to 13:00 and the pattern honestly
- * stops describing itself that way, with nothing to keep in sync.
+ * The distinct TIMES a pattern runs at, in order. **"Twice a day" is two times,
+ * not a separate frequency** — which is why the top list stays six entries
+ * instead of sprouting "twice a day", "three times a day", "twice a weekday"
+ * and the rest. Derived from the windows, never stored, so the pattern cannot
+ * claim a shape its rows don't have.
  */
-export function isWeekdayPattern(windows) {
-  if (!windows || windows.length !== WEEKDAY_KEYS.length) return false;
-  const days = windows.map((w) => w.day);
-  if (!WEEKDAY_KEYS.every((d) => days.includes(d))) return false;
-  return windows.every((w) => w.start === windows[0].start && w.end === windows[0].end);
-}
-
-/** All seven days at one time — the "every day" readback, same principle as
- *  `isWeekdayPattern`: derived from the windows, never a stored flag. */
-export function isEveryDayPattern(windows) {
-  if (!windows || windows.length !== ALL_DAY_KEYS.length) return false;
-  const days = windows.map((w) => w.day);
-  if (!ALL_DAY_KEYS.every((d) => days.includes(d))) return false;
-  return windows.every((w) => w.start === windows[0].start && w.end === windows[0].end);
-}
-
-/** Seven days at a single time, keeping whatever time is on the first row. */
-export function toEveryDayWindows(windows) {
-  const t = (windows && windows[0]) || { start: '09:00', end: '10:00' };
-  return ALL_DAY_KEYS.map((day) => ({ day, start: t.start, end: t.end }));
+export function timesOf(windows) {
+  const seen = new Map();
+  for (const w of windows || []) {
+    const k = `${w.start}-${w.end}`;
+    if (!seen.has(k)) seen.set(k, { start: w.start, end: w.end });
+  }
+  const out = [...seen.values()].sort((a, b) => String(a.start).localeCompare(String(b.start)));
+  return out.length ? out : [{ start: '09:00', end: '10:00' }];
 }
 
 /**
- * Mon–Fri at a single time, keeping whatever time is already on the first row —
- * "lunch every weekday at noon" is one choice, not five rows retyped.
+ * Does this cover exactly `dayKeys`, with the SAME set of times on each? That is
+ * what makes "every weekday" or "every day" a true description, and comparing
+ * the whole time SET (rather than one time) is what lets a twice-a-day pattern
+ * read back correctly. Change one day's times and it honestly stops claiming it.
  */
+function coversDaysAlike(windows, dayKeys) {
+  if (!windows || !windows.length) return false;
+  const byDay = new Map();
+  for (const w of windows) {
+    if (!byDay.has(w.day)) byDay.set(w.day, []);
+    byDay.get(w.day).push(`${w.start}-${w.end}`);
+  }
+  if (byDay.size !== dayKeys.length || !dayKeys.every((d) => byDay.has(d))) return false;
+  const sig = (arr) => [...arr].sort().join('|');
+  const first = sig(byDay.get(dayKeys[0]));
+  return dayKeys.every((d) => sig(byDay.get(d)) === first);
+}
+
+/** "Every weekday", at one or more times a day. A readback, not a stored flag:
+ *  change Tuesday to 13:00 and it stops describing itself that way. */
+export function isWeekdayPattern(windows) {
+  return coversDaysAlike(windows, WEEKDAY_KEYS);
+}
+
+/** "Every day", at one or more times a day. */
+export function isEveryDayPattern(windows) {
+  return coversDaysAlike(windows, ALL_DAY_KEYS);
+}
+
+/** Seven days × every time the pattern runs at. */
+export function toEveryDayWindows(windows) {
+  const ts = timesOf(windows);
+  return ALL_DAY_KEYS.flatMap((day) => ts.map((t) => ({ day, ...t })));
+}
+
+/** Mon–Fri × every time — "lunch every weekday at noon" is one choice, not five
+ *  rows retyped, and "meds twice a weekday" is two times, not ten. */
 export function toWeekdayWindows(windows) {
-  const t = (windows && windows[0]) || { start: '09:00', end: '10:00' };
-  return WEEKDAY_KEYS.map((day) => ({ day, start: t.start, end: t.end }));
+  const ts = timesOf(windows);
+  return WEEKDAY_KEYS.flatMap((day) => ts.map((t) => ({ day, ...t })));
+}
+
+/** Rewrite a day-spanning pattern to a new set of times, keeping its days. */
+export function withTimes(option, times) {
+  const ts = times && times.length ? times : [{ start: '09:00', end: '10:00' }];
+  const days = option === 'daily' ? ALL_DAY_KEYS : WEEKDAY_KEYS;
+  return days.flatMap((day) => ts.map((t) => ({ day, ...t })));
 }
 
 /** A fresh, empty editor model. `option` is the selected sentence (see
