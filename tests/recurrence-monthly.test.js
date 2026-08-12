@@ -6,7 +6,7 @@
 // and "last <weekday>" are separate, always-fire options because of this.
 import { describe, it, expect } from 'vitest';
 import { Task } from '../src/core/Task.js';
-import { expandRecurrence, splitPeriod } from '../src/core/recurrence.js';
+import { expandRecurrence, splitPeriod, addException } from '../src/core/recurrence.js';
 import { weekStart, addDays, dateKey } from '../src/core/time.js';
 
 const T = { start: '09:00', end: '10:00' };
@@ -187,22 +187,118 @@ describe('every day', () => {
         '2026-09-11', '2026-09-12', '2026-09-13']);
   });
 
-  it('DOES NOT YET support two sessions on the same day — a known gap', () => {
-    // Meds at 08:00 and 20:00. Both windows are honoured by the pattern walk,
-    // but `emit` dedupes on the identity `taskId@YYYY-MM-DD`, so the second one
-    // is dropped in silence. This is the SAME root cause as the open
-    // `add`-exception bug (D-6 in design/SPEC-COMB-2026-08.md): one identity per
-    // task per date. Fixing that scheme unblocks both.
-    //
-    // This test asserts the CURRENT behaviour deliberately, so the gap is
-    // visible in the suite rather than remembered. When identity is fixed it
-    // will fail, and the expectation becomes 2 — which is the point.
+  it('supports two sessions on the same day — meds at 08:00 and 20:00', () => {
+    // Both windows used to collide on the identity `taskId@YYYY-MM-DD` and the
+    // evening one was dropped in silence. Sessions are now numbered within
+    // their day: the first keeps the bare key, later ones get `#2`.
     const got = run({
       windows: [
         { day: 'mon', start: '08:00', end: '08:15' },
         { day: 'mon', start: '20:00', end: '20:15' },
       ],
     }, new Date(2026, 8, 7), 1);
-    expect(got).toEqual(['2026-09-07']); // ← want TWO entries once D-6 is fixed
+    expect(got).toEqual(['2026-09-07', '2026-09-07']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Occurrence identity: one session = one identity, several sessions a day.
+//
+// A date used to carry exactly one occurrence, keyed `taskId@YYYY-MM-DD`, and
+// anything else landing on it was silently dropped by emit()'s dedupe. That one
+// limitation blocked TWO features: twice-a-day patterns, and "one extra gym
+// this week" on a day the pattern already fills — the likeliest day to want one.
+//
+// The scheme: first session of a day keeps the BARE key, so every save written
+// before this is byte-identical and every existing exception still matches.
+// Later sessions get `#2`, `#3`, numbered by the window's DECLARED time so a
+// move cannot renumber them and carry their lived data to a different session.
+// An extra session gets its own namespace, `#add`.
+// ---------------------------------------------------------------------------
+describe('occurrence identity', () => {
+  const twiceDaily = () => new Task({
+    title: 'Meds', type: 'fixed',
+    recurrence: {
+      periods: [{
+        interval: 1,
+        windows: [
+          { day: 'mon', start: '08:00', end: '08:15' },
+          { day: 'mon', start: '20:00', end: '20:15' },
+        ],
+        effectiveFrom: new Date(2026, 8, 7), effectiveUntil: null,
+      }],
+      anchorDate: new Date(2026, 8, 7), exceptions: [],
+    },
+  });
+  const MON = weekStart(new Date(2026, 8, 7));
+
+  it('gives the first session of a day the BARE key, for back-compatibility', () => {
+    const occ = expandRecurrence(twiceDaily(), MON);
+    expect(occ[0].occurrenceDate).toBe('2026-09-07');
+    expect(occ[1].occurrenceDate).toBe('2026-09-07#2');
+    expect(occ[0].id.endsWith('@2026-09-07')).toBe(true);
+  });
+
+  it('numbers by the DECLARED time, so a move does not renumber the sessions', () => {
+    // Move the morning dose to the evening. It must keep `#1`'s bare key —
+    // otherwise its ratings would jump to the other session.
+    const t = twiceDaily();
+    addException(t, '2026-09-07', 'move', { start: '21:00', end: '21:15' });
+    const occ = expandRecurrence(t, MON);
+    const moved = occ.find((o) => o.occurrenceDate === '2026-09-07');
+    expect(moved).toBeTruthy();
+    expect(moved.startTime.getHours()).toBe(21); // moved…
+    expect(occ.find((o) => o.occurrenceDate === '2026-09-07#2')).toBeTruthy(); // …other intact
+  });
+
+  it('skips ONE session of a day, not the whole day', () => {
+    const t = twiceDaily();
+    addException(t, '2026-09-07#2', 'skip'); // just the evening dose
+    const occ = expandRecurrence(t, MON);
+    expect(occ.map((o) => o.occurrenceDate)).toEqual(['2026-09-07']);
+    expect(occ[0].startTime.getHours()).toBe(8);
+  });
+
+  it('a bare-date skip still works on a once-daily pattern, exactly as before', () => {
+    const t = new Task({
+      title: 'Gym', type: 'fixed',
+      recurrence: {
+        periods: [{ interval: 1, windows: [{ day: 'mon', start: '07:00', end: '08:00' }],
+          effectiveFrom: new Date(2026, 8, 7), effectiveUntil: null }],
+        anchorDate: new Date(2026, 8, 7), exceptions: [],
+      },
+    });
+    addException(t, '2026-09-07', 'skip');
+    expect(expandRecurrence(t, MON)).toHaveLength(0);
+  });
+
+  it('an EXTRA session lands on a day the pattern already fills', () => {
+    // The other bug this unblocks: "one more gym this week", on the day the
+    // routine already runs. It used to be dropped without a word.
+    const t = new Task({
+      title: 'Gym', type: 'fixed',
+      recurrence: {
+        periods: [{ interval: 1, windows: [{ day: 'mon', start: '07:00', end: '08:00' }],
+          effectiveFrom: new Date(2026, 8, 7), effectiveUntil: null }],
+        anchorDate: new Date(2026, 8, 7), exceptions: [],
+      },
+    });
+    addException(t, '2026-09-07', 'add', { start: '18:00', end: '19:00' });
+    const occ = expandRecurrence(t, MON);
+    expect(occ).toHaveLength(2);
+    expect(occ.map((o) => o.startTime.getHours())).toEqual([7, 18]);
+    expect(occ[1].occurrenceDate).toBe('2026-09-07#add'); // its own namespace
+  });
+
+  it('keeps each session\'s lived data separate', () => {
+    const t = twiceDaily();
+    t.occurrenceData = {
+      '2026-09-07': { completion: 'done', satisfaction: { overall: 5 } },
+      '2026-09-07#2': { completion: 'skipped' },
+    };
+    const occ = expandRecurrence(t, MON);
+    expect(occ[0].completion).toBe('done');
+    expect(occ[0].satisfaction.overall).toBe(5);
+    expect(occ[1].completion).toBe('skipped');
   });
 });

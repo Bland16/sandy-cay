@@ -12,7 +12,7 @@
 // autoSchedule is never called (SPEC §2.4).
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { addDays, addMinutes, minutesBetween, addException, formatHHMM, dateKey } from '../core/index.js';
+import { addDays, addMinutes, minutesBetween, addException, formatHHMM, dateKey, dateOfOccurrence } from '../core/index.js';
 import { gridHour } from './format.js';
 import {
   MIN_DURATION_MIN,
@@ -169,7 +169,11 @@ export function useCardInteraction({ sched, mutate, showToast, weekStart }) {
   const applyOccurrenceSpan = useCallback(
     (task, newStart, newEnd) => {
       const toDate = dateKey(newStart);
-      const relocated = toDate !== task.occurrenceDate;
+      // Compare against the DATE inside the occurrence key, not the key itself:
+      // a second session of a day is keyed `YYYY-MM-DD#2`, which would never
+      // equal a plain date and would mark every in-place time change as a
+      // relocation.
+      const relocated = toDate !== dateOfOccurrence(task.occurrenceDate);
       mutate((s) => {
         const parent = s.tasks.find((t) => t.id === task.parentId);
         if (!parent) return;
@@ -680,7 +684,7 @@ export function useCardInteraction({ sched, mutate, showToast, weekStart }) {
         start: formatHHMM(moveTo.start),
         end: formatHHMM(moveTo.end),
         // Keyed to the original date, so lived data follows the session (§4.4).
-        ...(toDate !== occurrence.occurrenceDate ? { toDate } : {}),
+        ...(toDate !== dateOfOccurrence(occurrence.occurrenceDate) ? { toDate } : {}),
       });
     }, 'Moved this session');
   }, [settleOccurrence]);

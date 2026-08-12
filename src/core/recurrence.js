@@ -101,6 +101,17 @@ function datesForWindow(freq, w, weekStartDate) {
   return [];
 }
 
+/**
+ * The calendar date inside an occurrence key. A key is `YYYY-MM-DD` for the
+ * first session of a day, `YYYY-MM-DD#2` for the second, `YYYY-MM-DD#add` for an
+ * extra one — so anything that wants the DATE rather than the identity must
+ * strip the suffix. Most callers use the key opaquely (as a lookup into
+ * `occurrenceData`, or as an exception key) and must NOT use this.
+ */
+export function dateOfOccurrence(occurrenceKey) {
+  return String(occurrenceKey || '').split('#')[0];
+}
+
 /** 'YYYY-MM-DD' → local Date at 00:00. */
 function parseDateKey(key) {
   const [y, m, d] = String(key).split('-').map(Number);
@@ -144,20 +155,44 @@ export function expandRecurrence(task, weekStartDate) {
   // 1) Pattern occurrences on this week's own dates. The frequency decides only
   //    WHICH dates a window lands on; everything after that — periods,
   //    exceptions, identity, lived data — is frequency-independent.
+  //
+  //    A date may carry SEVERAL sessions ("meds at 08:00 and 20:00"), so each is
+  //    numbered within its day: the first keeps the bare `YYYY-MM-DD` key and
+  //    later ones get `#2`, `#3`. That keeps every existing save byte-identical
+  //    — a once-a-day pattern is all first-sessions — while giving the second
+  //    dose an identity of its own. Before this, both collided on
+  //    `taskId@date` and `emit` dropped the evening one in silence.
+  //
+  //    The ordinal comes from the WINDOW's declared time, not from the final
+  //    adjusted one, so moving a session to a new time does not renumber it and
+  //    take its lived data with it (§4.4: one session = one identity).
   for (const period of rec.periods || []) {
     const freq = freqOf(period);
+    const byDate = new Map();
     for (const w of period.windows || []) {
       for (const date of datesForWindow(freq, w, weekStartDate)) {
-        if (!periodActiveOn(period, date)) continue;
+        const k = dateKey(date);
+        if (!byDate.has(k)) byDate.set(k, []);
+        byDate.get(k).push({ w, date });
+      }
+    }
+
+    for (const [k, entries] of byDate) {
+      entries.sort((a, b) => String(a.w.start).localeCompare(String(b.w.start)));
+      entries.forEach(({ w, date }, i) => {
+        if (!periodActiveOn(period, date)) return;
         // Parity is per-occurrence, so a monthly pattern counts months and a
         // weekly one counts weeks off the same anchor.
-        if (!intervalMatches(rec, period, date)) continue;
-        const key = dateKey(date);
+        if (!intervalMatches(rec, period, date)) return;
+        const occKey = i === 0 ? k : `${k}#${i + 1}`;
 
-        const ex = exceptions.find((e) => e.date === key);
-        if (ex && ex.action === 'skip') continue;
+        // Exceptions are matched on the SESSION's key, so "skip Wednesday" on a
+        // once-daily pattern behaves exactly as it always did, and a twice-daily
+        // one can skip just the evening via `date#2`.
+        const ex = exceptions.find((e) => e.date === occKey);
+        if (ex && ex.action === 'skip') return;
         // Relocated elsewhere → emitted by pass 2 against its host week.
-        if (ex && ex.action === 'move' && ex.toDate && ex.toDate !== key) continue;
+        if (ex && ex.action === 'move' && ex.toDate && ex.toDate !== k) return;
 
         let start = atTime(date, w.start);
         let end = atTime(date, w.end);
@@ -165,8 +200,8 @@ export function expandRecurrence(task, weekStartDate) {
           if (ex.start) start = resolveTime(date, ex.start);
           if (ex.end) end = resolveTime(date, ex.end);
         }
-        emit(key, start, end);
-      }
+        emit(occKey, start, end);
+      });
     }
   }
 
@@ -179,8 +214,16 @@ export function expandRecurrence(task, weekStartDate) {
       if (!ex.start || !ex.end) continue; // a relocation always carries its times
       emit(ex.date, resolveTime(host, ex.start), resolveTime(host, ex.end));
     } else if (ex.action === 'add' && ex.start && ex.end) {
+      // An EXTRA session gets its own identity namespace (`date#add`) rather
+      // than competing for the date's bare key. That is the fix for "one more
+      // gym this week": adding a session on a day the pattern ALREADY fills
+      // used to collide with the pattern occurrence and be dropped in silence —
+      // on the likeliest day to want one. The namespace is separate rather than
+      // "the next free ordinal" so the extra session's identity, and therefore
+      // its lived data, cannot shift if a pattern window is later added or
+      // removed from that day.
       const host = parseDateKey(ex.date);
-      emit(ex.date, resolveTime(host, ex.start), resolveTime(host, ex.end));
+      emit(`${ex.date}#add`, resolveTime(host, ex.start), resolveTime(host, ex.end));
     }
   }
 

@@ -1,7 +1,7 @@
 # Sandy Cay — handoff
 
 **Updated:** 2026-08-11, session 6. **`main` is the trunk and the ONLY branch** —
-it is live on Pages (https://bland16.github.io/sandy-cay/). **518 tests green.**
+it is live on Pages (https://bland16.github.io/sandy-cay/). **553 tests green.**
 
 The spent worktrees and all six merged branches were removed at the end of
 session 6, each verified at **0 unmerged commits and 0 dirty files** first.
@@ -25,7 +25,7 @@ carryOver + iCal fixes, and **session 6's dates-and-recurrence work**.
 ```bash
 npm install
 npm run dev      # http://localhost:5173/sandy-cay/
-npm run test:run # 516 tests, all green any day of the week (flaky tests fixed)
+npm run test:run # 553 tests, all green any day of the week (flaky tests fixed)
 npm run build
 npx eslint src
 ```
@@ -53,7 +53,7 @@ Spec: `design/DATES-AND-RECURRENCE.md`. Audit: `design/SPEC-COMB-2026-08.md`.
   written, RFC's `-1` mapped both ways, and anything still unreadable is
   **reported** via `importEvents(...).dropped` instead of vanishing.
 
-**The repeat control is two levels:** `every weekday · every week · every month ·
+**The repeat control is two levels:** `every day · every weekday · every week · every month ·
 every year · other…`, with the detail folded inside the branch you pick. Options
 are **generated from the chosen date as finished sentences** ("on the first
 Tuesday"), never a by-date/by-position mode picker — the user rejected that as
@@ -194,12 +194,12 @@ floor, unique ids and the de-flake all shipped). What remains:
 
 **Genuinely still open:**
 
-- **`recurrence.js`** silently drops an `add` exception on a day the pattern
-  already fills (`emit()` returns early — the pass-2 `add` branch reuses the
-  same `${task.id}@${key}` identity as the pattern occurrence). **Re-proven by
-  probe 2026-08-11**, so "one extra gym this week" still fails on the likeliest
-  day to want it. Needs a decision, not a patch — §4.4 makes that identity
-  load-bearing for ML history. See D-6 in `design/SPEC-COMB-2026-08.md`.
+- ~~`recurrence.js` drops an `add` exception on a day the pattern fills~~
+  **FIXED 2026-08-11.** The occurrence key gained a suffix (§4.4): first session
+  of a day keeps the bare `YYYY-MM-DD`, later ones get `#2`/`#3`, an extra
+  session gets `#add`. The same limitation had also been silently dropping the
+  second session of any **twice-a-day** pattern, so one fix bought both. Back
+  compatibility verified against a real export: 15 occurrences, zero suffixed.
 - ~~`time.js` isoWeek comment~~ **FIXED** — it gave two dates in the *same* week
   (2026-W53) as examples of different ISO years. The function was always right.
 - **SPEC §4.3's shared window-row component does not exist** — `ZonesEditor`

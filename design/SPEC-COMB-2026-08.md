@@ -10,7 +10,7 @@ code-grounded audit (HANDOFF, "Audit passes").
 
 | # | Claim | Verdict | Cost to close |
 |---|---|---|---|
-| 1 | `recurrence.js` handles an `add` exception | **BUG, proven** | small |
+| 1 | `recurrence.js` handles an `add` exception | ~~BUG~~ **FIXED 2026-08-11** | done |
 | 2 | SPEC §4.3 — "one shared window-row component used by zones and recurrence" | **FALSE** | medium, or delete the claim |
 | 3 | SPEC §231 — the colour palette | **FICTION** | tiny (bookkeeping) |
 | 4 | SPEC §10 — keyboard drag/resize | **NOT BUILT** | large |
@@ -130,10 +130,13 @@ drift again.
 
 ## Open decisions
 
-- **D-6.** The `add`-exception identity (§1). Suffix the id (`@date#add`) and
-  give the extra session its own `occurrenceData` key, or model an extra session
-  as something other than an exception? The suffix is smaller; the second is
-  cleaner if extra sessions ever need to be more than one per day.
+- ~~**D-6.**~~ **RESOLVED and BUILT 2026-08-11** — the suffix, as proposed:
+  `@date#add` for an extra session, plus `@date#2`/`#3` for a pattern that runs
+  more than once a day. The deciding argument was that the same identity
+  limitation blocked **twice-a-day patterns** as well, so one fix bought both.
+  The first session of a day keeps the bare key, so existing saves and
+  exceptions are untouched — verified against a real 41-task export, which
+  produced 15 occurrences with zero suffixed ids.
 - **D-7.** Extract the shared window-row (§2) **before** P2 touches
   `RecurrenceEditor`, or delete SPEC §4.3's claim and accept two editors?
 - **D-8.** Retention policy (§5): what is the horizon? Ratings feed learning, so
