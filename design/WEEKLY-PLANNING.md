@@ -1,6 +1,9 @@
 # Repeating projects & the Sunday planning ritual
 
-**Session 6, 2026-08-11.** Status: **SPEC — awaiting sign-off. Nothing built.**
+**Session 6, 2026-08-11.** Status: **PARTLY BUILT.** Build step 0 — the `buffer`
+scoring weight of §4.4 — is shipped and live, and applies to every deadlined
+task, not just to this feature. Steps 1–4 (the repeating-project object, the
+Cabana card, the planning ritual, the wrap line) are **still spec.**
 
 Two things the app can't say today:
 

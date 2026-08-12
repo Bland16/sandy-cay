@@ -1,6 +1,9 @@
 # Dates and recurrence — putting an event on a *date*
 
-**Session 6, 2026-08-11.** Status: **SPEC — awaiting sign-off. Nothing built.**
+**Session 6, 2026-08-11.** Status: **BUILT AND SHIPPED — P1, P2, P3 and P4 are all
+on `main` and live.** Plus "every day", several times a day, and the occurrence
+identity change that unblocked both. This document is now a decision record, not
+a plan; the ⚠️ box in §2.0 records where the original spec was wrong.
 
 This spec covers one complaint with four causes: **you cannot put an event on a
 date.** You can only pick a day of the week, in the week you happen to be looking
