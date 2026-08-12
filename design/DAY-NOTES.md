@@ -123,9 +123,29 @@ is a holiday.
 
 ## 6. Open decisions
 
-- **D-1.** Does a day note carry **tags**, and therefore tint the day and touch
-  the energy model? A "reading week" arguably has a character. Tags cost
-  nothing to add and can be ignored; leaving them out is simpler.
+- **D-1. RESOLVED 2026-08-11 — no tint for a note; tint means BLOCKED.** The
+  user's call, and it is the more principled one. A note is an annotation, and
+  colouring a day because something is written on it says nothing about the day.
+  A **blocked** day is different: it is a real scheduling state, nothing can be
+  placed there, and that is exactly the "physics, never moral bookkeeping" that
+  P-1 reserves colour for. So:
+
+  | | header line | day tint |
+  |---|---|---|
+  | a day note | ✓ | ✗ |
+  | a blocked day | ✓ (what blocked it) | **✓ the whole column** |
+
+  Tags stay available on the note for tinting *its own chip* and for the wrap
+  report, but they do not colour the day.
+
+  **Follow-on worth deciding (D-6):** a blocked day currently renders as one
+  full-height `createBlocker` task — a giant protected card tagged `rest`
+  spanning the day window. A tint says the same thing more honestly, because
+  the block is a *property of the day*, not an appointment inside it — which is
+  the identical argument this whole document makes about holidays. Does the
+  tint **replace** that card or accompany it? Replacing is cleaner and removes
+  a fake task from the grid; it also touches `evacuate.js`, `carryOver` and
+  anything that counts tasks.
 - **D-2.** Should an imported **holiday** offer to block the day *at import
   time* ("3 holidays imported — block those days?"), or stay silent until you
   click one? Offering is helpful; asking during an import is a lot of dialogue.
@@ -138,9 +158,16 @@ is a holiday.
   `role`, and SPEC §4.3's window-row that exists twice). It also means the skip
   rules come free: 29 February appears only in leap years, without a line of
   new code.
-- **D-4.** Does the **wrap report** mention them ("this week contained
-  Thanksgiving")? It would explain an unusual week honestly, without judgement —
-  which is the kind of fact the report is for.
+- **D-4. RESOLVED 2026-08-11 — YES, as facts.** The report states what the week
+  contained and nothing more: *"Thanksgiving fell on Thursday 26 Nov"*, *"2 days
+  blocked (Thu–Fri)"*. That is context a reader needs to make sense of an
+  unusual week's numbers.
+
+  **The line it must not cross:** a fact explains, a story excuses. *"Thanksgiving
+  fell on Thursday"* is a fact. *"You did less because of Thanksgiving"* is the
+  report doing your thinking for you, and *"understandably quiet week"* is
+  sympathy — both are the judgement §7.1 forbids. State the day, state the
+  count, stop.
 - **D-5.** Do day notes appear on the **phone day view** and in the **weekend
   drawer**? Both render their own headers, so this is a third and fourth place
   to draw them — and sharp edge #14 warns that a third copy of a day-walk
