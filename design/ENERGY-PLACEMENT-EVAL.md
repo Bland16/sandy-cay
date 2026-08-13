@@ -242,6 +242,64 @@ spacing, **not C5**: C5 ranks by the task's dominant axis, which a tagless task
 does not have, and its silent alphabetical default is what sent a characterless
 task to the end of the runway.
 
+---
+
+# A real term week, and why the user's own failed blocks failed
+
+**2026-08-13.** The user supplied real calendar weeks. Their term week contains
+**8 self-assigned study blocks — "Project time", "Review notes", "Work on
+Homework" — totalling 11.8 hours, none of which they did.** Everything that did
+happen involved other people: classes, club boards, gym with a friend, tea, a
+standing Friday evening.
+
+**My first reading was wrong and the user corrected it.** I took those blocks to
+be what this feature outputs, and concluded the feature was automating something
+with a zero completion rate. It is not the same thing. Their diagnosis, which is
+the one to build against:
+
+| why the hand-placed blocks failed | what the feature must therefore do |
+|---|---|
+| **Unspecific** — "Project time" names no work | a sitting carries its commitment's name and the amount owed, so there is a specific thing to sit down to. Do not let generated sittings inherit generic titles. |
+| **Not tailored to real times** — hand-placed guesses | generation reads the week's actual gaps (§4.1.1 steps 2–3) |
+| **They landed on break time, when rest was needed** | ⭐ the equation question — see below |
+
+## The third cause is the strongest evidence yet for C3 over C1
+
+Run against the real week, anonymised, H5 placed 6h as:
+
+```
+Sun 08:00–10:00 · Sat 08:00–10:00 · Wed 08:00–10:00
+0 of 3 sittings overlapped a block the user wrote and skipped
+```
+
+It chose mornings-before-the-day-starts and the free Saturday — **not** the 11:20
+and 15:30 inter-class gaps that failed in real life. That is precisely because
+*reserve at sit-down* reads a gap between two classes as already depleted, while
+*whole-day depth* would have rated those gaps as fine. **The user's lived failure
+mode is the exact case that separates C3 from C1.**
+
+## The limit it exposes, which is real and unfixed
+
+**C3 only looks backwards.** An 08:00 slot before a six-hour teaching day reads
+perfectly fresh, because nothing has happened yet. The real week's Wednesday
+carries 580 committed minutes and a −11.6 dip; placing two hours at 08:00 makes
+that day materially worse and the measure cannot say so.
+
+So the honest statement of the quantity we actually want is neither "the day's
+deepest dip" nor "the reserve when you sit down", but something closer to **"what
+does taking this slot do to the rest of the day that follows it"** — a gap
+between two demanding blocks has *recovery value* that consuming it destroys.
+Neither C1 nor C3 expresses that. It is the next candidate, and it did not exist
+until a real week was looked at.
+
+**Nothing in this section is committed as real data.** Course codes, club names,
+locations and people's names were stripped before the fixture was written; the
+repo is public and `design/import/` and `*.ics` stay gitignored.
+
+*(Probe defect recorded: `probe-real-week.mjs`'s "longest free run" column merged
+slots incorrectly and printed 15m for every day. The placements are unaffected —
+they come from the real placer — but that column means nothing.)*
+
 ## What did not change
 
 The learned upgrade path is unaffected: all of these are comparative, none states
