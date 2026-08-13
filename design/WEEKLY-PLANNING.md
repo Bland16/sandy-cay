@@ -191,9 +191,11 @@ Given  A (amount owed, min), the period's end as deadline,
           re-derive from step 3.
 5.  days ← spread the n sittings EVENLY across the days of R* that can
           hold them — not the earliest n days — counting days already
-          taken by ANOTHER commitment as taken (§4.1.2), and preferring
-          days whose ENERGY reserve is least depleted
-          (design/ENERGY-AWARE-PLACEMENT.md)
+          taken by ANOTHER commitment as taken (§4.1.2), counting this
+          commitment's sittings from the PREVIOUS period as taken too,
+          and preferring days by ENERGY: a commitment that SPENDS seeks
+          the least-depleted days, one that RESTORES seeks the most
+          (design/ENERGY-AWARE-PLACEMENT.md, ENERGY-PLACEMENT-EVAL.md)
 6.  place each sitting with placeTask({from: day, to: day})
 ```
 

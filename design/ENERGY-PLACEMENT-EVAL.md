@@ -300,6 +300,91 @@ repo is public and `design/import/` and `*.ics` stay gitignored.
 slots incorrectly and printed 15m for every day. The placements are unaffected —
 they come from the real placer — but that column means nothing.)*
 
+---
+
+# Two defects from the blind pass — FIXED and proven, 2026-08-13
+
+Probe: `probe-two-fixes.mjs`.
+
+## Fix 1 — the restorative sign flip (scenario M6)
+
+"Prefer the least depleted day" is **backwards for a task that restores.** A
+meditation or recovery commitment was being pushed onto the freshest days, where
+there is nothing to restore, while the two crunch days it should have been
+protecting sat untouched.
+
+**The fix:** the sign of the task's own dominant-axis load flips the preference.
+
+```
+depth = |reserve at sit-down| / worst among candidates
+score = sign > 0 ?  1 − depth      // spending work seeks SHALLOW days
+                 :  depth          // restoring work seeks DEEP ones
+```
+
+```
+restorative commitment   BEFORE [2,4] (fresh days)   AFTER [0,1] (the crunch days)
+spending commitment      BEFORE [2,4]                AFTER [2,4]  unchanged
+```
+
+The dominant axis is chosen by **magnitude**, so a task that spends one axis and
+restores another follows whichever it moves most. A task whose load is exactly
+zero still falls through the gate and is spaced only.
+
+## Fix 2 — spacing across the period boundary (scenario A7)
+
+Spacing was measured **within one period**, so a sitting on the Sunday of week 1
+and one on the Monday of week 2 were each "perfectly spaced" and eighteen hours
+apart, with four empty midweek days in both.
+
+**The fix:** seed the spacing memory with the commitment's sittings from the
+*previous* period, carried as negative day-offsets.
+
+```
+period 1 sat on its LAST day:  BEFORE period 2 picks day 0 → gap of 1 day
+                               AFTER  period 2 picks day 6 → gap of 7 days
+```
+
+## A modelling subtlety this exposed, worth its own note
+
+The first run of the fix reported "still broken" — **my fixture, not the fix.**
+It scored a nominal 13:00 sit-down, which fell *inside* a 09:00–16:00 block, and
+the reserve walk records a point per task completion, so 13:00 read as **0
+depletion on a day that ends at −14.**
+
+That is the third independent piece of evidence that **the energy term is
+slot-shaped and does not belong in a day chooser.** A nominal hour is not a
+detail to be tuned; it is a number the design would be inventing, and it can be
+wrong by the entire depth of the day. See D-1.
+
+## The user's own study pattern, and what it asks of the design
+
+> *"Normally my time studying came from long 8 hour blocks on Saturday and
+> 8pm–midnight on weekdays. It worked for me but cut into my sleep and stressed
+> me out… it would be good for this scheduler to force me to finish my work
+> earlier."*
+
+Two things already in the spec are aimed exactly at this — the spread rule
+(§4.1.1 step 5) breaks up the eight-hour Saturday, and the `buffer` weight (§4.4)
+pulls work off the midnight tail by aiming to finish a fifth of the runway early.
+This is the clearest statement so far that **`buffer` deserves its high weight**,
+and that a user may legitimately want the scheduler to push.
+
+**⚠️ But do NOT express the evening as a zone.** The user proposed a 20:00–22:00
+homework zone. A zone **defines** the window for its matching tags and is not
+clipped by `config.windows` (SPEC §2.1, verified by probe: a 06:00–08:00 gym zone
+places at 06:00 while the day officially starts at 08:00). So a homework zone at
+20:00–22:00 makes 20:00–22:00 the **only** time homework may ever be placed —
+locking the work into precisely the late slot the user is trying to escape.
+
+What achieves the stated goal instead:
+
+- **Widen `config.windows`** so evenings are *legal* — they currently end at
+  18:00, which is why the scheduler cannot see the real 8pm–midnight work at all.
+- **Let `buffer` and `proximity` pull earlier.** Earlier is then a *preference*
+  an overloaded week can override, rather than a wall.
+- **A zone only if a guaranteed protected slot is wanted**, accepting that it
+  becomes the only slot.
+
 ## What did not change
 
 The learned upgrade path is unaffected: all of these are comparative, none states
