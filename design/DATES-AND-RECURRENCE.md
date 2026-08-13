@@ -409,9 +409,19 @@ P2 slipped**, because it converts silent data loss into a visible fact.
   "Thursday · 7 weeks ahead", and it is tested. It earns its place exactly where
   predicted: typing a date months out, the weekday alone cannot catch a
   fat-fingered year and the distance can.
-- **D-2.** Should the **week grid's** day header, and the day view, gain an
-  "add on this day" affordance that opens the panel pre-dated? Cheap once P1
-  exists, and it is how most people add a dated event — by pointing at the day.
+- **D-2. RESOLVED 2026-08-12 — NO for tasks, YES for notes.** The user's call:
+  *"adding a task not from the add-task menu is stupid. You can add a note but
+  not a task from the header."* One place adds a task, and it is the Add-task
+  panel, whose date field has worked from any week since P1 — a second entry
+  point would be a shortcut to a capability that is not missing.
+
+  A **note** is different in kind and keeps its header quick-add (`＋ note`,
+  DAY-NOTES §7): "Mum's visiting that week" occurs to you while looking at that
+  week, it writes only a label and a range, and anything further drills into the
+  Cabana card. That is quick capture handing off to a full editor — the split
+  `AddTaskPanel` and `TaskPanel` already are — not a second task editor.
+
+  So the day header carries exactly one `＋`, and it means *note*.
 - **D-3. RESOLVED by shipping — NO, and the help text says so.** The control
   reads "A search window, not a deadline — it only says where to look." They are
   different in kind: a deadline is a promise the engine protects and the wrap
@@ -424,11 +434,26 @@ P2 slipped**, because it converts silent data loss into a visible fact.
   should the monthly *interval* ("every 2nd month on the first Tuesday") be in
   the same list, or is it rare enough to leave out until asked for? Leaving it
   out keeps the list at seven or eight entries.
-- **D-5.** After P2, should the **Zones** editor get the same frequency options?
-  Zones are weekday-windowed too ("Work, Mon–Fri"). A monthly zone is plausible
-  ("lab, first Monday") but nobody has asked for one. SPEC §4.3 already claims
-  zones and recurrence share a window-row component and they **do not** — see
-  HANDOFF "Then, roughly in order" #4. Deciding this decides that too.
+- **D-5. RESOLVED 2026-08-12 — YES, zones get the same vocabulary.** Monthly,
+  ordinal weekday and yearly, with P2's generated-sentence options and the live
+  four-date preview, exactly as tasks have them. A zone is a *dated* thing that
+  reserves time, and there is no principled reason "first Monday" should be
+  expressible for a task and not for the block of time that protects it.
+
+  **This decides SPEC-COMB D-7 with it, as the old text predicted — and decides
+  it the other way: EXTRACT the shared window-row for real.** With zones staying
+  weekly, deleting §4.3's false claim was defensible, because the two editors
+  were genuinely doing different jobs. The moment zones repeat monthly they are
+  doing the *same* job, and keeping two hand-rolled editors means building the
+  frequency control, the ordinal-weekday sentence generator and the skipped-month
+  preview a second time — then watching them drift, which is precisely what
+  already happened to the weekday affordance (`toWeekdayWindows` in one, a
+  separate "＋ every weekday" button in the other).
+
+  So §4.3's claim stops being false **by being made true**, not by being deleted,
+  and the extraction is a prerequisite step of the zone work rather than a
+  speculative refactor. P2 having rewritten `RecurrenceEditor` once already is
+  the argument for doing it before a third pass, not after.
 
 ---
 

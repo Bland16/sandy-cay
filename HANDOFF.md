@@ -30,29 +30,64 @@ npm run build
 npx eslint src
 ```
 
-## Every open decision, in one place (2026-08-12)
+## Every open decision — ANSWERED, 2026-08-12 (session 7)
 
-Resolved ones stay in their own spec. These are the ones **still needing an
-answer**, and nothing below is blocked on anything except the answer.
+The user walked the whole table. **Every row is now decided**, and each decision
+lives in full in its own spec; this is the index. Four answers went *against* the
+default, and one of them was a correction to shipped code.
 
-| # | Question | Blocks | Cheapest default if you never answer |
-|---|---|---|---|
-| **COMB D-7** | Extract SPEC §4.3's shared window-row, or delete the claim? | Zones gaining the new frequency options (DATES D-5) | delete the claim; two editors, honestly documented |
-| **COMB D-8** | Retention horizon for `history`/`occurrenceData`/`snapshots`/`dismissed` | nothing yet; localStorage exhaustion eventually | keep 18 months, prune older |
-| **DATES D-2** | Should a day header get "add on this day", opening the panel pre-dated? | nothing | skip it; the date field already works |
-| **DATES D-5** | Do Zones get the monthly/yearly frequency options? | — | no, until someone wants a monthly zone |
-| **NOTES D-2** | Offer to block days at holiday-import time, or stay silent? | the import UX | silent; the note offers "Block this day" when clicked |
-| **NOTES D-6** | Does a blocked day's **tint** replace the `createBlocker` card, or accompany it? | the tint work | replace — a block is a property of the day, not an appointment |
-| **NOTES D-8** | A year-less **range** ("every year, 9–13 March") has no home | recurring multi-day notes only | don't support it; breaks move yearly anyway |
-| **PLAN D-1** | Repeating projects: count **hours** or **sessions**? | the whole feature | hours; "3 × 1h" expresses a session count |
-| **PLAN D-2** | Under-done week: let it go, or offer the shortfall forward? | — | let it go; §3.6 already offers carry-forward |
-| **PLAN D-3** | Open an unplanned future week — generate chunks, or wait to be asked? | — | generate on open |
-| **PLAN D-4** | Do repeating-project chunks show as a **group** on the grid? | — | no; ordinary cards |
-| **PLAN D-6** | Floor the deadline buffer for very short tasks? | — | no floor; 1/5 is the rule |
-| **EDITOR D-2/D-4/D-5** | Session-5 art polish (lean glyph, critter sprites, scalloped frame) | nothing | carried; low priority |
+| # | Question | Answer |
+|---|---|---|
+| **COMB D-7** | Extract SPEC §4.3's shared window-row, or delete the claim? | **EXTRACT** — forced by DATES D-5. The claim becomes true instead of being deleted, and it lands *before* the zone work. ⚠️ against default |
+| **COMB D-8** | Retention horizon | **Keep rated `history` + all `dismissed`; prune unrated history, `occurrenceData`, `snapshots` at 12 months.** Two stores are kept because deleting them changes behaviour. Prune on load, idempotent. *(my call, delegated)* |
+| **DATES D-2** | "Add on this day" from a day header? | **No for tasks, yes for notes.** One place adds a task and it is the Add-task panel. The header's single `＋` means *note*. |
+| **DATES D-5** | Do Zones get monthly/yearly frequencies? | **YES**, the same vocabulary as tasks. ⚠️ against default — and it decides D-7 |
+| **NOTES D-2** | Block-at-import, or silent? | **Neither — the import CONFIRMS DATES, on pages of 7–10, and it is the SAME form as an ask pack.** Blocking is not asked at import at all. ⚠️ against default, and it collapses two designs into one |
+| **NOTES D-6** | Tint replaces the blocker card, or accompanies it? | **Replaces.** The reason matters: tasks can still be scheduled on a blocked day, so a full-height protected card is a lie about the day. |
+| **NOTES D-8** | Year-less **range**? | **Supported** — no year means every year whatever the shape. Yearly window gains `spanDays`. ⚠️ against default |
+| **PLAN D-1** | Hours or sessions? | **Hours.** |
+| **PLAN D-2** | Under-done week | **Offer the shortfall forward** once, in §3.6's equal-weight shape. §5's "no catch-up debt" bullet amended. ⚠️ against default |
+| **PLAN D-3** | Unplanned future week | **Empty until asked.** Looking is not asking; a week shows what it owes and a **Lay it out** button. ⚠️ against default |
+| **PLAN D-4** | Chunks grouped on the grid? | **Only if it can be done tastefully** — a visual bar, mocked three ways in `design/session7-mockups.html`, awaiting your eye |
+| **PLAN D-6** | Floor the buffer for short tasks? | **Dissolved** by the runway correction below — nothing left to floor |
+| **EDITOR D-4** | physical/social critters | **RESOLVED BY THE BUILD** — surfboard + beach-ball are already wired (`EnergyControl.jsx:14–15`). Fourth stale "open" decision this session |
+| **EDITOR D-2/D-5** | sparkline on the bucket row; scalloped frame stretch | **Mocked, awaiting your eye** — `design/session7-mockups.html` |
 
-**Every "cheapest default" above is a real, defensible answer** — so none of this
-blocks building. Answer one only when you disagree with its default.
+**Still genuinely open, and both need your eyes rather than an argument:**
+`design/session7-mockups.html` (PLAN D-4, EDITOR D-2, EDITOR D-5), and the
+**desktop day view** — you said it isn't good and are sending a screenshot;
+removing it would reverse the locked Layout B+C decision, so it is parked until
+then. Phone keeps the day view as its primary layout regardless.
+
+### ⚠️ The buffer weight shipped nearly inert — corrected 2026-08-12
+
+`WEEKLY-PLANNING` §4.4 specified, and step 0 shipped, "finish one fifth of the
+**task's own length** early". The user's intent was **one fifth of the runway**.
+These are not two flavours of the same thing — the shipped one barely functioned.
+Probe, deadline Fri 17:00, planned Monday:
+
+```
+finishing      OLD 20m  OLD 5h   NEW (any size)
+Mon 17:00       1.00     1.00     1.00
+Thu 20:12       1.00     1.00     1.00
+Fri 09:00       1.00     1.00     0.38
+Fri 16:45       1.00     0.25     0.01
+```
+
+A 20-minute task scored **identically at Monday 17:00 and Friday 16:45**. The
+term could not tell the start of the week from fifteen minutes before the wire.
+
+**Fixed:** `bufferScore(slotEnd, deadline, runwayStart)`, target =
+`runway / 5`, with `runwayStart` = `findBestSlot`'s `from`. Neutral (1) for no
+deadline, no runway start, or overdue work. `bufferDurationMin` is gone from
+`placement.js` — the target no longer depends on duration, which also dissolves
+the chunked-project special case and PLAN D-6.
+
+**The lesson, again:** it was reasoned about, agreed, built, and shipped with 569
+green tests. One probe printing the score at nine finishing times exposed it in a
+minute. And `report.js#buildDeadlineBuffer` had been measuring the exact quantity
+that would have shown it all along — *the app was already reporting the evidence
+against its own scoring.*
 
 ## Session 6 — specs written this session (read before building)
 

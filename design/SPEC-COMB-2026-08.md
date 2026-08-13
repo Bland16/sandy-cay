@@ -137,11 +137,32 @@ drift again.
   The first session of a day keeps the bare key, so existing saves and
   exceptions are untouched — verified against a real 41-task export, which
   produced 15 occurrences with zero suffixed ids.
-- **D-7.** Extract the shared window-row (§2) **before** P2 touches
-  `RecurrenceEditor`, or delete SPEC §4.3's claim and accept two editors?
-- **D-8.** Retention policy (§5): what is the horizon? Ratings feed learning, so
-  cutting history costs model quality. A year of `occurrenceData` is a lot of
-  rows but not a lot of bytes.
+- **D-7. RESOLVED 2026-08-12 — EXTRACT it.** Decided as a consequence of
+  DATES D-5 (zones gain the monthly/ordinal/yearly vocabulary): once both editors
+  do the same job, two hand-rolled copies means building the frequency control
+  twice and drifting twice. §4.3's claim becomes true rather than being deleted.
+  One `<WindowRow>` (day + start + end + remove) with the weekday affordance
+  defined once, imported by `RecurrenceEditor` and `ZonesEditor`, and it lands
+  **before** the zone-frequency work rather than after a third rewrite.
+- **D-8. RESOLVED 2026-08-12 — keep what the model learns from, prune the rest at
+  12 months.** Left to my judgement by the user. The four stores are not one
+  thing and a single horizon treats them as if they were:
+
+  | store | policy | why |
+  |---|---|---|
+  | `history` **entries carrying a rating** | keep | this is the training set; it is what `retrain()` reads, and it is a handful of numbers per session. Deleting it is deleting the model. |
+  | `history` entries with no rating | 12 months | they train nothing. |
+  | `occurrenceData` | 12 months | "a lot of rows but not a lot of bytes" — a year is more than any surface reads back. |
+  | `snapshots` | 12 months | the wrap report never looks further back than the week it covers. |
+  | `dismissed` | **keep** | a detector answer is permanent *by decision* (HANDOFF: "let it go" that re-raises is nagging with extra steps). Pruning it would resurrect answered observations, which is the exact behaviour that decision forbids. |
+
+  So: two stores are kept because deleting them changes behaviour, and the bulk —
+  unrated history, occurrence rows, snapshots — prunes at a year. The starvation
+  detector's permanent-nag failure is fixed by the horizon on the rows it reads,
+  not by forgetting what you already told it.
+
+  **Prune on load, not on a timer**, so it costs nothing on a session that never
+  opens, and record the cutoff in the schedule so a prune is idempotent.
 
 ## What this comb did NOT cover
 

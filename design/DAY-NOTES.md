@@ -142,17 +142,54 @@ is a holiday.
   Tags stay available on the note for tinting *its own chip* and for the wrap
   report, but they do not colour the day.
 
-  **Follow-on worth deciding (D-6):** a blocked day currently renders as one
-  full-height `createBlocker` task — a giant protected card tagged `rest`
-  spanning the day window. A tint says the same thing more honestly, because
-  the block is a *property of the day*, not an appointment inside it — which is
-  the identical argument this whole document makes about holidays. Does the
-  tint **replace** that card or accompany it? Replacing is cleaner and removes
-  a fake task from the grid; it also touches `evacuate.js`, `carryOver` and
-  anything that counts tasks.
-- **D-2.** Should an imported **holiday** offer to block the day *at import
-  time* ("3 holidays imported — block those days?"), or stay silent until you
-  click one? Offering is helpful; asking during an import is a lot of dialogue.
+  **D-6. RESOLVED 2026-08-12 — the tint REPLACES the card.** A blocked day stops
+  rendering a full-height `createBlocker` task; the tint carries the whole
+  meaning. The user's reason is the sharper one and it changes what "blocked"
+  means: **tasks can still be scheduled on a blocked day.** A giant protected
+  card says "this day is occupied", which is a lie about a day you can still put
+  something on; a tint says "this day is spoken for" and leaves the day usable.
+
+  The block therefore becomes a *property of the day* rather than a fake
+  appointment inside it — the identical argument this whole document makes about
+  holidays, applied to the thing that motivated it.
+
+  **Known cost, to be handled in the build:** `evacuate.js`, `carryOver` and
+  anything counting tasks currently see the blocker as a task. Removing it means
+  those call sites need the day's blocked *state* instead, and `createBlocker`
+  itself may survive only for the explicit "protect this gap" case (§3.9), which
+  is a genuinely different thing — that one IS an appointment.
+- **D-2. RESOLVED 2026-08-12 — neither. The import CONFIRMS DATES, on pages, and
+  it is the same form as an ask pack.** The user's reframing, and it collapses
+  two designs into one. The question assumed the import's job was to ask about
+  *blocking*; its actual job is to let you confirm **what lands and on what day**,
+  which is the identical job §8.3's ask pack does. So there is one component:
+
+  ```
+  US HOLIDAYS · 20 found                    page 1 of 3
+  Confirm the dates. Blank adds nothing.
+
+    [✓] confirm all on this page
+      Thanksgiving        [ 2026-11-26 ]
+      Christmas Day       [ 2026-12-25 ]
+      Labor Day           [ 2026-09-07 ]
+      …
+                          ‹ back   next ›   [ Add 7 ]
+  ```
+
+  - **Imported notes arrive with their dates filled in** from the `.ics`; you are
+    confirming, and correcting anything wrong.
+  - **Ask-pack notes arrive blank**; you are supplying. Rosh Hashanah, BC's fall
+    break, anything lunisolar or institutional.
+  - **§8.3's rule holds unchanged: a blank date adds nothing.** No error, no
+    placeholder, no nag. Declining a row is just leaving it alone.
+  - **Pages of 7–10**, because twenty rows at once is a wall and because the
+    per-page "confirm all" is only a kindness if a page is small enough to take
+    in at a glance.
+  - **Blocking is not asked here at all.** It stays the per-note "Block this day"
+    action of §3, where the fact and the decision remain one click apart.
+
+  This is also why the year-less form matters (§8.2): a confirmed date with no
+  year is how a birthday or a fixed-date holiday enters once and never asks again.
 - **D-3. RESOLVED 2026-08-11 — REUSE.** A recurring day note carries the same
   `{ freq, windows, interval, effectiveFrom, effectiveUntil }` period shape P2
   built for tasks, with the yearly window `{ month, monthDay }` doing exactly
@@ -330,11 +367,29 @@ month and a day and no year.
 | `Commencement \| 2027-05-24` | once | `from`/`to`, no recurrence |
 | `Mum's birthday \| 09-03` | every 3 September | `yearly { month: 9, monthDay: 3 }` |
 | `Fall break \| 2026-10-05 \| 2026-10-06` | once, two days | `from`/`to`, inclusive |
+| `Spring break \| 03-09 \| 03-13` | every year, 9–13 March | `yearly { month: 3, monthDay: 9, spanDays: 5 }` |
 
-**Open (D-8): a year-less RANGE.** "Every year, 9–13 March" has no home — the
-yearly window is a single day, so it would need five windows or a "spans N days"
-field. Possibly nobody wants one: breaks move every year, which is exactly why an
-institutional calendar is an import rather than a rule.
+**D-8. RESOLVED 2026-08-12 — a year-less RANGE repeats too.** The rule is one
+rule and it applies to whatever shape you typed: **no year means every year.**
+Making a range the exception would mean the same omission meant "annually" on one
+line and was an error on the next.
+
+**What it costs:** the yearly window gains **`spanDays`** (default 1), so
+"9–13 March" is one window that covers five days, not five windows. One optional
+integer, and it keeps the P2 vocabulary that D-3 committed to rather than growing
+a notes-only second one.
+
+- `spanDays` must be added to **both** `reviveRecurrence` and `recurrenceToJSON`
+  — the field-whitelist trap that silently dropped `freq` and expanded every
+  monthly pattern as weekly (HANDOFF, session 6's lesson). Any new period field,
+  both functions, no exceptions.
+- A span that runs off the end of a month simply continues into the next; it is a
+  count of days, not a month-day arithmetic problem.
+- The old argument for refusing this — *breaks move every year, so an
+  institutional calendar should be an import* — is still true, and it is an
+  argument about **which source you use**, not about what the model can express.
+  A fixed-date multi-day observance (a festival, a week you always take off) is a
+  real thing, and it should not be forced into five separate notes.
 
 ---
 

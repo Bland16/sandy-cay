@@ -2,8 +2,11 @@
 
 **Session 6, 2026-08-11.** Status: **PARTLY BUILT.** Build step 0 — the `buffer`
 scoring weight of §4.4 — is shipped and live, and applies to every deadlined
-task, not just to this feature. Steps 1–4 (the repeating-project object, the
-Cabana card, the planning ritual, the wrap line) are **still spec.**
+task, not just to this feature. **Corrected 2026-08-12** to measure one fifth of
+the *runway* rather than of the task's own length; the shipped version was close
+to a no-op, which a probe showed and 569 green tests did not. Steps 1–4 (the
+repeating-project object, the Cabana card, the planning ritual, the wrap line)
+are **still spec**, and every open decision on them is now answered (§6).
 
 Two things the app can't say today:
 
@@ -206,9 +209,59 @@ works.
 
 ### The rule
 
-> Aim to finish **one fifth of the task's own length** before the deadline.
+> Aim to finish **one fifth of the runway** before the deadline.
 
-A 5-hour essay wants an hour spare; a 30-minute errand wants six minutes.
+The runway is the time you actually have: from the moment the plan is being made
+to the deadline. Due at the end of the week, planned on Monday — aim to be done
+by Thursday evening. A task's own length does not enter into it.
+
+**Corrected 2026-08-12, and step 0 was rebuilt to match.** This originally
+specified one fifth of the *task's own length*, and shipped that way. The user's
+intent was the runway all along — *"if it is due at the end of the week, you
+should finish at least 1/5th of the runway early"* — and the shipped rule was not
+a smaller version of that, it was **nearly inert.** Proven by probe against a
+Friday 17:00 deadline planned on Monday:
+
+```
+finishing      OLD 20m  OLD 5h   NEW (any size)
+Mon 17:00       1.00     1.00     1.00
+Wed 17:00       1.00     1.00     1.00
+Thu 20:12       1.00     1.00     1.00
+Fri 09:00       1.00     1.00     0.38
+Fri 15:00       1.00     1.00     0.10
+Fri 16:45       1.00     0.25     0.01
+Fri 17:00       0.00     0.00     0.00
+```
+
+The old term scored a 20-minute task **1.00 at Monday 17:00 and 1.00 at Friday
+16:45** — it could not distinguish the start of the week from fifteen minutes
+before the wire, which is the entire thing "finish early" means. It only ever
+moved in the final minutes, and then only for large tasks. The runway version is
+satisfied through Thursday evening and falls away across Friday.
+
+### Why the runway, and why the original argument against it was wrong
+
+The rejected reasoning was that a runway-proportional buffer *"just restates
+earlier-is-better, which is what `proximity` already says."* It does not, and the
+difference is the **saturation**:
+
+- `proximity` is normalised by a **fixed horizon** and pulls toward the origin
+  forever. Every minute earlier scores strictly better, for every task alike,
+  deadline or no deadline. It expresses **haste**.
+- `buffer` is normalised by **this task's own runway** and **stops** once the
+  target is met. "Be clear by Thursday; past that I have no opinion." It
+  expresses a **deadline**, and once satisfied it hands the choice among earlier
+  slots back to the other weights.
+
+Two differently-shaped terms, not one duplicated. The genuine risk the original
+argument was groping for — that a long runway asks for an absurd cushion — is
+real but bounded and correct: twenty days' notice asks for four days clear, which
+is what a person with twenty days' notice should want.
+
+**It also deletes a rule instead of adding one.** The target no longer scales
+with duration, so the chunked case below needs no special handling: a 30-minute
+sitting and the 2-hour project it belongs to aim at the same moment, and
+`bufferDurationMin` stopped needing to be plumbed through `placement.js` at all.
 
 **A preference, not a constraint** — per the user, "I don't think it's a must
 but it should definitely have a high weight." So it becomes a **fifth scoring
@@ -218,36 +271,44 @@ out for free: an overburdened week or a two-day deadline simply cannot score
 well on it, and the other weights win. **No special-case logic for the
 exceptions at all** — which is the strongest argument for making it a weight.
 
-### Why one fifth of the TASK, not one fifth of the runway
+### ~~Why one fifth of the TASK, not one fifth of the runway~~ — SUPERSEDED
 
-Both readings were on the table. Taking the task's own length, because:
+*Kept for the reasoning, because argument 2 is instructive in being wrong.*
 
-1. **It is explainable in one sentence:** *if this runs 20% over, you still make
-   it.* It is an overrun allowance, and overrun scales with the size of the job,
-   not with how much notice you happened to get.
-2. **The runway version collapses into something the app already does.** As a
-   *preference*, "finish 1/5 of the remaining runway early" just means "earlier
-   is better, proportionally" — which is what the `proximity` weight already
-   expresses. It would be a second, differently-shaped copy of an existing
-   term, and this codebase has been bitten by exactly that (`format.js` grew a
-   second ISO-week implementation and the two disagreed).
-3. **It is bounded.** It never asks to reserve more slack than the work is
-   worth, so it cannot dominate a tight week.
+> Both readings were on the table. Taking the task's own length, because:
+> 1. **It is explainable in one sentence:** *if this runs 20% over, you still
+>    make it.* It is an overrun allowance, and overrun scales with the size of
+>    the job, not with how much notice you happened to get.
+> 2. **The runway version collapses into something the app already does.** As a
+>    *preference*, "finish 1/5 of the remaining runway early" just means "earlier
+>    is better, proportionally" — which is what the `proximity` weight already
+>    expresses.
+> 3. **It is bounded.** It never asks to reserve more slack than the work is
+>    worth, so it cannot dominate a tight week.
 
-Three weeks of notice on a 5-hour essay therefore aims at one hour early, not
-four days early — and `proximity` is what pulls it earlier than that anyway.
+Argument 1 describes a real quality — but an overrun allowance is not what a
+deadline preference is *for*, and at 1/5 of a short task it rounds to nothing.
+Argument 2 is simply false (see the saturation point above). Argument 3 was
+right about the mechanism and wrong about which behaviour was wanted.
 
-### The chunked case, which is the one that matters here
+**The lesson is the familiar one:** the term was reasoned about, agreed, built,
+and shipped green — and one probe printing the score at nine finishing times
+showed it did essentially nothing. `buildDeadlineBuffer` in the report had been
+measuring the very quantity that would have exposed it.
 
-**For a repeating project the buffer is computed on the whole remaining amount,
-not per sitting.** Otherwise 30-minute sittings each get a 6-minute cushion and
-the *project* has none. "2h of maths by Sunday" should aim to be done by roughly
-Saturday evening, not to finish each half-hour six minutes early.
+### The chunked case — no longer a case at all
 
-**Minor open point (D-6):** whether to floor the buffer for very short tasks. At
-1/5, a 20-minute errand wants four minutes, which is below the 15-minute grid
-snap and so effectively nothing. A floor of one break-padding (30 min default)
-would make it meaningful, at the cost of a rule with two numbers in it.
+Under the task-length rule this needed its own paragraph: the buffer had to be
+computed on a project's whole remaining amount, or 30-minute sittings each got a
+6-minute cushion and the project itself got none. Under the runway rule the
+target does not depend on duration, so **every sitting and the project aim at the
+same moment automatically**. The `bufferDurationMin` parameter is gone.
+
+**D-6 — RESOLVED, and dissolved.** The question was whether to floor the buffer
+for very short tasks, since 1/5 of a 20-minute errand is four minutes, below the
+grid snap. There is nothing left to floor: a 20-minute errand due Friday gets the
+same Thursday-evening aim as a five-hour essay due Friday, because the runway is
+the same. The rule keeps exactly one number.
 
 ---
 
@@ -257,10 +318,14 @@ would make it meaningful, at the cost of a rule with two numbers in it.
   bounded to the period. `placeTask` scores them exactly as it does everything
   else, including the zone rule amended today (a zone defines the window for its
   own tags).
-- **No catch-up debt.** A week where you did 1h of the 2h does **not** roll the
-  missing hour into next week by default. That way lies a nagging ledger, which
-  is a P-1 violation. §3.6's existing consented carry-forward already covers
-  "actually, bring it with me" — see D-2.
+- **No catch-up debt — but it does ASK.** *Amended 2026-08-12 by D-1's answer
+  below.* A week where you did 1h of the 2h does not silently roll the missing
+  hour anywhere. What it does is **offer** it, once, in §3.6's existing
+  equal-weight shape (*Carry forward / Let it go*), and take being ignored as an
+  answer. The thing P-1 forbids is the app moving your work without asking and
+  keeping a running ledger against you; a single symmetric question is neither.
+  Note the consequence to state plainly in the offer: next week already owes its
+  own 2h, so carrying makes it 3h.
 - **No streaks, no completion percentage, no "you missed your target".** The
   wrap report may state the fact ("maths: 1h of the 2h set aside") and nothing
   more, per the locked no-judgement rule.
@@ -269,22 +334,31 @@ would make it meaningful, at the cost of a rule with two numbers in it.
 
 ## 6. Open decisions — sign-off before build
 
-- **D-1.** Does a repeating project's amount count **hours** (2h/week) or
-  **sessions** (3 gym visits/week)? Hours are natural for study, sessions for
-  the gym. Supporting both is more UI; supporting one is a compromise. §4.1's
-  adaptive sittings lean toward **hours**, since "3 × 1h" expresses a session
-  count anyway and hours are what the week actually spends.
-- **D-6.** Floor the deadline buffer for very short tasks? At 1/5 a 20-minute
-  errand wants 4 minutes, below the 15-minute snap and so effectively zero. See
-  §4.4.
-- **D-2.** Under-done week: silently let it go (the spec's default above), or
-  *offer* the shortfall to next week the way §3.6 offers unfinished work? The
-  offer is consistent with existing behaviour; the silence is kinder.
-- **D-3.** Open an unplanned future week — generate its chunks immediately, or
-  leave it empty until asked? Generating is convenient; leaving it empty means
-  the plan only ever exists because you asked for it.
-- **D-4.** Do repeating projects show in the grid **as a group** (one tinted
-  band you can see is "the maths 2h") or just as ordinary independent cards?
+- **D-1. RESOLVED 2026-08-12 — HOURS.** An amount is hours; "3 × 1h" already
+  expresses a session count through §4.1's sitting bounds, and hours are what a
+  week actually spends. No second unit, no mode switch.
+- **D-6. RESOLVED 2026-08-12 — dissolved by the runway correction.** See §4.4:
+  the target no longer scales with a task's length, so there is nothing left to
+  floor.
+- **D-2. RESOLVED 2026-08-12 — OFFER the shortfall forward.** In §3.6's existing
+  equal-weight shape, once, ignorable. §5's "no catch-up debt" bullet is amended
+  accordingly: no ledger and no silent move, but the app does ask. The offer must
+  state that next week already owes its own amount, so carrying makes it more.
+- **D-3. RESOLVED 2026-08-12 — EMPTY until asked.** Opening a future week is
+  looking, not asking, and looking must not write tasks into a week. The week
+  shows what it owes ("3 standing commitments, 6h") and a **Lay it out** button,
+  which previews before writing. This is the same rule as the ritual itself (§3)
+  and as rollover: offer, never impose. It also means a week you never planned
+  stays honestly empty rather than filling with a plan you never saw.
+- **D-4. CONDITIONAL 2026-08-12 — grouped only if it can be done tastefully,
+  otherwise ordinary cards.** The bar is visual, so it is settled by eye and not
+  by argument: `design/session7-mockups.html` renders the baseline against three
+  candidates (a 3px edge + "1/2" counter; a dashed cross-column tether; a footer
+  line under the grid). Two constraints for whoever judges it: the phone day view
+  and the weekend drawer must be able to show the same thing, which rules out
+  anything drawn *between* columns; and ROUTINES will later want a linked-chain
+  marker for laundry's touchpoints, so whatever is chosen should be able to serve
+  both rather than becoming a second vocabulary.
 - **D-5. RESOLVED 2026-08-11** — they sit beside each other, and the boundary
   is **how much lead time the thing needs**:
 

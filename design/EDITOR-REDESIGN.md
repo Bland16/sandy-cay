@@ -507,17 +507,28 @@ the role-defaulted one.
   5-stop now.*
 - **D-2 — bucket-row lean glyph:** show a tiny static load sparkline on the list
   row, or nothing until you drill in. *Lean: nothing on the row (calmer); the
-  control is one tap away.*
+  control is one tap away.* **Mocked both ways 2026-08-12** in
+  `design/session7-mockups.html` — judged by eye, not by argument. Note against
+  the sparkline: at 20px it is meaning by colour alone, which §10 forbids.
 - **D-3 — MOOT.** P0–P5 shipped without one; the render-dump habit (see HANDOFF)
   turned out to be the cheaper check.
 - ~~D-3 — interactive prototype first?~~ Build a self-contained clickable prototype
   of `<EnergyControl>` (Artifact) for you to *feel* the drag before it goes into
   the app, since it's the centerpiece and hardest to judge from a spec. *Lean:
   yes — it's cheap insurance on the one piece a written spec can't convey.*
-- **D-4 — physical/social critters:** no dolphin/fish sprite exists. Proposed
-  `surfboard` (physical) + `beach-ball` (social); alternatives are `life-vest` /
-  `flip-flops` (physical) and `message-bottle` (social). *Lean: surfboard +
-  beach-ball (most legible, most energetic).*
+- **D-4 — RESOLVED by the build: surfboard + beach-ball, as the lean proposed.**
+  Verified 2026-08-12, not read: `EnergyControl.jsx:14–15` wires
+  `assets/icons/surfboard.png` (physical) and `assets/icons/beach-ball.png`
+  (social), and `styles.css:888` tints the surfboard warm brown. The alternatives
+  (`life-vest`, `flip-flops`, `message-bottle`) all exist on disk and are
+  unreferenced. This had been sitting open while shipped — the fourth stale
+  "open" decision found this session, after D-1, D-3 and DAY-NOTES' status
+  banner. *The habit that catches these is a grep, never a re-read of the doc.*
+  ~~D-4 — physical/social critters: no dolphin/fish sprite exists…~~
 - **D-5 — scalloped frame as `border-image`:** verify the scallops don't distort
   when the frame stretches to card/row size; if they do, use `frame-square` or the
   current CSS border. *Lean: try scalloped, fall back on any distortion.*
+  **Mocked 2026-08-12** in `design/session7-mockups.html`, using the real
+  `frame-scalloped.png` at chip, row and tall-card sizes, with `stretch` against
+  `round` and the `frame-square` fallback beside them. `round` may answer this
+  outright by holding the scallop size at every box.

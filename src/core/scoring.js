@@ -5,7 +5,7 @@
 //               + w.balance   · (1 − dayFillRatioAfterPlacement)
 //               + w.stability · stabilityBonus(placedBy === 'user')
 //               + w.preference· modelScore(task, slot)      // 0 until ≥10 ratings
-//               + w.buffer    · bufferScore(slot.end, deadline, duration)
+//               + w.buffer    · bufferScore(slot.end, deadline, runwayStart)
 //
 // Highest wins; ties → earlier slot (broken by the caller's ordering).
 
@@ -34,8 +34,11 @@ export function normalizeWeights(weights) {
 }
 
 /**
- * Finish-early preference: aim to be done **one fifth of the task's own length**
- * before the deadline (WEEKLY-PLANNING §4.4).
+ * Finish-early preference: aim to be done **one fifth of the runway** before the
+ * deadline (WEEKLY-PLANNING §4.4). The runway is the time you actually have —
+ * from when the plan is being made (the search lower bound) to the deadline. Due
+ * at the end of the week, planned on Monday: aim to be finished by Friday, not
+ * Sunday night.
  *
  * The deadline itself is already a hard cap on the search window — nothing may
  * be placed past it. But until now nothing *preferred* earlier either, so a task
@@ -44,11 +47,22 @@ export function normalizeWeights(weights) {
  * anything under 24h as close to the wire: the app reported on a quality it
  * never optimised for. This closes that loop.
  *
- * One fifth of the TASK, not of the runway, because it is an **overrun
- * allowance** — "if this runs 20% over, you still make it" — and overrun scales
- * with the size of the job, not with how much notice you happened to get. A
- * runway-proportional version would just restate "earlier is better", which is
- * what `proximity` already says.
+ * **Corrected 2026-08-12.** This shipped measuring one fifth of the TASK's own
+ * length, on the spec's argument that a runway-proportional version "just
+ * restates earlier-is-better, which is what `proximity` already says". That
+ * argument is wrong, and the two terms are not the same shape:
+ *
+ *   - `proximity` is normalised by a FIXED horizon and pulls toward `origin`
+ *     forever — every minute earlier scores strictly better, for every task
+ *     alike, deadline or no deadline.
+ *   - `buffer` is normalised by THIS task's own runway and **saturates**: once
+ *     you are a fifth of the runway clear, it is satisfied and stops pushing,
+ *     which frees the other weights to choose among the earlier slots.
+ *
+ * So it expresses a deadline, where proximity expresses haste. It also makes the
+ * chunked case disappear rather than needing a rule: the target no longer scales
+ * with duration, so a 30-minute sitting and the 2-hour project it belongs to aim
+ * at the same moment, and there is nothing to pass down.
  *
  * It is a PREFERENCE, not a rule. That is what makes the obvious exceptions —
  * an overburdened week, a two-day deadline — need no special-case logic at all:
@@ -56,15 +70,15 @@ export function normalizeWeights(weights) {
  *
  * @param {Date}   slotEnd
  * @param {?Date}  deadline     null → 1 (neutral: a constant cannot change a ranking)
- * @param {number} durationMin  the work this buffer is protecting. For a chunked
- *   project pass the whole remaining amount, not one sitting — otherwise 30-min
- *   sittings each get a 6-min cushion and the project itself gets none.
+ * @param {?Date}  runwayStart  when the plan is being made — `findBestSlot`'s
+ *   `from`. Absent, or already past the deadline (overdue work), → 1: there is
+ *   no runway to take a fifth of, and a constant cannot skew a ranking.
  * @returns {number} ∈ [0,1] — 1 once the target buffer is met, falling linearly
  *   to 0 at the deadline itself.
  */
-export function bufferScore(slotEnd, deadline, durationMin) {
-  if (!deadline) return 1;
-  const target = (durationMin || 0) / 5;
+export function bufferScore(slotEnd, deadline, runwayStart) {
+  if (!deadline || !runwayStart) return 1;
+  const target = minutesBetween(runwayStart, deadline) / 5;
   if (target <= 0) return 1;
   const slack = minutesBetween(slotEnd, deadline);
   return clamp(slack / target, 0, 1);
@@ -90,7 +104,7 @@ export function balanceScore(dayFillRatioAfterPlacement) {
  * @param {number} p.modelScore             preference model output ∈ [0,1]
  * @param {Date}   p.slotEnd                for the buffer term
  * @param {?Date}  p.deadline               null when the task has none
- * @param {number} p.bufferDurationMin      work the buffer protects (see bufferScore)
+ * @param {?Date}  p.runwayStart            when the plan is being made (see bufferScore)
  * @param {object} p.weights                normalized weights
  */
 export function score(p) {
@@ -100,6 +114,6 @@ export function score(p) {
     w.balance * balanceScore(p.dayFillAfter) +
     w.stability * (p.stability || 0) +
     w.preference * (p.modelScore || 0) +
-    (w.buffer || 0) * bufferScore(p.slotEnd, p.deadline, p.bufferDurationMin)
+    (w.buffer || 0) * bufferScore(p.slotEnd, p.deadline, p.runwayStart)
   );
 }

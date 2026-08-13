@@ -224,12 +224,14 @@ export function findBestSlot(schedule, task, opts = {}) {
           dayFillAfter,
           stability,
           modelScore: ms,
-          // Finish-early preference. For a chunked project the buffer protects
-          // the whole remaining amount, not this one sitting — six minutes of
-          // slack per half-hour chunk would leave the project itself none.
+          // Finish-early preference: a fifth of the RUNWAY clear of the
+          // deadline, where the runway starts at `from` — the moment the plan is
+          // being made. Nothing about the task's own size enters into it, so a
+          // chunked project and its individual sittings all aim at the same
+          // moment and there is nothing to pass down.
           slotEnd: slot.end,
           deadline: task.deadline,
-          bufferDurationMin: task.chunking ? (task.chunking.remainingMin ?? durationMin) : durationMin,
+          runwayStart: from,
           weights,
         });
         if (
