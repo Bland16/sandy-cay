@@ -173,6 +173,86 @@ if they are five consecutive days.
 
 ---
 
+## Candidate 6 — Learned sitting length: measure the fatigue curve, don't invent it
+
+**Added 2026-08-12 after the user asked whether any candidate considers the
+machine-learning side. None did, and that was backwards** — the app is already
+learning the exact quantity candidate 3 fabricates.
+
+`learning.js` puts duration in the feature vector as a **one-hot over seven
+buckets** (`DURATION_EDGES = [15, 30, 45, 90, 150, 240]`, `learning.js:22`,
+labelled `dur:<15 … dur:>240` at `:85`) and trains on
+`satisfaction.overall`, normalised to [0,1], with a rating that carries a
+`timingFit` verdict counting double (`:113–114`). So the model's `dur:*` weights
+already are, literally, **how satisfied you have been with sittings of each
+length.** That is an empirical fatigue curve, measured on you.
+
+And `inspect()` (`:196`) already exposes exactly those per-label weights — it was
+built to say things like "study +0.8 mornings" in the Cabana. Nothing new is
+needed to *read* the curve.
+
+```
+s* = argmax over duration buckets b of  w[dur:b]      // your own best sitting length
+     subject to  s_min ≤ s* ≤ s_max  and  s* ≤ longest gap the week has
+n  = ceil(A / s*)
+```
+
+**Before the model has earned an opinion** — `modelScore` returns 0 until
+`trained && sampleCount ≥ coldStartRatings` (`:184`) — `s*` falls back to a stated
+default and the app says which it is using. That is the same shape as
+`learnedCapacity()` returning `null` until calibrated.
+
+**What makes this the most P-2-native candidate:** it does not assert a fatigue
+curve, it reports one. Candidate 3 tells you a 4-hour sitting is worth 3.4 hours
+because a constant says so; candidate 6 says it because your own ratings said so,
+and says nothing at all until they have.
+
+**The honest objections.** The `dur` one-hot is *unordered*, so nothing stops the
+learned curve being non-monotonic and jagged (`dur:45-90` high, `dur:90-150` low,
+`dur:150-240` high again) — a real risk on sparse data, and `argmax` over a jagged
+curve is unstable. It also learns from the sittings you actually *had*, which the
+scheduler chose, so it is confounded: if the app never gives you a 4-hour block
+you will never rate one, and the bucket stays empty forever. That is a genuine
+explore/exploit problem and this document should not pretend otherwise.
+`ROUTINES.md` R-D already proposes widening the low end of `DURATION_EDGES`; note
+those edges were **already widened** from the `[45, 90, 150, 240]` that doc
+describes to today's six-edge set.
+
+## Candidate 7 — Learned daily intensity: κ from `dayFill`, not from a constant
+
+Candidate 2's whole burnout defence is `κ`, the sustainable share of a day. The
+feature vector **already has a slot for the evidence**: `dayFill` at
+`learning.js:71` — and it is dead, hardcoded `?? 0`, commented *"dead until Phase
+D.2 wires it"*.
+
+`SPEC-PHASE-2026-08.md` says wiring it is **one small change**: record `dayFill`
+alongside `energyAt` in `Schedule#_snapshotEnergy`, exactly as the energy snapshot
+already does. Once live, the model learns how your satisfaction moves with how
+full the day was — which is `κ`, measured.
+
+**This is the one item here with a deadline attached.** Every week used without it
+is training data that cannot be recovered later, because deriving day-fill after
+the fact means reconstructing a day that never happened. That argument is already
+made for `energyAt`; it applies identically here.
+
+## What the ML angle does to the other candidates
+
+It partly **dissolves the invented-constant objection** — and the codebase has
+already settled how. `config.js:41–43` documents `energy.capacity` as *"only the
+PRIOR/fallback used for an axis that lacks enough evidence days"*, while
+`learnedCapacity()` returns `null` rather than a fabricated ceiling. So the
+project's own answer to evaluation question 4 is:
+
+> A documented **prior that learning overrides** is fine. A **stated fact** the
+> app has not earned is not. The sin P-2 names is the assertion, not the number.
+
+Which reframes `κ`, `δ`, `s_free` and `τ` from "fabricated constants" into "priors
+awaiting evidence" — *provided* each has a real path from prior to learned, and
+the app never presents one as a finding about you. Candidates whose constants have
+no such path stay guilty.
+
+---
+
 ## The obvious hybrid, stated so it can be judged too
 
 **5 for feasibility, 3 or 4 for the cap.** Compute a burnout-aware ceiling `s*`
@@ -195,3 +275,11 @@ is good for you, and never a sitting the week cannot hold.
    the `buffer` weight as corrected today — or does it need a new solver?
 6. **Does it degrade honestly** when it cannot fit, per §4.3: state the shortfall
    plainly, no debt, no red, no verdict.
+7. **How does LEARNING enter it?** For whichever candidate you recommend, say
+   concretely how the machine-learning side gets incorporated — which constants
+   become priors the model overrides, which quantity is read from `inspect()`,
+   what the cold-start behaviour is before `coldStartRatings`, whether
+   `featureVector` needs a new term (and therefore a `MODEL_LAYOUT_VERSION` bump
+   and a retrain-on-load migration), and how the confounding in candidate 6 is
+   handled — the scheduler chooses the sitting lengths that then get rated, so
+   a length never offered is never learned.
