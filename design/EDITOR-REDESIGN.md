@@ -508,8 +508,13 @@ the role-defaulted one.
 - **D-2 — bucket-row lean glyph:** show a tiny static load sparkline on the list
   row, or nothing until you drill in. *Lean: nothing on the row (calmer); the
   control is one tap away.* **Mocked both ways 2026-08-12** in
-  `design/session7-mockups.html` — judged by eye, not by argument. Note against
-  the sparkline: at 20px it is meaning by colour alone, which §10 forbids.
+  `design/session7-mockups.html` — judged by eye, not by argument.
+  ~~Note against the sparkline: at 20px it is meaning by colour alone, which §10
+  forbids.~~ **Struck 2026-08-13: that argument does not apply.** A four-dot load
+  sparkline encodes value by **position and height**, which is exactly what §10
+  asks for and what `<EnergyControl>` itself does — colour is reinforcement, not
+  the signal. Decide this one on legibility at 20px, which is a real question,
+  and not on a rule it does not break.
 - **D-3 — MOOT.** P0–P5 shipped without one; the render-dump habit (see HANDOFF)
   turned out to be the cheaper check.
 - ~~D-3 — interactive prototype first?~~ Build a self-contained clickable prototype

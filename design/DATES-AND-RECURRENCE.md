@@ -497,5 +497,3 @@ P2 slipped**, because it converts silent data loss into a visible fact.
 - **No timezone handling.** Everything stays local-time, as the engine is
   throughout. Importing a `TZID`-bearing calendar from another timezone is a
   known and unchanged limitation.
-</content>
-</invoke>

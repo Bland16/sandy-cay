@@ -142,22 +142,62 @@ is a holiday.
   Tags stay available on the note for tinting *its own chip* and for the wrap
   report, but they do not colour the day.
 
-  **D-6. RESOLVED 2026-08-12 — the tint REPLACES the card.** A blocked day stops
-  rendering a full-height `createBlocker` task; the tint carries the whole
-  meaning. The user's reason is the sharper one and it changes what "blocked"
-  means: **tasks can still be scheduled on a blocked day.** A giant protected
-  card says "this day is occupied", which is a lie about a day you can still put
-  something on; a tint says "this day is spoken for" and leaves the day usable.
+  **D-6. RESOLVED 2026-08-12 — the tint REPLACES the card. Reason corrected
+  2026-08-13; the decision stands, but it is a MODEL change, not a rendering
+  one.**
 
-  The block therefore becomes a *property of the day* rather than a fake
-  appointment inside it — the identical argument this whole document makes about
-  holidays, applied to the thing that motivated it.
+  The original reason given was *"tasks can still be scheduled on a blocked day,
+  so a full-height protected card is a lie about the day."* **That was false as
+  built**, and the probe is unambiguous:
 
-  **Known cost, to be handled in the build:** `evacuate.js`, `carryOver` and
-  anything counting tasks currently see the blocker as a task. Removing it means
-  those call sites need the day's blocked *state* instead, and `createBlocker`
-  itself may survive only for the explicit "protect this gap" case (§3.9), which
-  is a genuinely different thing — that one IS an appointment.
+  ```
+  blocker: Blocked  fixed  tags ['rest']  spans Wed 08:00 -> Wed 18:00 (600 min)
+  manual drop at Wed 10:00 -> {"rejected":true,"reason":"Conflicts with fixed: Blocked"}
+  ```
+
+  The blocker covers the **entire** schedulable day window, so automatic
+  placement has no legal room; and a manual drop is rejected outright, because
+  `isHardBlocker` treats a protected task as a wall. Nothing could be scheduled
+  there, by engine or by hand. The card was not lying — it was doing the work.
+
+  **So removing it removes a behaviour, and that behaviour has to be rebuilt
+  deliberately.** What replaces it is the user's actual intent, which is sharper
+  than the original wording and is best stated through their own test case —
+  **Christmas brunch**:
+
+  > *"Would I want homework scheduled on Christmas? No. Should I be able to
+  > schedule my own brunch on that date as a fixed task, and do something to
+  > fill my time if I feel like it? Yes."*
+
+  | | before | after |
+  |---|---|---|
+  | autoScheduler places work there | no | **no** |
+  | you drop something there by hand | **rejected** | **allowed** |
+  | What-To-Do / "Do it now" offers something | n/a | **allowed** |
+  | a full-height card sits on the grid | yes | **no** — the tint says it |
+
+  **Blocked means "the scheduler stays out", not "you may not go here."** That is
+  R-1 applied honestly: the zone constrains the scheduler, not the hand, and a
+  block you set yourself is the clearest possible case of a rule you are entitled
+  to overrule. Opening the picker *is* asking, so a blocked day must not silence
+  What-To-Do either.
+
+  **The model:** a `blockedDays` collection beside `dayNotes`, subtracted from
+  the legal windows in `computeWindows`. That one subtraction covers every
+  automatic path at once — `autoSchedule`, displacement, `carryOver` and ripple's
+  overflow branch **all** route through `placeTask` → `computeWindows` (SPEC
+  §2.2). `createBlocker` survives only for the explicit "protect this gap" case
+  (§3.9), which genuinely *is* an appointment.
+
+  **⚠️ The one automatic path that does NOT route through `placeTask` is ripple's
+  plain-shift branch** — pure arithmetic, and it has been caught by exactly this
+  before: it could slide a flexible into an exclusive zone until it was taught to
+  hand such a task to `placeTask` instead. Blocked days must join that same
+  check, or a ripple will quietly slide Tuesday's homework onto Christmas Day.
+
+  **Known cost, unchanged:** `evacuate.js`, `carryOver` and anything counting
+  tasks currently see the blocker as a task and will need the day's blocked
+  *state* instead.
 - **D-2. RESOLVED 2026-08-12 — neither. The import CONFIRMS DATES, on pages, and
   it is the same form as an ask pack.** The user's reframing, and it collapses
   two designs into one. The question assumed the import's job was to ask about
@@ -385,6 +425,21 @@ a notes-only second one.
   both functions, no exceptions.
 - A span that runs off the end of a month simply continues into the next; it is a
   count of days, not a month-day arithmetic problem.
+- **`spanDays` is meaningful on a day note and meaningless on a task** (added
+  2026-08-13). D-3 committed both to one period shape, which is right, but a task
+  window already carries `start`/`end` times — "every 9 March, 18:00–19:00, for
+  five days" says nothing coherent. So a task period carrying `spanDays` is
+  **rejected at validation, not silently ignored.** Silent tolerance of an
+  unexpected period field is precisely how `freq` was dropped by the serialiser
+  whitelist and every monthly pattern quietly expanded as weekly for a session.
+- **⚠️ Selection must be by OVERLAP, not by start** (added 2026-08-13).
+  `expandRecurrence` keeps an occurrence only when its **start** falls inside the
+  requested week (`if (!inWeek(start)) return`). A five-day note beginning on a
+  Saturday would therefore appear in that week and **vanish from the next one**,
+  where four of its five days actually fall. `notesForDate` must select notes
+  whose span *covers* the day. This is cheap to get right now and invisible until
+  the first multi-day note straddles a Sunday — i.e. until November, in front of
+  the user.
 - The old argument for refusing this — *breaks move every year, so an
   institutional calendar should be an import* — is still true, and it is an
   argument about **which source you use**, not about what the model can express.
@@ -400,4 +455,3 @@ a notes-only second one.
 2. **The header line + the day list** — the visible half.
 3. **"Block this day"** — one call to existing machinery.
 4. **Export**, then the recurring case if D-3 says reuse.
-</content>

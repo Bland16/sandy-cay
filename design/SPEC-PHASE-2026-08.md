@@ -124,4 +124,3 @@ Worth listing so nobody "fixes" them:
    daily-life payoff (laundry, dishwasher, the gym's travel overhead).
 5. **Keyboard drag** — the accessibility gap.
 6. **Retention** — before `history` and `occurrenceData` get big enough to matter.
-</content>

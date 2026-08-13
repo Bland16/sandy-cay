@@ -78,6 +78,30 @@ day: the user's real 18:30 workday needs `config.windows` widened past 18:00.
 **Worth doing:** warn when a zone window falls outside `config.windows`, at the
 moment the zone is saved. That is the honest place to say it.
 
+> ### ⚠️ SUPERSEDED 2026-08-13 — this trap no longer exists. Do not build the warning.
+>
+> SPEC §2.1 was amended on the same day this ran to say **a zone DEFINES the
+> window for its own tags and is not clipped by `config.windows`**, and the code
+> agrees: `computeWindows` takes the union of matching zone intervals without
+> intersecting `base` (`placement.js:101–113`). Re-probed 2026-08-13 against the
+> exact scenario above:
+>
+> ```
+> config.windows.monFri = {"start":"08:00","end":"18:00"}
+> gym placed: Thu Aug 13 2026 06:00 -> 07:00
+> inside the 06:00-08:00 zone? true
+> schedulingInfo (outside-zone badge?): null | warning: false
+> ```
+>
+> The zone works, unflagged. This finding was written against pre-amendment
+> behaviour and the amendment won. **Delete the to-do** rather than carrying it.
+>
+> **One half of the surrounding advice does survive, narrowed:** widening
+> `config.windows` past 18:00 still matters for **non**-matching tasks, which are
+> still bound by the day window — so evenings still do not exist for general
+> work until it is widened. It is no longer needed for the Work zone itself,
+> which now defines its own hours. The HANDOFF's phrasing is corrected to match.
+
 ---
 
 ## Still open, confirmed by this run

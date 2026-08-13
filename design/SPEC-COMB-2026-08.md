@@ -95,10 +95,13 @@ drift again.
   key handling on a card is Enter/Space → open (`TaskCard.jsx:99`). The app is
   mouse-and-touch only. This is an **accessibility gap**, not just a missing
   feature.
-- **Retention.** No `prune`/retention anywhere in `src/core`. `history`,
-  `occurrenceData`, `snapshots` and `dismissed` all grow forever; the designed
+- **Retention.** No `prune`/retention anywhere in `src/core`. ~~`history`,~~
+  `occurrenceData`, `snapshots` and `dismissed` grow forever; the designed
   end state is localStorage exhaustion, and the starvation detector becomes a
-  permanent nag (a P-1 violation) long before that.
+  permanent nag (a P-1 violation) long before that. **Corrected 2026-08-13:
+  `history` does not grow** — it is four integers per task (`Task.js:19–20`),
+  fixed size. It has been named in this list since session 2 and never belonged
+  in it. See D-8.
 - **Chunk ops.** `growChunk` / `shrinkChunk` / `resizeChunk` / `deleteChunk` /
   `finishProject` / `redistribute` are all exported from `projects.js` and have
   **zero** references in `src/ui` or `App.jsx`. Tested engine code with no way to
@@ -148,21 +151,69 @@ drift again.
   12 months.** Left to my judgement by the user. The four stores are not one
   thing and a single horizon treats them as if they were:
 
-  | store | policy | why |
-  |---|---|---|
-  | `history` **entries carrying a rating** | keep | this is the training set; it is what `retrain()` reads, and it is a handful of numbers per session. Deleting it is deleting the model. |
-  | `history` entries with no rating | 12 months | they train nothing. |
-  | `occurrenceData` | 12 months | "a lot of rows but not a lot of bytes" — a year is more than any surface reads back. |
-  | `snapshots` | 12 months | the wrap report never looks further back than the week it covers. |
-  | `dismissed` | **keep** | a detector answer is permanent *by decision* (HANDOFF: "let it go" that re-raises is nagging with extra steps). Pruning it would resurrect answered observations, which is the exact behaviour that decision forbids. |
+  **⚠️ Table corrected 2026-08-13 — the first version described a data structure
+  that does not exist.** It split `history` into "entries carrying a rating" and
+  "entries with no rating". `history` has no entries and carries no rating: it is
+  `{ moveCount, displacedCount, rippleCount, carriedCount }` (`Task.js:19–20`) —
+  **four integers per task, fixed size.** It cannot grow, there is nothing in it
+  to prune, and the premise repeated since session 2 that "`history` grows
+  forever" is simply wrong. The stores that actually grow are the other three.
 
-  So: two stores are kept because deleting them changes behaviour, and the bulk —
-  unrated history, occurrence rows, snapshots — prunes at a year. The starvation
-  detector's permanent-nag failure is fixed by the horizon on the rows it reads,
-  not by forgetting what you already told it.
+  | store | grows with | policy | why |
+  |---|---|---|---|
+  | `history` | nothing — 4 ints per task | **no policy needed** | fixed size. Left alone. |
+  | `occurrenceData` entries **carrying a rating** | rated sessions | **keep** | this **is** the training set for a recurring task — `od.satisfaction` is where a rated session's data lives. Deleting it is deleting the model. |
+  | `occurrenceData` entries with no rating | every occurrence ever expanded | 12 months | they train nothing, and this is the real bulk. |
+  | `snapshots` | one per week | 12 months | the wrap report never looks further back than the week it covers. |
+  | `dismissed` | one per answered detector | **keep** | a detector answer is permanent *by decision* (HANDOFF: "let it go" that re-raises is nagging with extra steps). Pruning it would resurrect answered observations, which is the exact behaviour that decision forbids. |
+
+  So: the intent is unchanged — **keep what the model learns from and what
+  changes behaviour, prune the bulk at a year** — but the rated rows to protect
+  are in `occurrenceData`, not in `history`. Pruning `occurrenceData` wholesale,
+  as the first version said, would have deleted the training data the same
+  decision exists to keep.
+
+  **This interacts with `design/RATINGS-AND-LEARNING.md`.** Today `retrain()`
+  never reads occurrence ratings at all, so the loss would have been invisible —
+  the data would have been deleted without anything noticing, and then noticed
+  years later as a model that never got better. The retention rule must land
+  with, or after, that fix; never before it.
+
+  The starvation detector's permanent-nag failure is fixed by the horizon on the
+  rows it reads, not by forgetting what you already told it.
 
   **Prune on load, not on a timer**, so it costs nothing on a session that never
   opens, and record the cutoff in the schedule so a prune is idempotent.
+
+---
+
+## Session-8 addendum — a second comb, 2026-08-13
+
+Same method, run over the decisions session 7 wrote rather than the code session
+6 shipped. **Four claims in the docs turned out to be false, and all four were
+false in the same direction: a decision was right but its stated reason was not
+checked.** Recorded here because that pattern is the useful finding.
+
+| # | Claim, as written | Verdict | Now lives in |
+|---|---|---|---|
+| 11 | Ratings train the model | **FALSE — recurring ratings reach nothing.** 12 rated sessions → `sampleCount` 0, proven by probe | `design/RATINGS-AND-LEARNING.md` |
+| 12 | "Tasks can still be scheduled on a blocked day" (NOTES D-6's reason) | **FALSE** — the blocker covers the whole day window and a manual drop is rejected | `DAY-NOTES.md` D-6, rewritten |
+| 13 | `history` grows forever and needs pruning | **FALSE** — 4 integers per task, fixed size | D-8 above |
+| 14 | A zone outside `config.windows` "can never be honoured" | **STALE** — the §2.1 amendment superseded it; re-probed, the zone works unflagged | `USE-CASE-RUN-2026-08.md` |
+
+Two more, both about design rather than code:
+
+| # | Claim | Verdict |
+|---|---|---|
+| 15 | `WEEKLY-PLANNING` §4.1.1 step 4, "EQUALISE, do not skip this line" | **WRONG** — it destroys the placeability property that won candidate 5. Withdrawn. |
+| 16 | §4.5's deferred `spread` scoring weight | **REJECTED ON EVIDENCE** — built and measured; it lengthens the consecutive streak and drifts ordinary deadlined work later |
+
+**The lesson, and it is a sharpening of this document's own method.** Session 6
+combed *claims about the code* and found the docs lying about what was built.
+Session 8 combed *reasons inside decisions* and found something subtler: the
+conclusions were mostly right, but four rested on premises nobody had run. A
+right answer with a wrong reason survives review — and then someone builds from
+the reason. **Probe the premise, not just the conclusion.**
 
 ## What this comb did NOT cover
 
@@ -170,4 +221,3 @@ drift again.
 to end, per the standing instruction. A full pass against its ~90 numbered cases
 is the natural companion to the use-case exercise the user has planned next —
 that is the right place to catch what this missed.
-</content>
