@@ -278,6 +278,20 @@ body {
    A browser without color-mix simply ignores this and gets today's paper card —
    the tint is identity, never information (§9). */
 .card.tinted { background-color: color-mix(in oklab, var(--bucket-tint) 20%, var(--paper)); }
+/* …and a SPINE at full strength.
+   The 20% wash above cannot carry identity on its own, which real use proved
+   rather than argued: every `fixed` task paints the same teal gradient as a
+   background-IMAGE over the wash, so a gym session and a lecture came out
+   indistinguishable and a dark purple club event read as faintly blue. The
+   states survived exactly as §9.1 intended; the bucket did not.
+   A left spine sits BESIDE the gradients instead of underneath them, so it is
+   the one place the bucket colour can be shown at 100% without competing with
+   the semantic read. Inset rather than a border so the 2px ink outline and the
+   11px corner are untouched, and it is decoration only — bucket names are still
+   on the card's title/aria-label, never colour alone (§9). */
+.card.tinted { box-shadow: inset 5px 0 0 var(--bucket-tint), 1.5px 2px 0 rgba(42,38,32,.13); }
+.card.tinted.pinned, .card.tinted.protected { box-shadow: inset 5px 0 0 var(--bucket-tint), 1.5px 2px 0 rgba(42,38,32,.13); }
+.card.tinted .t, .card.tinted .meta { padding-left: 4px; }
 .card.warn { box-shadow: 1.5px 2px 0 rgba(226,104,95,.35); }
 .card.done { opacity: .55; }
 .card.done .t { text-decoration: line-through; }
