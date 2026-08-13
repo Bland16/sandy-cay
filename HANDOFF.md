@@ -103,7 +103,152 @@ minute. And `report.js#buildDeadlineBuffer` had been measuring the exact quantit
 that would have shown it all along — *the app was already reporting the evidence
 against its own scoring.*
 
-## ▶▶ START HERE — the build order (written 2026-08-13, end of session 8)
+## ▶▶▶ START HERE — five items, ONE AT A TIME (written 2026-08-13, end of session 8)
+
+> ### The rule that matters more than any item below
+>
+> **Do ONE item. Finish it. Run `npm run test:run` and `npx eslint src`. Commit
+> it on its own. Then STOP and report before starting the next.**
+>
+> Do not batch two because they touch the same file. Do not start item 2 while
+> item 1 is "basically done". Every defect this project has had to dig out —
+> the inert buffer weight, the energy-blind placer, the invisible bucket tint,
+> P0 being recorded complete when it wasn't — came from work that was reasoned
+> about in a batch and verified as a batch. One at a time is how they get caught.
+
+### What is different now: there is a real user with a date
+
+The schedule below is not a fixture. **Classes start Monday 31 August 2026** and
+the user intends to run their term on this.
+
+Already imported and live in their browser: **11 buckets with real authored
+loads · 49 activities · 1 zone (TA session, Wed 16:30–18:50, matches
+`light-work`) · 21 day notes · 37 tasks** (8 courses, 3 gym, 14 club events,
+12 blockers). The generator that built it is **not** in the repo and the file
+lives in their Downloads — it holds a real person's schedule and this repo is
+public.
+
+Two anonymised real weeks are checked in as fixtures at `design/probes/`
+(`probe-real-weeks-uc.mjs`) — a dense term week and a sparse one. **Prove
+placement work against those, not against invented calendars.**
+
+### ITEM 1 — day notes need a surface
+
+**Do this one alone, and do it first.** The user has 21 day notes — Thanksgiving,
+both finals periods, every add/drop deadline, the Make-a-thons — and
+`notesForDate`/`dayNotes` appear **nowhere** in `src/ui` or `App.jsx`. The data
+is live and completely invisible.
+
+- **Spec:** `design/DAY-NOTES.md` §4 (header line) and §7 (the day list).
+- **Build:** one line under the day's date in the sticky header — label,
+  truncated, "+1" when there are several; the day view lists them in full.
+- **⚠️ D-5 already decided the hard part:** ONE `notesForDate` call site rendered
+  by ONE component, dropped into each header. Three surfaces render day headers
+  (week grid, day view, weekend drawer) and `zoneBands` proves a third copy
+  drifts (sharp edge #14, #17).
+- **A multi-day note draws on every day it covers**, so Thanksgiving reads as a
+  band across three days, not a mark on the 25th.
+- **Not coral.** A holiday is not a scheduling problem (P-1).
+- **Done when:** loading their file shows Thanksgiving across 25–27 Nov, both
+  finals periods, and the Make-a-thon on 20–21 Mar, on all three surfaces.
+
+**STOP. Report. Wait.**
+
+### ITEM 2 — blocked days become a real state, not 12 giant cards
+
+Their file contains **12 full-day protected blocker tasks** which currently
+render as cards spanning 08:00–23:00 across Thanksgiving, spring break and 4 Oct.
+
+- **Spec:** `design/DAY-NOTES.md` D-6, rewritten in session 8 — read the whole
+  entry, its original reason was wrong and the correction is the point.
+- **Build:** a `blockedDays` collection beside `dayNotes`, subtracted from the
+  legal windows in `computeWindows`. The tint carries the meaning; the blocker
+  card goes.
+- **The behaviour, which is a CHANGE and was decided by the user:** blocked means
+  *the autoscheduler stays out*, not that you may not go there. A manual drop
+  must be **allowed** (today it is rejected), and What-To-Do must still answer
+  when asked — opening the picker is asking.
+- **⚠️ One automatic path does NOT route through `placeTask`:** ripple's plain
+  shift branch. It was caught by exactly this once before with exclusive zones.
+  Blocked days must join that check or a ripple will slide work onto Christmas.
+- **`createBlocker` survives only** for the explicit "protect this gap" case
+  (§3.9), which is a genuine appointment.
+- **Done when:** Thanksgiving shows a tint and no card; `autoSchedule` places
+  nothing there; a hand drop lands; the ripple test passes.
+
+**STOP. Report. Wait.**
+
+### ITEM 3 — `resizeChunk` never clamps to `chunking.maxChunk`
+
+One line and a test. `projects.js:114` clamps to `Math.max(15, newDurationMin)`
+and never checks the user's own stated maximum sitting, so dragging a chunk
+past it silently succeeds.
+
+- **Decide and comment it either way:** it may be deliberate R-1 autonomy (the
+  hand wins). If so, say so in the code. If not, clamp it.
+- **Done when:** a test locks whichever answer you chose.
+
+**STOP. Report. Wait.**
+
+### ITEM 4 — the generation engine (the actual feature)
+
+Right now the app shows commitments and nothing else. This is what places
+coursework.
+
+- **Spec:** `design/WEEKLY-PLANNING.md` §4.1.1 and §4.1.2. **Read §4.1.1 before
+  writing anything** — six of seven candidates lost, and step 4's "equalise" line
+  was withdrawn in session 8; sittings stay gap-shaped.
+- **Build the engine ALONE first**, with no UI, and prove it by printing
+  placements against `design/probes/`. Then the Cabana card (steps 2–3).
+- **No `scoring.js` change** is needed or wanted here (§4.5).
+- **⚠️ It will move the user's gym and be wrong to.** They deliberately placed
+  Mon 16:15 / Wed 19:00 / Sat 14:00 against their hard days; the generator
+  spreads evenly. Keep the gym hand-placed, or give a commitment a way to say
+  "position me against demand, don't spread me" — that gap is real and unwritten.
+- **Done when:** a commitment generates sittings the week can actually hold, in
+  ρ order across several commitments, printed and eyeballed on both real weeks.
+
+**STOP. Report. Wait.**
+
+### ITEM 5 — record planned-vs-actual per sitting
+
+Cheap, and the cost of delay is permanent: unrecorded weeks cannot be
+reconstructed, the same argument that made `dayFill` urgent.
+
+- **Spec:** `design/WEEKLY-PLANNING.md` §4.6.
+- **Build:** additive fields, written in `toJSON` **and** read in the
+  constructor, and on `occurrenceData[key]` for a recurring session. A field in
+  only one of the two is silently dropped — that is how `freq` was lost.
+- **Do NOT build the margin offer yet.** It needs a term of data first.
+- **Done when:** a resized or early-finished sitting stores what was planned
+  alongside what happened, and survives a footlocker round-trip.
+
+**STOP. Report.**
+
+### Deliberately NOT in this list, so nobody quietly starts one
+
+- **The energy term in `scoring.js`** — settled by evidence (D-1) and the
+  riskiest change available, because it touches every placement. It has nothing
+  to act on until item 4 exists: the user currently has no flexible tasks at all.
+- **Retention** — zero history. Months away.
+- **Routines, zone frequencies, `<WindowRow>`** — real, none of them hit this term.
+- **Keyboard drag (SPEC §10)** — a genuine accessibility gap that happens not to
+  affect this user. Deferred for that reason, not because it does not matter.
+
+### Standing rules for every item
+
+- `npm run test:run` (**594 green** at the end of session 8) and `npx eslint src`.
+- **Commit by explicit path**, never `git add -A` — `design/import/` and `*.ics`
+  hold a real schedule and this repo is public.
+- **Never merge to `main` or push to it.** `main` auto-deploys, so a merge is a
+  release and it is the user's call. Work stays on `worktree-spec-session8`.
+- **The suite cannot see placement or presentation.** Four things this session
+  were carefully reasoned, shipped, fully green and wrong. Print placements;
+  look at the screen.
+
+---
+
+## Reference — the fuller reasoning behind the build order (session 8)
 
 **Every spec is signed off and every premise in them has now been probed.** This
 supersedes session 7's todo below, which it contains. Build top to bottom; each
