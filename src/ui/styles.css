@@ -282,7 +282,27 @@ body {
    section below. A spine and a dot were both tried first and both added an
    element to the card; the wave was already there. Decoration only either way:
    bucket names are on the card's title and aria-label, so nothing is meaning
-   by colour alone (§9). */
+   by colour alone (§9).
+
+   PRIORITY reuses the dot, and only above the default. P3 is what a task is
+   when you did not think about it, so it stays unmarked — a mark on the default
+   is a mark on almost everything, which is the same as no mark at all. One dot
+   at P4, two at P5, so the escalation is countable rather than a judgement of
+   shade. P1–P2 are also unmarked: deliberately-low and didn't-say look the
+   same on the grid, and both mean "not elevated".
+   Bucket-coloured on purpose — it introduces no new hue to a palette the art
+   direction keeps scarce, and the bucket is already legible from the wave, so
+   the dot's PRESENCE is free to mean priority without overloading its colour. */
+.card.p4 .t::before, .card.p5 .t::before {
+  content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--bucket-tint, var(--ink-soft)); margin-right: 5px; vertical-align: baseline;
+}
+.card.p5 .t::before {
+  width: 16px; border-radius: 4px;
+  /* two dots, drawn as one element so a long title never wraps between them */
+  background: radial-gradient(circle 3.5px at 3.5px 50%, var(--bucket-tint, var(--ink-soft)) 99%, transparent),
+              radial-gradient(circle 3.5px at 12.5px 50%, var(--bucket-tint, var(--ink-soft)) 99%, transparent);
+}
 .card.warn { box-shadow: 1.5px 2px 0 rgba(226,104,95,.35); }
 .card.done { opacity: .55; }
 .card.done .t { text-decoration: line-through; }

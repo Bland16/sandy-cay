@@ -55,6 +55,11 @@ export default function TaskCard({
   const movable = interactive;
   const cls = [
     'card', kind,
+    // Priority above the default earns a mark (§10: the DEFAULT is the quiet
+    // state, so P3 carries nothing — marking it would mark almost everything).
+    // It is a reminder of what you said, not a claim the engine acted on it:
+    // priority orders autoSchedule and nothing else (R-1).
+    task.priority >= 4 ? `p${Math.min(5, task.priority)}` : '',
     task.schedulingWarning ? 'warn' : '',
     task.completion === 'done' ? 'done' : '',
     task.completion === 'skipped' ? 'skipped' : '',
