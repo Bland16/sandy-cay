@@ -1,5 +1,23 @@
 # What is still spec — verified against the code, 2026-08-11
 
+> ### ⚠️ The "If you want an order" list at the bottom is SUPERSEDED (2026-08-13)
+>
+> Use **HANDOFF's "START HERE — the build order"** instead. Two of this file's
+> six items have since changed shape, and following them in this order would
+> build them wrong:
+>
+> - **"`dayFill` in the snapshot — tiny"** is real but is no longer a standalone
+>   item. It is one of three things the rating-context snapshot must stamp, and
+>   the snapshot **does not currently fire for a recurring session at all**
+>   (`design/RATINGS-AND-LEARNING.md`). Wiring `dayFill` alone would leave the
+>   larger hole open and look finished.
+> - **"Retention — before `history` gets big"** — `history` cannot get big; it is
+>   four integers per task. And retention must land **with or after** the ratings
+>   fix, or it prunes training data nothing is reading yet.
+>
+> The rest of this file — what is built, what is not, what needs a browser — was
+> re-checked on 2026-08-13 and still holds.
+
 **Method: check the code, not the banner.** Two status lines were lying when this
 survey started — `DATES-AND-RECURRENCE.md` said "Nothing built" after all four
 phases had shipped, and `WEEKLY-PLANNING.md` said the same with its step 0 live.
