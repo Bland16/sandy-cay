@@ -7,16 +7,47 @@ chosen. Probe: `probe-energy-candidates.mjs`.
 
 ## Recommendation
 
-> ### Build **H3 — relative depth (C1) for energy, sibling spacing for clustering, kept separate.**
+> ### Build **H4 — relative depth (C1) for energy, GATED on the task having any load, plus sibling spacing for clustering.**
 
 ```
-score(day) =  ( 1 − |dip⁺(day)| / max|dip⁺| over candidate days )      ← energy
-            + ( min gap to the sittings ALREADY CHOSEN ) / |R*|        ← clustering
+score(day) =  ( |L(t)| > 0 ? 1 − |dip⁺(day)| / max|dip⁺| over candidates : 0 )   ← energy
+            + ( min gap to the sittings ALREADY CHOSEN ) / |R*|                  ← clustering
 ```
 
-It is the only rule that clears both bars at once: **0 minutes on the depleted
-days and a consecutive streak of 1.** Every single candidate fails one or the
-other.
+It clears both bars at once — **0 minutes on the depleted days and a consecutive
+streak of 1** — and every individual candidate fails one or the other.
+
+**The gate was added 2026-08-13** after the user asked what task actually has no
+energy measure. If a task carries no load it cannot make any day worse, so it
+should have **no opinion**, rather than inheriting a preference from the day's
+own state. Ungated (H3) a characterless task still gets steered; gated (H4) it
+does not, and every loaded case is byte-identical:
+
+| | acceptance | all-axes-deep | physical front | zero-load task |
+|---|---|---|---|---|
+| H3 ungated | 4,6,8,10,13 · streak 1 | 0,3,6,9,13 | 2/4 | **4,6,8,10,13** |
+| **H4 gated** | 4,6,8,10,13 · streak 1 | 0,3,6,9,13 | 2/4 | **0,3,6,9,13** |
+
+**This dissolves D-2** — there is nothing left to decide, and it is one line.
+
+### And what *does* have no energy measure? Three cases, two of them common
+
+The premise is worth stating because it is easy to assume tags imply energy:
+
+1. **No tags at all.** `addFlexible({title})` is 7A's defaults cascade and lands
+   with `tags: []`. Quick capture is the app's flagship case.
+2. **Tags that match no bucket** — `energy.js:35` returns `zeroLoad()`. This is
+   the **default state of every new tag**: `ACTIVITY-LIBRARY.md` has a new tag
+   land in "Unbucketed" as *"an invitation to sort it, never a forced step,
+   never a nag."*
+3. **All matching buckets neutral.** A user-created bucket defaults to load 0
+   (RECONCILIATION P-2); only `STARTER_BUCKETS` ships values.
+
+So **a tag carries energy only once it is in a bucket that has load**, and the
+app deliberately never forces that. The failure at full scale is already on
+record — a real user found with 16 tags and 0 buckets, with the entire energy
+model silently inert. The gate means that user's placement is simply unchanged
+rather than subtly wrong.
 
 ## The acceptance table
 
@@ -111,10 +142,15 @@ to today". The run shows that was conflating two things:
 - **D-1 (unchanged): weight or generation rule?** Everything above was run at
   generation time. C3 is slot-shaped and could not live in a day chooser at all,
   which is another reason to settle C3's fixture before choosing.
-- **D-2 (new): should a characterless task be steered away from wrecked days?**
-  The table above, row 2. Yes is defensible and is what H3 does today; no is
-  defensible and needs C4 as a genuine gate (returning 0, not 1, for a zero-load
-  task).
+
+  **Scope, stated plainly so it is not assumed away:** v1 lives in §4.1.1 step 5,
+  which runs **only when a standing commitment generates its sittings.** Every
+  ordinary task stays energy-blind, including the 80%-on-the-worst-days behaviour
+  that motivated this whole document. That is the containment trade — a small
+  blast radius now, the general problem still open behind D-1.
+- ~~**D-2: should a characterless task be steered away from wrecked days?**~~
+  **DISSOLVED 2026-08-13 by the gate** (see the recommendation). A task with no
+  load cannot make a day worse, so it gets no opinion. One line, no decision.
 - **Stability was not measured.** The candidates document's question 2 — re-plan
   on each of days 0…10 and count sittings that move for reasons the user did not
   cause — has not been run. C1's denominator moves when an unrelated day changes,

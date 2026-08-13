@@ -92,6 +92,19 @@ const CANDIDATES = {
     const space = (gaps.length ? Math.min(...gaps) : N_DAYS) / N_DAYS;
     return depth + space;
   },
+  // H4: H3 with a REAL gate. If the task itself carries no load there is nothing
+  // it can make worse, so the energy term contributes nothing and spacing alone
+  // decides. (H2's "gate" returned 1 — neutral — for a zero-load task, which
+  // multiplied the depth term straight through instead of switching it off.)
+  'H4 = gated C1 + sibling': (s, d, proto, ctx) => {
+    const hasLoad = mag(ctx.L) > 0;
+    const depth = hasLoad
+      ? 1 - Math.abs(dipAfter(s, d, proto)[ctx.axis]) / (ctx.worstAfter || 1)
+      : 0;
+    const gaps = ctx.chosen.map((c) => Math.abs(c - d));
+    const space = (gaps.length ? Math.min(...gaps) : N_DAYS) / N_DAYS;
+    return depth + space;
+  },
   'H2 = C1*C4 + C5': (s, d, proto, ctx) => {
     const depth = 1 - Math.abs(dipAfter(s, d, proto)[ctx.axis]) / (ctx.worstAfter || 1);
     const S = spentVector(s, d);
