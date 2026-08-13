@@ -196,6 +196,33 @@ DAY NOTES                                     ＋ new
   Mum's birthday        3 Sep · every year    note · repeats
 ```
 
+**Where day notes come from — nothing ships.** The app has no holiday database
+and never invents a note. There are exactly two sources: you type one, or you
+import a calendar that contains all-day events. Subscribe to a holidays calendar
+in Google and import it and you get ~20 a year; don't, and you have none.
+
+**Filtering by source (decided 2026-08-11).** Because imports arrive in bulk,
+the card groups by the `source` field the model already carries, with a
+**per-source toggle**:
+
+```
+DAY NOTES                                     ＋ new
+
+  ▾ US Holidays          20 notes    [ shown ▾ ]
+      Thanksgiving          Thu 26 Nov
+      Labor Day             Mon 7 Sep
+      …
+  ▾ Typed by me           2 notes    [ shown ▾ ]
+      Spring break          9–13 Mar
+      Mum's birthday        3 Sep · every year
+```
+
+Turning a source off hides its notes from the day headers **without deleting
+them**, so re-importing doesn't resurrect a set you deliberately hid, and you
+can bring them back without fetching again. Deleting stays available per note
+and per source. `importEvents` already accepts a `tagFilter`, so filtering can
+also happen *before* anything lands.
+
 Three reasons it is the Cabana and not only the day header:
 
 1. **Imports arrive in bulk.** A Google holidays calendar is ~20 entries a year.

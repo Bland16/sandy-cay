@@ -3,13 +3,13 @@
 // schemaVersion 1.
 
 import { makeId } from './ids.js';
+import { reviveRecurrence, recurrenceToJSON } from './recurrenceSerde.js';
 import { normalizeLoad } from './energy.js';
 import {
   zeroSeconds,
   addMinutes,
   minutesBetween,
   daysBetween,
-  dayStart,
   dateToJSON,
   dateFromJSON,
 } from './time.js';
@@ -229,43 +229,6 @@ function clampPriority(p) {
   const n = Math.round(Number(p));
   if (Number.isNaN(n)) return 3;
   return Math.max(1, Math.min(5, n));
-}
-
-// ---- recurrence (de)serialization ---------------------------------------
-// Both of these rebuild periods from an explicit field list, so ANY new period
-// field must be added in BOTH or it is silently dropped — on construction by
-// the reviver, and on save by the serializer. `freq` (P2) was lost exactly this
-// way and expanded as weekly with no error, which is the same shape of bug as
-// the footlocker import dropping `snapshots` (sharp edge #15).
-// `freq` is written only when present, so a weekly pattern serializes byte-for
-// -byte as it always did and old saves round-trip unchanged.
-function reviveRecurrence(rec) {
-  return {
-    periods: (rec.periods || []).map((p) => ({
-      ...(p.freq ? { freq: p.freq } : {}),
-      windows: (p.windows || []).map((w) => ({ ...w })),
-      interval: p.interval ?? 1,
-      effectiveFrom: p.effectiveFrom ? dateFromJSON(p.effectiveFrom) : null,
-      effectiveUntil: p.effectiveUntil ? dateFromJSON(p.effectiveUntil) : null,
-    })),
-    anchorDate: rec.anchorDate ? dateFromJSON(rec.anchorDate) : dayStart(new Date()),
-    exceptions: (rec.exceptions || []).map((e) => ({ ...e })),
-  };
-}
-
-function recurrenceToJSON(rec) {
-  if (!rec) return null;
-  return {
-    periods: rec.periods.map((p) => ({
-      ...(p.freq ? { freq: p.freq } : {}),
-      windows: p.windows.map((w) => ({ ...w })),
-      interval: p.interval,
-      effectiveFrom: dateToJSON(p.effectiveFrom),
-      effectiveUntil: dateToJSON(p.effectiveUntil),
-    })),
-    anchorDate: dateToJSON(rec.anchorDate),
-    exceptions: rec.exceptions.map((e) => ({ ...e })),
-  };
 }
 
 function reviveChunking(ch) {

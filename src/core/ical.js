@@ -14,7 +14,7 @@
 // `fixed` task — an event with a time is, by definition, an anchor.
 
 import { Task } from './Task.js';
-import { addMinutes, lastRunDay, untilAfterLastRun } from './time.js';
+import { addMinutes, lastRunDay, untilAfterLastRun, dateKey, addDays } from './time.js';
 import { periodActiveOn } from './recurrence.js';
 
 const DAY_TO_BYDAY = { mon: 'MO', tue: 'TU', wed: 'WE', thu: 'TH', fri: 'FR', sat: 'SA', sun: 'SU' };
@@ -172,6 +172,30 @@ export function fromRRULE(rrule, start, end) {
   return null; // DAILY, BYWEEKNO, multi-BYSETPOS — reported, not silently lost
 }
 
+/**
+ * An all-day VEVENT → the shape `Schedule#addDayNote` takes.
+ *
+ * `DTEND` is EXCLUSIVE for a date-valued event: DTSTART 26 Nov / DTEND 27 Nov is
+ * ONE day, not two. A day note's `to` is INCLUSIVE — what a person means by "the
+ * last day it covers" — so the bound converts here, at the edge, exactly as
+ * `lastRunDay`/`untilAfterLastRun` already do for recurrence (sharp edge #11).
+ * Getting this wrong marks the day after every holiday.
+ */
+export function eventToDayNote(event, { sourceTags = [] } = {}) {
+  const { tags, title } = deriveTags(event, { sourceTags });
+  const from = dateKey(event.start);
+  // end is exclusive → step back a day; a missing end means a single day.
+  const to = event.end ? dateKey(addDays(event.end, -1)) : from;
+  return {
+    label: title || 'Untitled',
+    from,
+    to: to < from ? from : to,
+    kind: 'holiday',
+    tags,
+    recurrence: fromRRULE(event.rrule, event.start, event.end || event.start),
+  };
+}
+
 /** Why an event's pattern could not be read, for the import report. `null`
  *  means there was nothing to lose. */
 export function unreadableRRULE(rrule) {
@@ -296,13 +320,21 @@ export function parseICS(text) {
     if (idx < 0) continue;
     const rawKey = line.slice(0, idx);
     const value = line.slice(idx + 1);
-    const key = rawKey.split(';')[0].toUpperCase();
+    const parts = rawKey.split(';');
+    const key = parts[0].toUpperCase();
+    // Parameters were being discarded here, which is why VALUE=DATE — the marker
+    // that says "this is an all-day event" — never reached the importer, and
+    // every holiday arrived as a 24-hour task on the wrong day.
+    const params = parts.slice(1).join(';').toUpperCase();
     switch (key) {
       case 'UID': cur.uid = value; break;
       case 'SUMMARY': cur.summary = unescapeText(value); break;
       case 'DESCRIPTION': cur.description = unescapeText(value); break;
       case 'CATEGORIES': cur.categories = value.split(',').map((s) => unescapeText(s).trim()).filter(Boolean); break;
-      case 'DTSTART': cur.start = fromICSDate(value); break;
+      case 'DTSTART':
+        cur.start = fromICSDate(value);
+        if (params.includes('VALUE=DATE')) cur.allDay = true;
+        break;
       case 'DTEND': cur.end = fromICSDate(value); break;
       case 'RRULE': cur.rrule = value; break;
       case 'RECURRENCE-ID': cur.recurrenceId = fromICSDate(value); break;
@@ -370,18 +402,27 @@ export function importEvents(events, { sourceTags = [], tagFilter = null, from =
   // still returns an array, so every existing caller is unaffected; the list
   // rides along as a property.
   const dropped = [];
+  const notes = [];
   for (const e of events) {
     if (e.recurrenceId) continue; // overrides ride with their parent; skip for now
     if (from && e.start < from) continue;
     if (to && e.start >= to) continue;
     const { tags } = deriveTags(e, { sourceTags });
     if (wanted.length && !tags.some((t) => wanted.includes(t))) continue;
+    // An all-day event is a fact about a DAY, not an appointment inside it.
+    // Importing it as a task produced a 1440-minute fixed anchor that, on a
+    // 5am-anchored grid, drew in the PREVIOUS day's column and sterilised it.
+    if (e.allDay) { notes.push(eventToDayNote(e, { sourceTags })); continue; }
+
     const task = eventToTask(e, { sourceTags });
     if (e.rrule && !task.recurrence) {
       dropped.push({ title: task.title, rule: unreadableRRULE(e.rrule) });
     }
     out.push(task);
   }
+  // Both ride along as non-enumerable properties, so every existing caller —
+  // which treats the result as a plain array of tasks — is unaffected.
   Object.defineProperty(out, 'dropped', { value: dropped, enumerable: false });
+  Object.defineProperty(out, 'dayNotes', { value: notes, enumerable: false });
   return out;
 }

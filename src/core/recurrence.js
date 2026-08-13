@@ -12,6 +12,7 @@ import {
   weeksBetween,
   monthsBetween,
   dayStart,
+  weekStart as weekStartOf,
   jsDayOfKey,
   nthWeekdayDate,
   lastWeekdayDate,
@@ -338,4 +339,36 @@ export function endRecurrence(task, atDate) {
   for (const p of task.recurrence.periods) {
     if (periodActiveOn(p, at)) p.effectiveUntil = at;
   }
+}
+
+/**
+ * Does a recurrence land on this calendar DATE? A date-level predicate for
+ * things that are not tasks — a day note repeating every year, say.
+ *
+ * Built from the same `datesForWindow` / `periodActiveOn` / `intervalMatches`
+ * internals `expandRecurrence` uses, deliberately: a second implementation of
+ * "when does this pattern fire" would drift, and this codebase has the scars
+ * (`format.js` grew a second ISO-week function and the two disagreed about the
+ * year). Everything the pattern knows — the monthly skip rules, leap-year
+ * February, interval parity — comes along for free.
+ *
+ * Exceptions are NOT consulted: they carry times, which a day-level thing has
+ * none of.
+ */
+export function occursOn(recurrence, date) {
+  if (!recurrence) return false;
+  const ws = weekStartOf(date);
+  const key = dateKey(date);
+  for (const period of recurrence.periods || []) {
+    const freq = freqOf(period);
+    for (const w of period.windows || []) {
+      for (const d of datesForWindow(freq, w, ws)) {
+        if (dateKey(d) !== key) continue;
+        if (!periodActiveOn(period, d)) continue;
+        if (!intervalMatches(recurrence, period, d)) continue;
+        return true;
+      }
+    }
+  }
+  return false;
 }

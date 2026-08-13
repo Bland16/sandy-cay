@@ -5,6 +5,7 @@ import { Task } from './Task.js';
 import { Zone } from './Zone.js';
 import { Bucket } from './Bucket.js';
 import { Activity } from './Activity.js';
+import { DayNote } from './DayNote.js';
 import { makeId } from './ids.js';
 import { blendColors } from './color.js';
 import { makeConfig } from './config.js';
@@ -66,6 +67,11 @@ export class Schedule {
     this._dedupeIds(this.buckets);
     this._dedupeIds(this.activities);
     this.retiredTags = Array.isArray(init.retiredTags) ? [...init.retiredTags] : [];
+    // Facts about days — holidays, breaks, birthdays. Additive: absent on
+    // every save written before this and loads as empty, schemaVersion stays 1
+    // (sharp edge #15). They consume no time and do not affect placement.
+    this.dayNotes = (init.dayNotes || []).map((n) => (n instanceof DayNote ? n : DayNote.fromJSON(n)));
+    this._dedupeIds(this.dayNotes);
     this.learning = init.model instanceof LearningModule
       ? init.model
       : LearningModule.fromJSON(init.model, this.config);
@@ -234,6 +240,35 @@ export class Schedule {
     this.zones.push(z);
     this._touch();
     return z;
+  }
+
+  addDayNote(data) {
+    const n = new DayNote(data);
+    this._uniqueInColl(n, this.dayNotes);
+    this.dayNotes.push(n);
+    this._touch();
+    return n;
+  }
+
+  removeDayNote(id) {
+    const i = this.dayNotes.findIndex((n) => n.id === id);
+    if (i < 0) return null;
+    const [gone] = this.dayNotes.splice(i, 1);
+    this._touch();
+    return gone;
+  }
+
+  updateDayNote(id, changes) {
+    const n = this.dayNotes.find((x) => x.id === id);
+    if (!n) return null;
+    Object.assign(n, new DayNote({ ...n.toJSON(), ...changes, id: n.id }));
+    this._touch();
+    return n;
+  }
+
+  /** Every note covering a date — the day header's whole question. */
+  notesForDate(date) {
+    return this.dayNotes.filter((n) => n.coversDate(date));
   }
 
   removeZone(id) {
@@ -573,6 +608,7 @@ export class Schedule {
       buckets: this.buckets.map((b) => b.toJSON()),
       activities: this.activities.map((a) => a.toJSON()),
       retiredTags: [...this.retiredTags],
+      dayNotes: this.dayNotes.map((n) => n.toJSON()),
       config: this.config,
       model: this.learning.toJSON(),
       // The planned baseline has to survive a reload or the Wrap report can
@@ -593,6 +629,7 @@ export class Schedule {
       buckets: (json.buckets || []).map((b) => Bucket.fromJSON(b)),
       activities: (json.activities || []).map((a) => Activity.fromJSON(a)),
       retiredTags: json.retiredTags,
+      dayNotes: json.dayNotes,
       model: json.model,
       // Absent on every save written before this shipped — an old file loads as
       // a schedule with no baselines, which is exactly right. schemaVersion

@@ -27,7 +27,8 @@ export { evacuateDay, blockRange } from './evacuate.js';
 export { carryOver, letThemGo } from './carryOver.js';
 export { checkRollover, commitRollover, weekAfter, weekKeyOf } from './rollover.js';
 export { autoSchedule, freeCapacityBefore } from './autoSchedule.js';
-export { expandRecurrence, addException, splitPeriod, temporaryChange, endRecurrence, dateOfOccurrence } from './recurrence.js';
+export { expandRecurrence, addException, splitPeriod, temporaryChange, endRecurrence, dateOfOccurrence, occursOn } from './recurrence.js';
+export { DayNote } from './DayNote.js';
 export { addProject, shrinkChunk, growChunk, deleteChunk, resizeChunk, finishProject, sliceChunks, redistribute } from './projects.js';
 export {
   getWeekLoad, getTagBreakdown, snapshot, snapshotDiff,
@@ -42,7 +43,7 @@ export {
 export { energyBudget, energyCalibration, learnedCapacity, energyTrajectory, reserveAt, loadForTask, normalizeLoad, LOAD_AXES } from './energy.js';
 export {
   toICS, parseICS, importEvents, eventToTask, deriveTags,
-  toRRULE, fromRRULE, toICSDate, fromICSDate,
+  toRRULE, fromRRULE, toICSDate, fromICSDate, eventToDayNote,
 } from './ical.js';
 export {
   driftCheck,
