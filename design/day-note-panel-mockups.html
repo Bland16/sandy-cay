@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sandy Cay — the note bar, and the panel behind it</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Rye&family=Special+Elite&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --paper:#F1E9D8; --paper-shade:#E7DCC6; --ink:#2A2620; --ink-soft:#6E665A; --film:#141210;
+  --hair:#D2C6A9; --primary:#2E8C99; --fixed:#5FB8B0; --pinned:#C9A96E;
+  --rest:#7FBE8B; --warning:#E2685F; --cta:#E8B94D; --info:#8AA7C2;
+  --font-display:'Rye',Georgia,serif; --font-type:'Special Elite','Courier New',monospace; --font-body:'Nunito',system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--film);font-family:var(--font-body);color:var(--paper);padding:26px 20px 90px}
+h1{font-family:var(--font-display);font-size:25px;color:var(--cta);margin:0 0 3px}
+.lede{font-family:var(--font-type);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#b8ac96;margin:0 0 20px}
+h2{font-family:var(--font-display);font-size:18px;color:var(--cta);margin:36px 0 6px}
+.note{font-size:12.5px;line-height:1.65;color:#d8cdb8;max-width:960px;margin:0 0 14px}
+.note b{color:var(--cta)} .note code{font-family:var(--font-type);font-size:11.5px;color:#f0dcae}
+.note.tight{margin-bottom:8px}
+hr{border:none;border-top:1px solid #322b22;margin:32px 0 0}
+
+/* ---- controls ---- */
+.ctrls{display:flex;gap:26px;flex-wrap:wrap;background:rgba(0,0,0,.28);border:1px solid #3a3228;
+  border-radius:10px;padding:12px 14px;margin:0 0 18px}
+.cgroup{display:flex;flex-direction:column;gap:6px}
+.cgroup .ct{font-family:var(--font-type);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:#c9b48f}
+.cgroup label{display:flex;align-items:center;gap:6px;font-size:12.5px;color:#e4d9c3;cursor:pointer}
+.cgroup input{accent-color:var(--cta);cursor:pointer}
+.btn{font-family:var(--font-body);font-weight:800;font-size:11.5px;color:#2c2016;background:var(--cta);
+  border:2px solid #2c2016;border-radius:9px;padding:7px 11px;cursor:pointer;align-self:flex-start}
+.btn.ghost{background:transparent;color:#e4d9c3;border-color:#5a4c3a}
+
+/* ---- the app slice ---- */
+.app{display:flex;align-items:flex-start;background:var(--paper);border-radius:10px;overflow:hidden;
+  box-shadow:0 10px 0 rgba(0,0,0,.38);width:max-content;max-width:100%}
+.gridside{position:relative}
+.wk{display:grid}
+.gcell{border-left:1px solid var(--hair);text-align:center;padding:6px 3px;background:var(--paper);
+  color:var(--ink);min-width:0}
+.gcell:first-child{border-left:none}
+.gcell.wknd{background:rgba(42,38,32,.045)}
+.gcell.today .dn{color:var(--primary)}
+.dn{font-family:var(--font-display);font-size:13.5px;line-height:1}
+.dd{font-family:var(--font-type);font-size:10.5px;color:var(--ink-soft)}
+.headrow{border-bottom:2px solid var(--ink)}
+.bodyrow .cellbody{height:150px;border-left:1px solid var(--hair);
+  background-image:repeating-linear-gradient(180deg,transparent 0 25px,var(--hair) 25px 26px)}
+.bodyrow .cellbody:first-child{border-left:none}
+.bodyrow .cellbody.wknd{background-color:rgba(42,38,32,.045)}
+
+/* ---- the note bar (all treatments share this skin) ---- */
+.barrow{display:grid;padding:2px 0 3px;background:var(--paper)}
+.nbar{grid-row:1;display:flex;align-items:center;gap:4px;min-width:0;cursor:pointer;
+  font-family:var(--font-type);font-size:8.5px;line-height:1.6;text-align:left;
+  border:none;padding:1px 5px;color:var(--ink);background:rgba(46,140,153,.17);border-radius:3px;
+  margin:0 1px;transition:background .12s,box-shadow .12s}
+.nbar.kind-note{background:rgba(201,169,110,.30)}
+.nbar:hover{background:rgba(46,140,153,.30)}
+.nbar.kind-note:hover{background:rgba(201,169,110,.46)}
+.nbar.sel{box-shadow:inset 0 0 0 1.5px var(--ink)}
+.nbar .lb{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1 1 auto;min-width:0}
+.nbar .more{flex:0 0 auto;font-weight:700;opacity:.8}
+/* D2: segments of one logical band abut into a continuous run */
+.nbar.j-l{border-top-left-radius:0;border-bottom-left-radius:0;margin-left:0}
+.nbar.j-r{border-top-right-radius:0;border-bottom-right-radius:0;margin-right:0}
+.nbar .pen{flex:0 0 auto}
+/* A1 keeps the pennant + centres, since it is a per-day mark not a run */
+.barrow.t-a1 .nbar{justify-content:center;text-align:center}
+.barrow.t-a1 .nbar .lb{flex:0 1 auto}
+
+/* ---- the right panel ---- */
+.panel{flex:0 0 322px;width:322px;border-left:2px solid var(--ink);background:var(--paper-shade);
+  padding:13px 14px 18px;color:var(--ink);align-self:stretch}
+.ph{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.ph .pt{font-family:var(--font-display);font-size:17px;flex:1}
+.ph .pt small{display:block;font-family:var(--font-type);font-size:10px;color:var(--ink-soft);letter-spacing:.05em}
+.px{border:none;background:none;cursor:pointer;color:var(--ink-soft);font-size:16px;line-height:1;padding:2px 4px}
+.pempty{font-family:var(--font-type);font-size:11px;color:var(--ink-soft)}
+
+/* ---- the note rows inside a panel/popover ---- */
+.nrow{display:flex;align-items:flex-start;gap:7px;padding:8px 9px;margin:0 0 6px;
+  background:var(--paper);border:1px solid var(--hair);border-radius:8px}
+.nrow .swatch{flex:0 0 auto;width:4px;align-self:stretch;border-radius:2px;background:var(--primary)}
+.nrow.kind-note .swatch{background:var(--pinned)}
+.nrow .txt{min-width:0;flex:1}
+.nrow .lbl{font-weight:700;font-size:12.5px;line-height:1.3}
+.nrow .meta{font-family:var(--font-type);font-size:10px;color:var(--ink-soft);margin-top:2px}
+
+/* ---- the anchored popover ---- */
+.gridside{position:relative}
+.pop{position:absolute;width:250px;background:var(--paper);border:2px solid var(--ink);border-radius:10px;
+  padding:10px;box-shadow:0 8px 22px rgba(20,18,16,.34);z-index:5;color:var(--ink)}
+.pop .ph .pt{font-size:15px}
+.pop .nrow{background:var(--paper-shade)}
+
+.legend{font-family:var(--font-type);font-size:10.5px;color:#8f8471;margin:8px 0 0}
+.hint{font-family:var(--font-type);font-size:10px;color:#8f8471;margin:6px 0 0}
+.stage{display:inline-block;vertical-align:top;background:var(--paper);border-radius:10px;overflow:hidden;
+  box-shadow:0 8px 0 rgba(0,0,0,.35);margin:0 16px 14px 0}
+.stage .cap{font-family:var(--font-type);font-size:9.5px;letter-spacing:.07em;text-transform:uppercase;
+  color:#7d7263;background:var(--paper-shade);padding:5px 9px;border-bottom:1px solid var(--hair)}
+</style>
+</head>
+<body>
+
+<h1>The note bar, and the panel behind it</h1>
+<p class="lede">your idea — tint the bar, click it, read the day's notes in a panel</p>
+
+<p class="note">
+  This is <b>live, not a picture</b> — click any bar. The point of the change is that the bar stops
+  trying to <i>hold</i> the notes and becomes a <b>way in</b> to them, which is what removes the
+  crowding: three notes on Thursday no longer means three stacked lanes, because the bar only ever
+  has to say <i>how many</i> and the panel says <i>what</i>.
+</p>
+<p class="note">
+  <b>Tinting the bar is inside the spec.</b> D-1 refuses a tint on the <b>column</b> — that is
+  reserved for a real scheduling state — but it explicitly keeps tags available "for tinting
+  <i>its own chip</i>". The bar <i>is</i> the note's chip, so this is the allowed half of that
+  decision, not a reversal of it. Still nothing coral: a holiday is a fact, not a problem (P-1).
+</p>
+<p class="note">
+  <b>No action buttons in the panel</b> — you said not to bother with blocking, and it is a model
+  change belonging to the next item anyway. These panels state facts only. Easy to add later.
+</p>
+
+<div class="ctrls">
+  <div class="cgroup">
+    <span class="ct">Bar treatment</span>
+    <label><input type="radio" name="bar" value="a1" checked /> A′ — per-day mark, tinted</label>
+    <label><input type="radio" name="bar" value="d1" /> D′ — one span, one lane</label>
+    <label><input type="radio" name="bar" value="d2" /> D″ — per-day segments that abut</label>
+  </div>
+  <div class="cgroup">
+    <span class="ct">Panel</span>
+    <label><input type="radio" name="pan" value="right" checked /> Right panel (Layout B+C)</label>
+    <label><input type="radio" name="pan" value="pop" /> Popover under the day</label>
+  </div>
+  <div class="cgroup">
+    <span class="ct">Stress</span>
+    <label><input type="checkbox" id="crowd" /> Crowd Thursday (5 notes)</label>
+    <span class="hint">Mon is clear on purpose — check it still looks ordinary.</span>
+  </div>
+</div>
+
+<div id="demo"></div>
+<p class="legend" id="legend"></p>
+
+<hr />
+<h2>The three bars at 74px — the phone overview</h2>
+<p class="note tight">
+  The narrowest the bar ever has to survive (<code>calc(46px + cols*74px)</code>). This is where a
+  treatment that reads fine on desktop falls apart, so judge crowding here rather than above.
+</p>
+<div id="narrow"></div>
+
+<hr />
+<h2>What I'd pick, and why</h2>
+<p class="note">
+  <b>D″.</b> It keeps what you liked about D — Thanksgiving reads as one continuous run across
+  Wed–Fri, so its <i>length</i> is visible rather than inferred from the same word appearing three
+  times — while fixing the two things that made D expensive:
+</p>
+<p class="note">
+  <b>1. Crowding is gone by construction.</b> Each day owns exactly one segment. A day with five
+  notes shows the first label and <code>+4</code>; it never grows a second lane, so a busy Thursday
+  is the same height as a quiet Tuesday. That is the difference between a week that looks busy and
+  a week that <i>is</i> busy, which is the P-1 line.
+</p>
+<p class="note">
+  <b>2. The weekend drawer stops being a problem.</b> Under D, a band spanning Friday into Saturday
+  got cut in half, because the drawer renders Sat/Sun as a separate <code>&lt;WeekGrid&gt;</code>.
+  Under D″ there is nothing to cut — each day already draws its own segment, and the continuity is
+  just two neighbours sharing an edge. The drawer needs no special case, which means no third copy
+  of anything (sharp edges #14/#17).
+</p>
+<p class="note">
+  <b>A′ is the safe pick</b> and is a one-line change from what already shipped. Its only real loss
+  is that a three-day holiday still reads as three separate marks.
+  <b>D′ is the honest middle</b>: a true single span, but the day with the notes on it has to carry
+  a <code>+N</code> that belongs to a run of days, which reads slightly wrong on the days where
+  those extra notes <i>aren't</i>.
+</p>
+<p class="note">
+  On the panel: <b>the right panel</b> is the one I'd choose. It is the locked Layout B+C idiom, it
+  costs no new vocabulary, and it has room to grow the per-note detail (source, range, and later
+  the actions). <b>The popover</b> is faster to dismiss and keeps your eye on the week — but it is a
+  fourth anchored-overlay pattern alongside the day ⋯ menu, the Clear Day panel and the occurrence
+  menu, and it has nowhere to go on a phone.
+</p>
+
+<script>
+const PEN = (s) => `<svg class="pen" viewBox="0 0 24 24" width="${s}" height="${s}" aria-hidden="true"><path d="M5 4h13l-4 4 4 4H5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>`;
+
+const DAYS = [
+  { dn:'Mon', dd:23 }, { dn:'Tue', dd:24 }, { dn:'Wed', dd:25, today:true },
+  { dn:'Thu', dd:26 }, { dn:'Fri', dd:27 }, { dn:'Sat', dd:28, wknd:true }, { dn:'Sun', dd:29, wknd:true },
+];
+
+const BASE = [
+  { label:'Mum’s birthday',   kind:'note',    days:[1],     range:'3 Sep · every year', src:'typed by me' },
+  { label:'Thanksgiving',     kind:'holiday', days:[2,3,4], range:'25–27 Nov',          src:'US Holidays' },
+  { label:'Add/drop deadline',kind:'note',    days:[3],     range:'26 Nov',             src:'Registrar' },
+  { label:'Final exams begin',kind:'note',    days:[3],     range:'26 Nov',             src:'Registrar' },
+  { label:'Make-a-thon',      kind:'note',    days:[5,6],   range:'28–29 Nov',          src:'Clubs' },
+];
+const EXTRA = [
+  { label:'Library closes early', kind:'note', days:[3], range:'26 Nov', src:'BC' },
+  { label:'Dorm move-out begins', kind:'note', days:[3], range:'26 Nov', src:'ResLife' },
+];
+
+let barKind = 'a1', panKind = 'right', crowd = false;
+let sel = null; // { day }
+
+const notesAll = () => crowd ? BASE.concat(EXTRA) : BASE;
+const notesOn = (i) => notesAll().filter((n) => n.days.includes(i));
+
+/** Which note "owns" a day's bar: a holiday wins, else the first. */
+const leadOn = (i) => {
+  const ns = notesOn(i);
+  return ns.find((n) => n.kind === 'holiday') || ns[0];
+};
+
+function barsFor(w){
+  const cols = `repeat(7, ${w}px)`;
+
+  if (barKind === 'd1') {
+    // One span per NOTE, capped at a single lane: the longest-running note per
+    // group of days wins the row, and any others on those days become "+N".
+    const spans = [];
+    const used = new Set();
+    for (const n of notesAll().slice().sort((a,b)=>b.days.length-a.days.length)) {
+      if (n.days.some((d) => used.has(d))) continue;
+      n.days.forEach((d) => used.add(d));
+      const extra = n.days.reduce((acc,d)=>acc + (notesOn(d).length - 1), 0);
+      spans.push({ n, from:Math.min(...n.days), to:Math.max(...n.days), extra });
+    }
+    return `<div class="barrow t-d1" style="grid-template-columns:${cols}">${
+      spans.map((s)=>`<button class="nbar kind-${s.n.kind}${sel!==null&&s.n.days.includes(sel)?' sel':''}"
+        style="grid-column:${s.from+1} / ${s.to+2}" data-day="${s.from}" title="${s.n.label}">
+        <span class="lb">${s.n.label}</span>${s.extra?`<span class="more">+${s.extra}</span>`:''}</button>`).join('')
+    }</div>`;
+  }
+
+  // a1 and d2 both draw ONE segment per day — the difference is only whether
+  // neighbours sharing a note join up into a continuous run.
+  const cells = DAYS.map((d,i)=>{
+    const ns = notesOn(i);
+    if (!ns.length) return `<span style="grid-column:${i+1}"></span>`;
+    const lead = leadOn(i);
+    let more = ns.length - 1;
+    let join = '';
+    let label = lead.label;
+    if (barKind === 'd2') {
+      const contL = i > 0 && notesOn(i-1).includes(lead);
+      const contR = i < 6 && notesOn(i+1).includes(lead);
+      if (contL) join += ' j-l';
+      if (contR) join += ' j-r';
+      // A run states its name ONCE, at its start — repeating it on every day is
+      // exactly what made D feel crowded, and the unbroken tint already carries
+      // the continuity. So a continuation day spends its words on what is NEW
+      // that day instead: Thursday reads "Add/drop deadline +1", not a bare "+2"
+      // (which names nothing) and not "Thanksgiving" for the third time.
+      if (contL) {
+        const own = ns.filter((n) => n !== lead);
+        label = own.length ? own[0].label : '';
+        more = Math.max(0, own.length - 1);
+      }
+    }
+    const pen = barKind === 'a1' ? PEN(8) : '';
+    return `<button class="nbar kind-${lead.kind}${join}${sel===i?' sel':''}"
+      style="grid-column:${i+1}" data-day="${i}" title="${ns.map(n=>n.label).join(' · ')}">
+      ${pen}${label?`<span class="lb">${label}</span>`:'<span class="lb"></span>'}${more?`<span class="more">+${more}</span>`:''}</button>`;
+  }).join('');
+  return `<div class="barrow t-${barKind}" style="grid-template-columns:${cols}">${cells}</div>`;
+}
+
+function noteRows(i){
+  return notesOn(i).map((n)=>`<div class="nrow kind-${n.kind}"><span class="swatch"></span>
+    <span class="txt"><span class="lbl">${n.label}</span>
+    <span class="meta">${n.range} · ${n.src}</span></span></div>`).join('');
+}
+
+function render(){
+  const w = 150, cols = `repeat(7, ${w}px)`;
+  const head = DAYS.map((d)=>`<div class="gcell${d.wknd?' wknd':''}${d.today?' today':''}">
+    <div class="dn">${d.dn}</div><div class="dd">${d.dd}</div></div>`).join('');
+  const body = DAYS.map((d)=>`<div class="cellbody${d.wknd?' wknd':''}"></div>`).join('');
+
+  let pop = '';
+  if (sel !== null && panKind === 'pop') {
+    const left = Math.min(sel * w, 7 * w - 250);
+    pop = `<div class="pop" style="left:${left}px;top:46px">
+      <div class="ph"><span class="pt">${DAYS[sel].dn} ${DAYS[sel].dd}
+      <small>${notesOn(sel).length} note${notesOn(sel).length===1?'':'s'}</small></span>
+      <button class="px" data-close="1">✕</button></div>${noteRows(sel)}</div>`;
+  }
+
+  let panel = '';
+  if (panKind === 'right') {
+    panel = `<div class="panel"><div class="ph"><span class="pt">${
+      sel===null ? 'Day notes' : DAYS[sel].dn + ' ' + DAYS[sel].dd
+    }<small>${sel===null ? 'click a bar' : notesOn(sel).length + ' note' + (notesOn(sel).length===1?'':'s')}</small></span>${
+      sel===null ? '' : '<button class="px" data-close="1">✕</button>'
+    }</div>${
+      sel===null ? '<p class="pempty">Nothing selected. The week is behind this panel, undisturbed.</p>' : noteRows(sel)
+    }</div>`;
+  }
+
+  document.getElementById('demo').innerHTML = `<div class="app"><div class="gridside">
+    <div class="wk headrow" style="grid-template-columns:${cols}">${head}</div>
+    ${barsFor(w)}
+    <div class="wk bodyrow" style="grid-template-columns:${cols}">${body}</div>
+    ${pop}</div>${panel}</div>`;
+
+  document.getElementById('legend').textContent =
+    barKind === 'a1' ? 'A′ — every day with notes gets its own centred mark. Thanksgiving reads three times.'
+    : barKind === 'd1' ? 'D′ — one true span per note. The +N sits on the span, not on the day that earned it.'
+    : 'D″ — one segment per day, neighbours sharing a note abut into a run. The name is stated once, at the start.';
+
+  // narrow strip: all three treatments at 74px, for the phone check
+  const saveK = barKind, saveSel = sel;
+  sel = null;
+  document.getElementById('narrow').innerHTML = ['a1','d1','d2'].map((k)=>{
+    barKind = k;
+    const nh = DAYS.map((d)=>`<div class="gcell${d.wknd?' wknd':''}">
+      <div class="dn">${d.dn}</div><div class="dd">${d.dd}</div></div>`).join('');
+    const nb = DAYS.map((d)=>`<div class="cellbody${d.wknd?' wknd':''}" style="height:40px"></div>`).join('');
+    const c = `repeat(7, 74px)`;
+    return `<div class="stage"><div class="cap">${k==='a1'?'A′':k==='d1'?'D′':'D″'} · 74px</div>
+      <div class="wk headrow" style="grid-template-columns:${c}">${nh}</div>
+      ${barsFor(74)}
+      <div class="wk bodyrow" style="grid-template-columns:${c}">${nb}</div></div>`;
+  }).join('');
+  barKind = saveK; sel = saveSel;
+}
+
+document.addEventListener('click', (e) => {
+  const bar = e.target.closest('.nbar');
+  const close = e.target.closest('[data-close]');
+  if (close) { sel = null; render(); return; }
+  if (bar) { const d = Number(bar.dataset.day); sel = (sel === d ? null : d); render(); }
+});
+document.addEventListener('change', (e) => {
+  if (e.target.name === 'bar') barKind = e.target.value;
+  if (e.target.name === 'pan') panKind = e.target.value;
+  if (e.target.id === 'crowd') crowd = e.target.checked;
+  render();
+});
+
+render();
+</script>
+</body>
+</html>

@@ -114,10 +114,6 @@ hr{border:none;border-top:1px solid #322b22;margin:30px 0 0}
 .dvbody{height:70px;background:var(--paper);
   background-image:repeating-linear-gradient(180deg,transparent 0 20px,var(--hair) 20px 21px)}
 
-/* ---------- ITEM 2 preview: blocked tint under a note ---------- */
-.blockmark{font-family:var(--font-type);font-size:8px;letter-spacing:.05em;text-transform:uppercase;
-  color:#8a6b32;padding-top:1px}
-
 .legend{font-family:var(--font-type);font-size:10.5px;color:#b8ac96;margin:6px 0 0}
 .pick{font-family:var(--font-type);font-size:10px;color:#8f8471;margin:4px 0 0}
 </style>
@@ -336,11 +332,12 @@ html += `<div class="dvstage">
   <div class="dvbody"></div></div>`;
 
 /* ---- ITEM 2 preview ---- */
-html += `<hr /><h2>Next item, previewed: a blocked day</h2>
+html += `<hr /><h2>Next item, previewed: the day-state tint</h2>
 <p class="note tight">Not built — this is D-6, the model change that is <b>ITEM 2</b>. It is here only
 to check the two do not collide: the <b>note</b> keeps its quiet header line, and the <b>tint</b>
-(a real scheduling state: the autoscheduler stays out, your hand still gets in) lives on the column
-below. Thanksgiving Thu 26 is blocked here; Wed and Fri carry the same note and are not.</p>`;
+lives on the column below it. The tint carries the meaning on its own and is not labelled, which is
+the whole reason the card it replaces was worth removing. Thu 26 is tinted here; Wed and Fri carry
+the same note and are not.</p>`;
 
 {
   const w = 150, cols = `repeat(7, ${w}px)`;
@@ -348,11 +345,10 @@ below. Thanksgiving Thu 26 is blocked here; Wed and Fri carry the same note and 
     const ns = notesOn(i);
     const t = TREATMENTS[0];
     return `<div class="gcell${d.wknd?' wknd':''}${d.today?' today':''}">
-      <div class="dn">${d.dn}</div><div class="dd">${d.dd}</div>${t.render(ns)}
-      ${i===3?'<div class="blockmark">blocked</div>':''}</div>`;
+      <div class="dn">${d.dn}</div><div class="dd">${d.dd}</div>${t.render(ns)}</div>`;
   }).join('');
   const body = DAYS.map((d,i)=>`<div class="body${d.wknd?' wknd':''}" ${i===3?'style="background-color:rgba(201,169,110,.22)"':''}></div>`).join('');
-  html += `<div class="stage"><div class="cap">desktop · blocked column tinted, note line unchanged</div>
+  html += `<div class="stage"><div class="cap">desktop · column tinted, note line unchanged</div>
     <div class="wk headrow" style="grid-template-columns:${cols}">${head}</div>
     <div class="wk" style="grid-template-columns:${cols}">${body}</div></div>`;
 }
