@@ -66,7 +66,11 @@ function capacityFor(schedule) {
 export function energyCalibration(schedule) {
   const need = (schedule.config.energy && schedule.config.energy.calibrationWeeks) ?? 3;
   const weeks = new Set();
-  for (const t of schedule.tasks) {
+  // Both stores, via the one door — a recurring session's energy rating counts
+  // exactly as much as a one-off's. Walking `schedule.tasks` here meant a
+  // recurring-heavy user could never calibrate, so the budget card sat in its
+  // "still learning" shape forever (design/RATINGS-AND-LEARNING.md §3).
+  for (const t of schedule.ratedSamples()) {
     const s = t.satisfaction;
     if (t.completion === 'done' && s && typeof s.energy === 'number') weeks.add(isoWeekKey(t.startTime));
   }

@@ -76,6 +76,11 @@ export class Task {
     // deleted. `dayFill` has sat dead in the learning model for exactly this
     // reason; this is the fix for that class of problem.
     this.energyAt = data.energyAt ? { ...data.energyAt } : null;
+    // How full the day was when this task began, snapshotted at rating time for
+    // exactly the same reason as `energyAt`. It was read by the learning model
+    // from a field nothing ever wrote (`_dayFillAtCompletion`), so the feature
+    // has been silently constant-zero since it was added.
+    this.dayFillAtCompletion = data.dayFillAtCompletion ?? null;
     this.history = data.history ? { ...emptyHistory(), ...data.history } : emptyHistory();
     this.recurrence = data.recurrence ? reviveRecurrence(data.recurrence) : null;
     this.occurrenceData = data.occurrenceData ? { ...data.occurrenceData } : {};
@@ -204,6 +209,7 @@ export class Task {
       // only one of the two is silently dropped (that is exactly how `freq` was
       // lost from recurrence periods, and `snapshots` from a footlocker import).
       energyAt: this.energyAt ? { ...this.energyAt } : null,
+      dayFillAtCompletion: this.dayFillAtCompletion,
       history: { ...this.history },
       recurrence: recurrenceToJSON(this.recurrence),
       occurrenceData: { ...this.occurrenceData },

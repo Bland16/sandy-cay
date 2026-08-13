@@ -149,8 +149,9 @@ export default function App() {
         const parent = s.tasks.find((t) => t.id === task.parentId);
         if (!parent) return;
         const key = task.occurrenceDate;
-        const prev = parent.occurrenceData[key] || {};
-        parent.occurrenceData = { ...parent.occurrenceData, [key]: { ...prev, completion: wasDone ? null : 'done' } };
+        // Through the engine's door (see TaskPanel) so a session's lived data
+        // has one writer rather than two.
+        s.rateOccurrence(task, { completion: wasDone ? null : 'done' });
         // §4.4: a session that ended early is one session, not a new routine —
         // so the truncation is an exception, never a change to the pattern.
         //

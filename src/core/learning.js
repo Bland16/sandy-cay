@@ -14,7 +14,12 @@ import { clamp } from './time.js';
 // Bump when featureVector's layout changes: a saved model's weights no longer
 // line up, so it's discarded and retrained from the rated tasks (which persist).
 // v3: dropped the role×time / role×weekend interaction columns (role rip-out).
-export const MODEL_LAYOUT_VERSION = 3;
+// 4 (2026-08-13): `dayFill` went live. The column's LAYOUT is unchanged, but a
+// stored model's dayFill weight was trained against a constant zero and is
+// meaningless now that the column carries values — so force a clean retrain.
+// `fromJSON` already sets `needsRetrain` on a mismatch and `Schedule`'s
+// constructor already acts on it; ratings persist on the tasks, so nothing is lost.
+export const MODEL_LAYOUT_VERSION = 4;
 
 export const TIME_BUCKETS = ['early', 'morning', 'midday', 'afternoon', 'evening', 'night'];
 // Finer low end than before ([45,90,150,240]): "< 45" was one bucket, so the
@@ -68,7 +73,12 @@ export class LearningModule {
     const day = oneHot((dow + 6) % 7, 7); // Mon=0 … Sun=6
     const dur = oneHot(durationBucket(durationMin), DURATION_EDGES.length + 1);
     const priorityNorm = task.priority / 5;
-    const dayFill = task._dayFillAtCompletion ?? 0; // dead until Phase D.2 wires it
+    // Wired 2026-08-13. It read `_dayFillAtCompletion`, a field nothing ever
+    // wrote — one repo hit, not a Task field, not serialised — so this feature
+    // was constant-zero from the day it was added. Now stamped at rating time
+    // alongside `energyAt`, for the same reason: deriving it later would train
+    // the model on a day that never happened.
+    const dayFill = task.dayFillAtCompletion ?? 0;
     const placedByUser = task.placedBy === 'user' ? 1 : 0;
     const moveNorm = Math.min(task.history.moveCount, 10) / 10;
     return [

@@ -230,8 +230,99 @@ export class Schedule {
    */
   _snapshotEnergy(task, changes) {
     if (!changes || changes.satisfaction === undefined) return;
-    if (task.energyAt || !task.startTime) return;
-    task.energyAt = reserveAt(this, new Date(task.startTime.getTime() - 1));
+    if (!task.startTime) return;
+    // Each field is written ONCE, on first rating. A later re-rating keeps the
+    // original snapshot: the day you were under has not changed just because
+    // your opinion has.
+    if (!task.energyAt) task.energyAt = reserveAt(this, new Date(task.startTime.getTime() - 1));
+    if (task.dayFillAtCompletion === null) task.dayFillAtCompletion = this._dayFillAt(task.startTime);
+  }
+
+  /** How full a day was, 0–1. Snapshotted at rating time, never derived later. */
+  _dayFillAt(date) {
+    const cap = dayCapacityMin(this.config, date) || 1;
+    const mins = this.getTasksForDay(date)
+      .filter((t) => !t.chunking)
+      .reduce((n, t) => n + t.getDuration(), 0);
+    return Math.min(1, mins / cap);
+  }
+
+  /**
+   * Rate (or complete) one session of a recurring task. THE door for occurrence
+   * lived data — see design/RATINGS-AND-LEARNING.md.
+   *
+   * It exists because the UI was hand-writing `parent.occurrenceData` in two
+   * places, which meant `_snapshotEnergy` never fired for a session and the
+   * rating context was never captured. Going through a method also means there
+   * is one place to change when the shape grows again.
+   */
+  rateOccurrence(occurrence, patch = {}) {
+    const parent = this.tasks.find((t) => t.id === (occurrence && occurrence.parentId));
+    if (!parent || !occurrence.occurrenceDate) return null;
+    const key = occurrence.occurrenceDate;
+    const prev = parent.occurrenceData[key] || {};
+    const entry = { ...prev, ...patch };
+    if (patch.satisfaction !== undefined) {
+      entry.satisfaction = { ...(prev.satisfaction || {}), ...patch.satisfaction };
+    }
+    // Stamp the context once, on first rating — the same rule and the same
+    // reason as `_snapshotEnergy`. `at`/`endAt` are what make the session
+    // reconstructable as a training sample AFTER the pattern has moved on.
+    if (entry.satisfaction && !entry.at && occurrence.startTime) {
+      entry.at = new Date(occurrence.startTime);
+      entry.endAt = new Date(occurrence.endTime);
+      entry.energyAt = reserveAt(this, new Date(occurrence.startTime.getTime() - 1));
+      entry.dayFill = this._dayFillAt(occurrence.startTime);
+    }
+    parent.occurrenceData = { ...parent.occurrenceData, [key]: entry };
+    this._touch();
+    return entry;
+  }
+
+  /**
+   * Every rated thing the model may learn from, from BOTH stores — ordinary
+   * tasks and recurring sessions. The single door: `retrain` and
+   * `energyCalibration` call this and nothing else.
+   *
+   * This bug is why it exists. Both consumers walked `this.tasks`, where a
+   * materialized occurrence has never lived — `getTasksForWeek` builds them
+   * fresh and throws them away — so twelve rated gym sessions trained NOTHING
+   * and `sampleCount` stayed at 0. Two readers, one of them forgotten.
+   *
+   * A session with no stamped `at` is a rating from before that fix and is
+   * skipped deliberately: reconstructing its time from today's pattern would be
+   * a guess presented as data (design/RATINGS-AND-LEARNING.md §6).
+   */
+  ratedSamples() {
+    const out = [];
+    for (const t of this.tasks) {
+      if (t.chunking) continue;
+      if (t.satisfaction) out.push(t);
+      for (const key of Object.keys(t.occurrenceData || {})) {
+        const od = t.occurrenceData[key];
+        if (!od || !od.satisfaction || !od.at) continue;
+        const start = new Date(od.at);
+        out.push(new Task({
+          id: `${t.id}@${key}`,
+          title: t.title,
+          tags: [...t.tags],
+          type: 'fixed',
+          priority: t.priority,
+          startTime: start,
+          endTime: od.endAt ? new Date(od.endAt) : start,
+          placedBy: 'auto',
+          completion: od.completion ?? null,
+          satisfaction: od.satisfaction,
+          history: od.history ?? undefined,
+          energyAt: od.energyAt ?? null,
+          dayFillAtCompletion: od.dayFill ?? null,
+          isOccurrence: true,
+          occurrenceDate: key,
+          parentId: t.id,
+        }));
+      }
+    }
+    return out;
   }
 
   addZone(data) {
@@ -584,7 +675,7 @@ export class Schedule {
 
   // ---- learning ----------------------------------------------------------
   retrain(opts = {}) {
-    const rated = this.tasks.filter((t) => t.satisfaction && typeof t.satisfaction.overall === 'number');
+    const rated = this.ratedSamples().filter((t) => typeof t.satisfaction.overall === 'number');
     this.learning.train(rated, opts);
     this._touch();
     return this.learning.sampleCount;

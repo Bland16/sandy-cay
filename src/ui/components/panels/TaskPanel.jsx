@@ -59,16 +59,11 @@ export default function TaskPanel({ task, sched, mutate, weekStart, onClose, sho
    *  the task itself otherwise (mirrors App.jsx's completion path). */
   const updSatisfaction = (patch) => {
     if (!isOcc) { upd({ satisfaction: { ...sat, ...patch } }); return; }
-    mutate((s) => {
-      const parent = s.tasks.find((t) => t.id === editable.id);
-      if (!parent) return;
-      const key = task.occurrenceDate;
-      const prev = parent.occurrenceData[key] || {};
-      parent.occurrenceData = {
-        ...parent.occurrenceData,
-        [key]: { ...prev, satisfaction: { ...(prev.satisfaction || {}), ...patch } },
-      };
-    });
+    // Through the engine's own door, so the rating CONTEXT gets stamped. Writing
+    // `parent.occurrenceData` by hand here is what left every recurring session
+    // unstamped — and therefore invisible to retrain() and to energy
+    // calibration (design/RATINGS-AND-LEARNING.md).
+    mutate((s) => s.rateOccurrence(task, { satisfaction: patch }));
   };
 
   const setDuration = (mins) => {

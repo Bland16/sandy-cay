@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Schedule, Task, resetIds, LearningModule } from '../src/core/index.js';
+// Asserted against the CONSTANT, not a literal: this test is about the
+// retrain-on-mismatch migration, not about what the version number happens to
+// be this month. It hardcoded 3 and broke when dayFill went live at 4.
+import { MODEL_LAYOUT_VERSION } from '../src/core/learning.js';
 import { defaultConfig } from '../src/core/config.js';
 
 const day = (offset, h) => new Date(2026, 6, 13 + offset, h, 0, 0, 0);
@@ -119,11 +123,11 @@ describe('Phase D.1 — per-bucket position learning', () => {
     for (let i = 0; i < 12; i += 1) rate(s, 'work', 13 + (i % 6), 9, 5);
     s.retrain();
     const json = JSON.parse(JSON.stringify(s.toJSON()));
-    expect(json.model.layoutVersion).toBe(3);
+    expect(json.model.layoutVersion).toBe(MODEL_LAYOUT_VERSION);
     json.model.layoutVersion = 1; // pretend an older build wrote it
     json.model.weights = [1, 2, 3]; // stale, wrong-length garbage
     const back = Schedule.fromJSON(json);
-    expect(back.learning.layoutVersion).toBe(3);
+    expect(back.learning.layoutVersion).toBe(MODEL_LAYOUT_VERSION);
     expect(back.learning.trained).toBe(true);
     expect(back.learning.sampleCount).toBe(12);
   });
