@@ -30,6 +30,18 @@ npm run build
 npx eslint src
 ```
 
+## Session 6 — specs written this session (read before building)
+
+| Doc | State |
+|---|---|
+| `design/DATES-AND-RECURRENCE.md` | **BUILT** — P1–P4, every day, several times a day, occurrence identity |
+| `design/DAY-NOTES.md` | **model + .ics import BUILT**; Cabana card, day-header line, export are steps 2–4. Ask packs and the optional year are specced, unbuilt |
+| `design/WEEKLY-PLANNING.md` | step 0 (`buffer` weight) BUILT; repeating projects + Sunday ritual still spec |
+| `design/SPEC-PHASE-2026-08.md` | what is still spec, verified against code — start here |
+| `design/SPEC-COMB-2026-08.md` | spec-vs-code audit; D-7 (shared window-row) still open |
+| `design/USE-CASE-RUN-2026-08.md` | 73 use cases from six blind sources, run by probe |
+| `design/day-notes-mockup.html` | Cabana mockup: packs, ask packs, paste, per-source toggles |
+
 ## Session 6 — you can put an event on a DATE
 
 Spec: `design/DATES-AND-RECURRENCE.md`. Audit: `design/SPEC-COMB-2026-08.md`.

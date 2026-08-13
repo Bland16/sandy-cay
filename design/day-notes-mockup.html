@@ -135,12 +135,12 @@ which is a pack that quietly goes wrong in 2029.
     <div class="editrow" style="opacity:.6"><span class="lbl">…9 more</span><span class="meta"></span></div>
 
     <div class="src">
-      <span class="name">Jewish holidays</span><span class="count">14 · dated</span>
+      <span class="name">Jewish holidays</span><span class="count">2 of 5 · you dated these</span>
       <button class="tw on" aria-label="Show"><span class="knob"></span></button>
     </div>
     <div class="editrow"><span class="lbl">Rosh Hashanah</span><span class="meta">11–13 Sep 2026</span></div>
-    <div class="editrow"><span class="lbl">Yom Kippur</span><span class="meta">20–21 Sep 2026</span></div>
-    <div class="expiry">⚠ dated set — covers 2026–2029, then needs refreshing</div>
+    <div class="editrow"><span class="lbl">Yom Kippur</span><span class="meta">20 Sep 2026</span></div>
+    <div class="expiry" style="color:#c9b48f">3 left blank · asks again for 2027</div>
 
     <div class="src hidden">
       <span class="name">BC academic</span><span class="count">8 · imported</span>
@@ -191,6 +191,36 @@ Christmas | 12-25</textarea></div>
     schedule. Right: you chose <b>Block this day</b> — now it is tinted, because now nothing can be placed
     there.</p>
   </div>
+</div>
+
+<h2>Ask packs — it knows the names, you supply the dates</h2>
+<p class="note">
+For anything the app cannot compute — Hebrew, Islamic and Chinese calendars, and any school's term dates —
+it does not guess and does not ship a table that quietly runs out. It <b>asks</b>.
+</p>
+<div class="cabcard" style="width:470px">
+  <div class="cabsign">Jewish holidays · 2026–27</div>
+  <p style="font-size:12px;color:#e9dcc4;margin:0 0 10px">These move each year. Fill in what you want; leave the rest blank.</p>
+  <div class="field"><div class="flabel">Rosh Hashanah</div><div class="fctl">
+    <input class="control" style="width:118px" value="2026-09-11"><span style="color:#c9b48f">→</span><input class="control" style="width:118px" value="2026-09-13"></div></div>
+  <div class="field"><div class="flabel">Yom Kippur</div><div class="fctl">
+    <input class="control" style="width:118px" value="2026-09-20"><span style="color:#c9b48f">→</span><input class="control" style="width:118px" placeholder="optional"></div></div>
+  <div class="field"><div class="flabel">Sukkot</div><div class="fctl">
+    <input class="control" style="width:118px" placeholder="—"><span style="color:#c9b48f">→</span><input class="control" style="width:118px" placeholder="—"><span style="font-family:var(--font-type);font-size:10px;color:#c9b48f">not added</span></div></div>
+  <div class="field"><div class="flabel">Hanukkah</div><div class="fctl">
+    <input class="control" style="width:118px" placeholder="—"><span style="color:#c9b48f">→</span><input class="control" style="width:118px" placeholder="—"></div></div>
+  <div class="field"><div class="flabel">Passover</div><div class="fctl">
+    <input class="control" style="width:118px" placeholder="—"><span style="color:#c9b48f">→</span><input class="control" style="width:118px" placeholder="—"></div></div>
+  <div class="field"><div class="flabel"></div><div class="fctl">
+    <button class="btn2">Add 2</button><button class="btn2 ghost">＋ one not listed</button></div></div>
+</div>
+<div class="callout">
+  <p><b>A blank date adds nothing</b> — no error, no placeholder, no nag. The same way an unrated day
+  contributes nothing to your learned capacity.</p>
+  <p><b>This is the app's existing honesty rule applied to calendars.</b> <code>learnedCapacity</code>
+  returns null until your ratings earn a number, because the app may not state what it has not learned.
+  A date it cannot compute is the same kind of thing — and getting someone's Yom Kippur subtly wrong is
+  exactly the failure that rule exists to prevent.</p>
 </div>
 
 <h2>The year is optional — and that is how you say "every year"</h2>
