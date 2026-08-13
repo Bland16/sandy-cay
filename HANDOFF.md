@@ -1,7 +1,21 @@
 # Sandy Cay — handoff
 
-**Updated:** 2026-08-11, session 6. **`main` is the trunk and the ONLY branch** —
-it is live on Pages (https://bland16.github.io/sandy-cay/). **569 tests green.**
+**Updated:** 2026-08-13, session 8. **`main` is the trunk and is live on Pages**
+(https://bland16.github.io/sandy-cay/). **573 tests green** — measured, not
+quoted; the "569" this file carried since session 6 was stale.
+
+**⚠️ Two branches exist and NEITHER is merged. Read this before anything.**
+
+| branch | holds | state |
+|---|---|---|
+| `worktree-spec-signoff-session7` | session 7: every open decision answered, the buffer-weight correction, the session-splitting evaluations | pushed, **not merged** |
+| `worktree-spec-session8` | **everything in session 7, plus session 8's review and corrections** | contains session 7 by merge — **this is the branch to build from** |
+
+`main` auto-deploys on push, so merging is a release and that is the user's call.
+`worktree-spec-session8` is a strict superset of session 7; merging it merges
+both. The engine on it is byte-identical to session 7's — session 8 changed
+**specs only** (one experimental code change was made, measured, and reverted;
+see §4.5 of `WEEKLY-PLANNING`).
 
 The spent worktrees and all six merged branches were removed at the end of
 session 6, each verified at **0 unmerged commits and 0 dirty files** first.
@@ -25,7 +39,7 @@ carryOver + iCal fixes, and **session 6's dates-and-recurrence work**.
 ```bash
 npm install
 npm run dev      # http://localhost:5173/sandy-cay/
-npm run test:run # 569 tests, all green any day of the week (flaky tests fixed)
+npm run test:run # 573 tests, all green any day of the week (flaky tests fixed)
 npm run build
 npx eslint src
 ```
@@ -89,7 +103,92 @@ minute. And `report.js#buildDeadlineBuffer` had been measuring the exact quantit
 that would have shown it all along — *the app was already reporting the evidence
 against its own scoring.*
 
-## ▶ START HERE — the todo (written 2026-08-12, end of session 7)
+## ▶▶ START HERE — the build order (written 2026-08-13, end of session 8)
+
+**Every spec is signed off and every premise in them has now been probed.** This
+supersedes session 7's todo below, which it contains. Build top to bottom; each
+step is provable without the one after it.
+
+### Step 0 — four small fixes, no design risk
+
+1. **`ratedSamples()`** — the one door into everything the model learns from.
+   Today a rating on a recurring session reaches **nothing**: `retrain()` and
+   `energyCalibration()` both walk `schedule.tasks`, where a materialized
+   occurrence has never existed. **Proven: 12 rated sessions → sampleCount 0.**
+   Spec: `design/RATINGS-AND-LEARNING.md`. Do this first — every learning-shaped
+   feature below is dead without it, and it fails *closed and silently*, so
+   nothing will tell you.
+2. **Stamp the rating context in `_snapshotEnergy`** — `energyAt` (never captured
+   for occurrences today), `dayFill` (session 7's item, absorbed here — same
+   hook, same reason), and the session's own start/end. Route occurrence
+   lived-data through a real `Schedule` method so the hook can fire at all;
+   `TaskPanel` and `App`'s completion path currently hand-write
+   `parent.occurrenceData` in two places.
+3. **`resizeChunk` never clamps to `chunking.maxChunk`** (`projects.js:114`) — a
+   user can silently exceed their own stated maximum sitting. One line + a test.
+4. **Gate the duration buckets** in `learning.js`. The per-column gate at
+   `:131–139` exists and is applied to an empty set (`:90`), so an untried
+   sitting length outranks a tried-and-hated one (+0.000 vs −0.365). Do it before
+   ratings accumulate — and note it only starts mattering once step 1 lands.
+
+### Step 1 — the generation engine (`WEEKLY-PLANNING` steps 1, §4.1.1 + §4.1.2)
+
+Gap-shaped sittings (**not** equalised — that line was withdrawn, see §4.1.1),
+sequential generation in `ρ` order with priority breaking ties, spread across
+`R*` counting other commitments' days as taken. **No `scoring.js` change is
+needed or wanted** — §4.5 records the experiment that proves a scoring-level
+spread makes the streak *longer*.
+
+Testable with no UI. **Prove it by printing placements**, not by going green.
+
+### Step 2 — record planned-vs-actual per sitting (`WEEKLY-PLANNING` §4.6)
+
+Additive fields, both halves of the serialiser, `occurrenceData` for recurring
+sessions. Independent of the margin feature it eventually feeds, and the cost of
+delay is permanent — unrecorded weeks cannot be reconstructed.
+
+### Step 3 — the surfaces
+
+Cabana card on the `Drill` idiom (tags offered from the existing set, never free
+text — §4.6's transfer is string-exact), the Sunday ritual with preview, the wrap
+line. Every decision on these is answered.
+
+### Step 4 — day notes, the visible half (`DAY-NOTES` §9 steps 2–4)
+
+Header line + day list, then **blocked days as a model change**: a `blockedDays`
+collection subtracted in `computeWindows`, so the autoscheduler stays out while
+your hand and What-To-Do stay free (D-6, rewritten — its original reason was
+false as built). **Remember ripple's plain-shift branch**, which bypasses
+`placeTask` and was caught by exactly this once before with zones.
+
+### Step 5 — `<WindowRow>` extraction, then zone frequencies
+
+COMB D-7 decided EXTRACT because DATES D-5 gives zones the monthly/ordinal/yearly
+vocabulary. The extraction is a **prerequisite** of the zone work, not a
+speculative refactor — do it before `RecurrenceEditor` is rewritten a third time.
+
+### Step 6 — retention (COMB D-8, table corrected)
+
+Keep rated `occurrenceData` and all `dismissed`; prune unrated occurrence rows
+and `snapshots` at 12 months. `history` needs no policy — it is four integers per
+task. **Must land with or after step 0**, never before: today the prune would
+delete training data nothing is reading yet, so nothing would notice.
+
+### Still needs your eyes, not an agent
+
+- **`design/session7-mockups.html`** — PLAN D-4 chunk grouping, EDITOR D-2
+  bucket-row sparkline (its §10 objection was struck as wrong — judge it on
+  legibility at 20px), EDITOR D-5 scalloped frame.
+- **The desktop day view.** You said it isn't good and were sending a screenshot;
+  removing it reverses locked Layout B+C, so it stays parked. Phone keeps its day
+  view regardless.
+- **Whether five whole evenings is acceptable** for a 20h project. Only your
+  ratings can settle it, and step 0 is what makes those ratings count.
+- **Touch drag on a real phone**, **PWA install/offline**, **export → Google**.
+
+---
+
+## Session 7's todo — kept for its reasoning, superseded by the order above
 
 **Branch `worktree-spec-signoff-session7`, pushed, NOT merged.** `main`
 auto-deploys on push, so merging is a release — the user's call, not yours.
@@ -146,6 +245,68 @@ fix changes how **everything** is placed and should not ride along with a featur
 - **Whether five whole evenings is acceptable** for a 20h project. No analysis can
   settle it; only their ratings can, and it is the one place both evaluations
   agree learning genuinely belongs.
+
+## Session 8 — the review: four decisions were right for reasons that were not
+
+**2026-08-13.** The specs were read end to end and their *claims* probed rather
+than their conclusions argued with. Full record: the session-8 addendum in
+`design/SPEC-COMB-2026-08.md`. Headlines:
+
+- **A rating on a recurring session reaches nothing that learns.** `retrain()`
+  and `energyCalibration()` walk `schedule.tasks`; occurrences live only in
+  `occurrenceData` and are materialized fresh on every read. **12 rated sessions
+  → sampleCount 0.** For a user whose week is gym, classes and a standing
+  commitment, most of their rated life trains nothing — and it fails closed and
+  silently, so `w.preference` is simply always 0 and the energy card is stuck
+  "still learning" forever. The wrap report and the detectors read occurrence
+  data correctly, which is precisely what hid it. → `RATINGS-AND-LEARNING.md`.
+- **The `spread` scoring weight was built and measured, and rejected.** It halves
+  the heaviest day but **lengthens the consecutive streak** — the same trap as
+  shortening sittings, reached from the other side — and drifts ordinary
+  deadlined work later for no benefit. The scorer cannot tell five chunks of one
+  project from five unrelated tasks, and the right answer differs. Spreading
+  belongs at generation time. → `WEEKLY-PLANNING` §4.5.
+- **`WEEKLY-PLANNING` §4.1.1's "EQUALISE — do not skip this line" was wrong** and
+  is withdrawn. It destroyed the placeability property that won candidate 5:
+  A = 5h over gaps of 4h/1h/1h equalises to two 2h30 sittings, the second on a
+  day whose longest run is an hour.
+- **"Tasks can still be scheduled on a blocked day" was false as built** — the
+  blocker spans the whole day window and a manual drop is rejected. D-6's
+  decision survives, but as a *model* change: blocked means the autoscheduler
+  stays out, not that you may not go there.
+- **`history` does not grow.** Four integers per task. It has been on the
+  retention list since session 2 and never belonged there; the rated rows that
+  actually need protecting are in `occurrenceData`, which the first version of
+  D-8 pruned.
+- **The zone-outside-`config.windows` warning is deleted, not built** — SPEC
+  §2.1's amendment superseded it and a re-probe places the 06:00 gym inside its
+  zone, unflagged.
+
+**The method lesson, sharpening session 6's.** That comb found docs lying about
+what was *built*. This one found something subtler: the conclusions were mostly
+right, but four rested on premises nobody had run. **A right answer with a wrong
+reason survives review — and then someone builds from the reason.** Probe the
+premise, not just the conclusion.
+
+**And the suite still cannot see any of it.** 573 tests pass with the rejected
+`spread` change and 573 pass without it, while every deadlined task with a runway
+over three days moves. Placement quality has to be proven by printing
+placements. That is now three sessions in a row.
+
+### What changed on disk this session
+
+| Doc | Change |
+|---|---|
+| `design/RATINGS-AND-LEARNING.md` | **NEW** — the ratings-plumbing bug, the one-door fix, what is recoverable (nothing) and why |
+| `design/WEEKLY-PLANNING.md` | §4.1.1 step 4 withdrawn · §4.1.2 ordering **new** · §4.5 rejects the spread weight on evidence · §4.6 the duration margin **new** · restores the eaten `## 5` header |
+| `design/DAY-NOTES.md` | D-6 rewritten (model change, not rendering) · D-8 gains the `spanDays` validation + overlap rules |
+| `design/SPEC-COMB-2026-08.md` | D-8 retention table rewritten against real fields · session-8 addendum |
+| `design/USE-CASE-RUN-2026-08.md` | the zone warning marked superseded, with the re-probe |
+| `design/EDITOR-REDESIGN.md` | D-2's §10 objection struck as inapplicable |
+| four spec files | stray `</content>` / `</invoke>` tags removed |
+
+**Engine untouched.** One experimental change to `placement.js` was made,
+measured and reverted; the evidence is commit `dc75ab5` and `probe-horizon.mjs`.
 
 ## Session 7 — how work splits into sittings, and the placer that undoes it
 
@@ -556,8 +717,14 @@ edges #5/#6 still apply.
   ⚠️ **This date changed.** End dates are now **inclusive — the last day it
   runs** (was exclusive, "the day it stops", which said `2026-07-25`). See
   Sharp edges #11.
-- **Widen `config.windows`** past 18:00 (default Mon–Fri is 08:00–18:00, which
-  ends before their 18:30 workday, so evenings don't exist).
+- **Widen `config.windows`** past 18:00 (default Mon–Fri is 08:00–18:00, so
+  evenings don't exist for general work).
+  ⚠️ **Narrowed 2026-08-13.** This used to be phrased as needed for the 18:30
+  workday. It is **not** — SPEC §2.1's amendment means a zone defines the window
+  for its own tags and is no longer clipped by `config.windows`, so the Work zone
+  runs to 18:30 whether or not the day window does (re-probed: a 06:00–08:00 gym
+  zone places at 06:00, unflagged). Widening still matters for every task that
+  does **not** match a zone, which is most of them.
 
 **Work is a ZONE, not a block** — this was a real modelling error, corrected. A
 pinned 09:00–18:30 event *consumes* the day so nothing can be scheduled inside
