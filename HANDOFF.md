@@ -89,6 +89,60 @@ minute. And `report.js#buildDeadlineBuffer` had been measuring the exact quantit
 that would have shown it all along — *the app was already reporting the evidence
 against its own scoring.*
 
+## Session 7 — how work splits into sittings, and the placer that undoes it
+
+Branch `worktree-spec-signoff-session7`, not merged. Read in this order:
+`design/SESSION-SPLITTING.md` (seven candidate equations + what the evaluations
+found), then `SESSION-SPLITTING-EVAL-ENGINE.md` and `-EVAL-LIVED.md` (~49KB each,
+independent, they could not see each other).
+
+**⚠️ The headline: the splitting question was aimed at the wrong variable, and
+both evaluations found this independently.** Neither `n` nor sitting length is
+where burnout lives.
+
+- **Nothing in `scoring.js` spreads work over a runway longer than 3 days.**
+  `proximity` is normalised by `maxPlacementLookahead = 3` so it is identically
+  zero past day 3, and `buffer` saturates at 1.000 for 12 of 15 days. Past day 3
+  only `balance` discriminates and ties break earliest. **20h due in 14 days
+  places as 8h Mon + 8h Tue + 4h Wed, eleven days untouched** — and 12h on Monday
+  if you widen `config.windows` as this handoff tells you to.
+- **The burnout mechanism is CLUSTERING, and no candidate looked at it.** 5 × 4h
+  lands on five consecutive evenings; candidates that shorten the sitting to fix
+  that produce **nine** consecutive evenings. Shortening makes the streak longer.
+
+**So the sizing question is settled and the real work is elsewhere.** Both
+first choices contain **candidate 5** (greedy fit over the week's real gaps —
+the only one that outputs *days*, so the placer cannot undo it; ~60 lines, no new
+solver, uses `placeTask({from: day, to: day})` from DATES-P1). The open piece is
+a **spreading term in `scoring.js`** — or making `proximity`'s horizon the runway
+rather than a fixed 3 days. It applies to every deadlined task and should ship
+independently, exactly as `buffer` did.
+
+**Candidate 3 (fatigue curve) is rejected by both** — identical output in every
+extreme, and `waste(s)` would have the app assert you had been unproductive.
+
+**The ML picture, which is worse than it looked.** Unobserved duration buckets sit
+at exactly `+0.000`, so a never-tried sitting length **outranks a tried-and-hated
+one** (−0.365 vs +0.000). A short-only scheduler still reports "your best sittings
+are 2h" after 400 ratings. The fix is the per-column gate already built at
+`learning.js:131–139` and applied to an empty set. **Unresolved disagreement:**
+whether the learned duration curve is stable enough to set a plan — engine says
+yes (recovers the peak from 19 noisy ratings), lived says the same project comes
+out as 5, 7 or 10 sittings depending which ratings you have, *even at 60*. Safe
+reading: learning never silently changes the plan; it earns a Cabana line and a
+one-time offer to raise `s_max`.
+
+**`dayFill` — do this soon regardless.** It is hardcoded `0` in `featureVector`
+and deader than documented (`_dayFillAtCompletion`: one repo hit, not a `Task`
+field, not serialised). Wiring is ~7 lines in `_snapshotEnergy`. Every week
+without it is training data that cannot be reconstructed. But **do not use it as
+an intensity cap** — its learned weight flips sign four times and yields no level.
+
+**Two incidental defects, neither fixed:** `resizeChunk` never clamps to
+`chunking.maxChunk` (`projects.js:114`), so a user can silently exceed their own
+stated maximum sitting; and `config.js`'s weights comment described the
+superseded buffer rule (fixed here).
+
 ## Session 6 — specs written this session (read before building)
 
 | Doc | State |

@@ -283,3 +283,117 @@ is good for you, and never a sitting the week cannot hold.
    and a retrain-on-load migration), and how the confounding in candidate 6 is
    handled — the scheduler chooses the sitting lengths that then get rated, so
    a length never offered is never learned.
+
+---
+
+# What the two evaluations found
+
+Reports: `SESSION-SPLITTING-EVAL-ENGINE.md` (code-grounded, probe-proven) and
+`SESSION-SPLITTING-EVAL-LIVED.md` (scenario corpus, human-side). They ran
+independently and could not see each other's conclusions.
+
+## They converged, from opposite directions, on the same thing
+
+**The question in this document was aimed at the wrong variable.** Neither `n`
+nor `s` is where burnout lives.
+
+- **Engine:** nothing in `scoring.js` spreads work over a runway longer than
+  **three days**. `proximity` is normalised by `maxPlacementLookahead = 3`, so it
+  is identically zero past day 3; `buffer` saturates at 1.000 for 12 of 15 days.
+  Beyond day 3 only `balance` discriminates, ties break earliest, and 20h/14d
+  places as **8h Mon + 8h Tue + 4h Wed with eleven days untouched.**
+- **Lived:** the burnout mechanism is **clustering**, and *no candidate looks at
+  it.* On an even 4h/day fortnight, C1 and C5 give 5 × 4h on **five consecutive
+  evenings** — and the candidates that "fix" this by shortening the sitting turn
+  it into **nine consecutive evenings.** Shortening the sitting makes the streak
+  *longer.*
+
+Two methods, one answer: **the placer, not the split.** Every candidate that
+fights sitting length instead pays in unplaced work, invented constants and
+unstable plans. Lived's `H*` — candidate 5's sizing plus an even spread across
+the runway, zero invented constants — gives the same 5 × 4h on days 0, 2, 4, 6, 8:
+streak of one.
+
+**Both first choices contain candidate 5.** Engine ranked `5 + cap`; lived ranked
+`H*` (5 + spread) above plain 5. So the sizing question is settled and the open
+work is the spreading rule, which belongs in `scoring.js` and applies to every
+deadlined task — it should ship independently, exactly as `buffer` did.
+
+**Both rejected candidate 3.** Its output is identical in every extreme (`8×170`
+even for a week with zero open minutes), and `waste(s)` would have the app assert
+you had been unproductive — a P-1 breach reached before P-2 is even in play.
+
+## Where they disagree, unresolved
+
+**Candidate 7 (learned `dayFill`).** Engine ranked it **second** (~7 lines, no
+`featureVector` change). Lived ranked it **last** and says it *cannot work as
+written*: `dayFill` is a single linear scalar whose learned weight **flips sign
+four times** and never yields a level, so no κ falls out of it. Lived trained the
+real model to show this; engine costed the wiring without testing whether the
+output is usable. **Lived's evidence is the stronger claim here** — but note both
+agree on the action anyway: **wire `dayFill` now** for the unrecoverable-data
+reason, just don't use it as an intensity cap. Banding it recovers κ at the cost
+of a `MODEL_LAYOUT_VERSION` bump.
+
+**Does the learned duration curve stabilise?** Engine: yes — stable, recovers the
+true peak from 19 noisy ratings, argmax unchanged over 30 retrains. Lived: the
+same 20h project comes out as **5, 7 or 10 sittings depending on which ten
+ratings you have — and still 5, 7 or 10 at sixty.** These are different
+experiments (engine varied noise around one generating distribution; lived varied
+the rating history itself), so they are not strictly contradictory — but they
+support opposite conclusions about whether the curve can be trusted to *set a
+plan*. **Unresolved, and it is the crux of whether candidate 6 is usable.** Lived's
+conclusion — learning must never silently change the plan; it belongs in a Cabana
+line plus a one-time offer to raise `s_max` — is the safe reading of both.
+
+**The ML defect both found, stated two ways.** Engine: unobserved buckets sit at
+exactly `+0.000`, so a never-tried length **outranks a tried-and-hated one**
+(−0.365 vs +0.000). Lived: a short-only scheduler still reports "your best
+sittings are 2h" after **400 ratings**; ε-exploration finds the truth at 10 weeks,
+loses it at 15, holds after a year. So the confound is worse than this document
+described — unoffered lengths are not merely unlearned, they are **actively
+preferred**. The per-column gate that fixes it already exists at
+`learning.js:131–139`, applied to an empty set.
+
+## Errors in this document, found by the evaluations
+
+1. **The acceptance test is dead.** `sliceChunks` needs `maxChunk ≥ 600` to
+   return n = 2, which no sane bound produces. All seven candidates pass it, so
+   "20h/14d must not be two sittings" discriminates *nothing*. It should never
+   have been the gate.
+2. **`Ω` and `ρ` are per-(task, day), not per-day** — zones filter by tag, so the
+   same week is 101h30 open for a study task and 33h30 for a work one. Candidate
+   4's headline sentence, *"this wants 62% of your open time"*, is **false as
+   written**: there is no single "your open time".
+3. **Candidates 2, 4, 6 and 7 fix `s` before looking at `A`**, so a 45-minute task
+   books a 4-hour block and three commitments totalling 8h book 12h of the week.
+   One missing line — `s ← A/n` after `n` is known. My formulations, my bug.
+4. **Candidate 3's worked table is wrong on a 15-minute grid** (τ = 15% gives
+   9 × 2h30, not 11 × 2h), and `waste(s)` is non-monotonic, so "smallest n inside
+   a tolerance" is not even well-defined.
+5. **The stability suspects were backwards.** I named candidate 4's band edges;
+   they cause near-zero churn. The real one is `ceil()` — **one extra minute
+   re-sizes and re-places every chunk** in the shipped code. (Though `redistribute`
+   already preserves lived chunks, `projects.js:70`, so the blast radius is
+   narrower than feared.) Candidate 4's edge is real but smaller: +48 minutes
+   flips 4 × 4h into 6 × 2h24.
+6. **The prior-vs-assertion framing holds, but the code is stricter than I said.**
+   `learnedCapacity` returns `null` and the prior is *invisible* until calibrated —
+   so κ, δ, `s_free` and τ still fail P-2. What passes: `s_max` (user-typed) and
+   `ρ = A/Ω` (arithmetic over their own calendar).
+
+Also found, incidental to this question and untouched: `resizeChunk` never clamps
+to `chunking.maxChunk` (`projects.js:114`), so a user can silently exceed their
+own stated maximum sitting; and `_dayFillAtCompletion` is deader than documented —
+one repo hit, not a `Task` field, not serialised.
+
+## What is NOT settled, and needs the user
+
+Lived's own strongest objection to its recommendation: **`H*` still eats five
+whole evenings**, and no amount of analysis can establish whether that is
+acceptable — only this person's ratings can. That is the one place both reports
+agree learning genuinely belongs.
+
+Also open: whether the app may ever *try* a longer sitting than it has evidence
+for, in order to learn whether you can do them. Without that, a short-only
+scheduler is self-confirming forever.
