@@ -8,6 +8,14 @@ to a no-op, which a probe showed and 569 green tests did not. Steps 1–4 (the
 repeating-project object, the Cabana card, the planning ritual, the wrap line)
 are **still spec**, and every open decision on them is now answered (§6).
 
+**Amended again 2026-08-13 (session 8), after a review that probed its claims.**
+Three things changed and one was load-bearing: §4.1.1's "equalise" step is
+**withdrawn** (it destroyed the property that made the chosen algorithm win),
+§4.1.2 adds the **ordering rule** the spread needed to work across more than one
+commitment, and §4.5's proposed `spread` scoring weight is **dropped rather than
+deferred** — it was built and measured, and it makes the streak longer. §4.6 is
+new: what happens when work runs longer than you booked.
+
 Two things the app can't say today:
 
 1. **"Two hours of maths homework each week."** Not a block at a fixed time — an
@@ -176,9 +184,14 @@ Given  A (amount owed, min), the period's end as deadline,
           REAL week — anchors, zones and break padding already subtracted
 3.  n   = fewest gaps whose total ≥ A, taking longest first,
           never counting a gap below s_min, never more than maxPerDay a day
-4.  s   ← A / n           ← EQUALISE. Do not skip this line.
+4.  s_i ← each sitting takes ITS OWN gap's length, clamped to s_max;
+          the LAST one takes the remainder, A − Σ(the others).
+          If that remainder < s_min, fold it into the previous sitting
+          (up to s_max); if it still will not fit, drop a sitting and
+          re-derive from step 3.
 5.  days ← spread the n sittings EVENLY across the days of R* that can
-          hold s — not the earliest n days
+          hold them — not the earliest n days — counting days already
+          taken by ANOTHER commitment as taken (§4.1.2)
 6.  place each sitting with placeTask({from: day, to: day})
 ```
 
@@ -188,14 +201,32 @@ Given  A (amount owed, min), the period's end as deadline,
   candidate that outputs sittings the week can actually hold, and the only one
   whose answer the placer cannot undo — because step 6 bounds each sitting to a
   single day using the idiom DATES-P1 already built (`from === to`).
-- **Step 4 is a bug fix in advance.** Four of the seven candidates fixed `s`
-  before looking at `A`, so a 45-minute task booked a 4-hour block and three
-  commitments totalling 8h booked 12h of the week. Equalise after `n` is known.
+- **Step 4 keeps sittings gap-shaped. ⚠️ Corrected 2026-08-13 — it previously
+  read `s ← A / n`, "EQUALISE, do not skip this line", and that was wrong.**
+  Equalising imports a fix for a disease candidate 5 does not have, and in doing
+  so it destroys the one property that made candidate 5 win. Worked example:
+  `A` = 5h with gaps of 4h / 1h / 1h. Step 3 takes the 4h and one 1h, so `n` = 2;
+  equalising gives **two sittings of 2h30, and the second day's longest run is
+  one hour.** The sitting no longer fits the gap it was selected for — exactly
+  the "a number the week cannot honour" failure that eliminated candidates 2, 4,
+  6 and 7.
+
+  The bug equalising was meant to fix is real but belongs to those candidates:
+  they fixed `s` *before* looking at `A`, so a 45-minute errand booked a 4-hour
+  block. Candidate 5 cannot do that — it derives sittings *from* gaps and its
+  last sitting is the remainder, so a 45-minute amount yields `1 × 45m` on its
+  own. Note the lived evaluation's own H\* tables report **unequal** sittings
+  ("3h07/1h21"); the equalise line contradicted the evaluation it cited.
+
+  Equal-length sittings do have a legibility appeal — "four sittings of two
+  hours" is easier to hold than "3h/2h/2h/1h". **Decided: fitting the week wins**
+  (the user's call: it "feels easier to fit into a schedule"). Equal numbers are
+  only tidy when the week is tidy.
 - **Step 5 is the whole finding.** Burnout is **clustering**, not sitting length:
   5 × 4h taken greedily lands on five consecutive evenings, and shortening the
   sitting to "fix" it produces *nine* consecutive evenings. Spreading the same
   5 × 4h across alternate days gives a streak of one. See §4.5 for why the
-  scorer will not do this for you.
+  scorer will not do this for you — **that is now proven by probe, not argued.**
 - **No `κ`, `δ`, `s_free` or `τ`.** Every invented constant is gone. What remains
   is `s_max` (the user typed it) and arithmetic over their own calendar. This is
   not tidiness: `learnedCapacity()` returns `null` and a prior stays *invisible*
@@ -216,6 +247,49 @@ learn from — so any future move here needs an exploration story, not just a ga
 stop. Do not let a shortfall grow each time the user merely *looks* at the week —
 that was a real defect in three of the losing candidates, and it contradicts D-3
 (opening a week is looking, not asking).
+
+### 4.1.2 More than one commitment — order, and why the spread needs it
+
+**Added 2026-08-13.** §4.1.1 as first written spread each commitment evenly across
+`R*` **independently**, which means three commitments all aim at the same day
+indices and collide on day 0, day 2, day 4. That is the identical flaw the engine
+evaluation found in `scoring.js` — *"there is no sibling awareness anywhere"* —
+relocated from the scorer into the generator, where it is just as wrong.
+
+So generation is **sequential**, and each commitment sees the previous ones'
+sittings as occupied. The occupied-set machinery already does this
+(`redistribute` builds one at `projects.js:82`); what was missing is an order.
+
+**The order is `ρ` descending, priority as the tiebreak.**
+
+```
+ρ = A / Ω        the amount owed, over the open time inside its own R*
+```
+
+- **`ρ` already combines the two things that make something hard to place** — a
+  bigger amount raises the numerator, a nearer deadline shrinks the denominator.
+  So 30h at P2 over six weeks and 2h at P5 due Friday sort the way intuition
+  says: the 30h picks days first because it wants a bigger share of what it has,
+  but move the 2h to *due tomorrow* and its `ρ` jumps and it goes first.
+- **It invents nothing.** Both evaluations singled `ρ` out as the one quantity in
+  the whole candidate document that is P-2-clean: arithmetic over the user's own
+  calendar, no constant, nothing asserted. Using it as a *sort key* rather than
+  as a *posture* also sidesteps the band-edge problem that sank candidate 4 —
+  a sort has no thresholds in it.
+- **Priority breaks ties only** (the user's call). Ordering decides who picks
+  days first, not who gets good days; an urgent small commitment is already
+  protected by its deadline and by the `buffer` weight wherever it lands.
+- **Ties beyond that break on title**, so replanning an untouched week is
+  idempotent — `redistribute` is already idempotent when nothing changed, and
+  this must not be the thing that breaks it.
+
+**`ρ` is per (task, day), never per day.** The engine evaluation proved this:
+the same fortnight is 101h30 open for a study task and 33h30 for a work one,
+because a zone routes matching tags *in* and carves itself *out* for everyone
+else. So each commitment's `Ω` is computed against **its own** admissible time,
+and two commitments' `ρ` values are not comparable as percentages of one week —
+they are comparable only as what they are, a measure of how constrained each one
+is. Never aggregate them, and never show them summed.
 
 ### 4.2 Placement: open slots always — until the deadline is at risk
 
@@ -409,17 +483,176 @@ and so is the only one that cannot be undone by the placer. `placeTask({from:
 day, to: day})` bounds a task to a single day through the idiom DATES-P1 already
 built, so it needs no new solver.
 
-### The fix is a spreading term, and it is not this feature's job
+### The fix is NOT a scoring term — proven by probe, 2026-08-13
 
-A `spread` weight — or making `proximity`'s horizon the runway rather than a
-fixed 3 days — belongs in `scoring.js`, applies to every deadlined task, and
-should ship independently, exactly as the `buffer` weight did as step 0. Note
-the same shape of finding as the buffer correction on the same day: a term that
-was reasoned about and shipped green, whose actual behaviour over a long runway
-nobody had printed.
+This section previously proposed a `spread` weight in `scoring.js`, or
+renormalising `proximity` by the runway instead of a fixed 3 days, to ship
+independently as the `buffer` weight did. **That was tested and it is the wrong
+home. Do not build it.**
+
+The experiment: `lookaheadHorizonMin` changed from
+`config.maxPlacementLookahead * 24 * 60` to the actual search span
+(`to − from`). Twenty hours, five 4h sittings, due in fourteen days:
+
+| | days used | heaviest day | consecutive streak |
+|---|---|---|---|
+| shipped | 3 of 14 | 480m | 3 |
+| span-normalised | 5 of 14 | 240m | **4** |
+| widened windows, shipped | 2 of 14 | 720m | 2 |
+| widened windows, span-normalised | 4 of 14 | 480m | **4** |
+
+It does half the job: no day gets two sittings any more, and the heaviest day
+halves. **But the streak gets LONGER, not shorter** — the work spreads over more
+days and those days are still consecutive, because a weaker `proximity` still
+prefers earlier. By the metric that actually names the harm, the change is a
+regression dressed as an improvement. It is the same trap as shortening sittings,
+reached by a different road.
+
+**And the reason is structural, which is the part worth keeping.** The scorer
+cannot tell *five chunks of one project* from *five unrelated tasks*, and the
+right answer differs between them: bunching is the disease for a project, and
+"as early as possible" is a **feature** for an ordinary task. Proven by the
+control in the same probe — a one-hour task due in seven days drifted from
+tomorrow 12:30 to Friday 08:00, later for no benefit to anyone. A scoring term
+would impose the project's medicine on every deadlined task in the app.
+
+**So spreading belongs at generation time (§4.1.1 step 5), where sibling
+knowledge exists, and nowhere else.** That also means the feature needs no engine
+change at all beyond the generator: step 6's `placeTask({from: day, to: day})`
+bounds each sitting to the day the generator chose, and the scorer never gets the
+chance to undo it.
+
+**One more thing this probe settles, and it is the familiar one: 573 tests pass
+with the change and 573 pass without it.** A change that relocates every
+deadlined task with a runway longer than three days is completely invisible to
+the suite — exactly as the inert buffer weight was. Any future work on placement
+quality has to be proven by printing placements, not by going green.
+*(Evidence: branch `worktree-spec-session8`, commit `dc75ab5`, and
+`probe-horizon.mjs` at the repo root of that branch.)*
 
 **Do not "fix" this by shortening sittings.** Ten 2-hour chunks bunch just as
 hard as five 4-hour ones; the probe above shows 7h + 7h at n = 20.
+
+---
+
+## 4.6 When the work runs long — the duration margin
+
+**Decided 2026-08-13.** The question: you think the essay is 2h but you are only
+60% sure. Does the plan book 2h and let you find more time later, or book more
+up front?
+
+### The two cases are different and only one needs machinery
+
+- **Bounded work you already know.** *"Econ has a timer on it, it can only take
+  45 minutes."* Nothing to learn and nothing to offer — that is the sitting
+  maximum, and the control exists (§4). State it, done.
+- **Uncertain work.** The essay. This is where the margin lives, and it is the
+  only case that needs anything built.
+
+### The margin is part of the amount, not a reservation
+
+The tempting design is to keep the tail of the runway free and borrow from it
+when the work overruns. **That does not work, because the buffer is a preference,
+not a reservation.** §4.4's weight makes *this* task aim earlier; it does not
+hold the tail empty, and other work will fill it. Time you planned to borrow may
+not be there.
+
+So if the essay is really a 2h30 job, **2h30 is the amount**, and it flows
+through §4.1.1 unchanged, aiming at the same finish-early target. There is no
+second kind of time and nothing to reserve.
+
+Whether the margin is contiguous or separate then answers itself through a
+control that already exists: **under `s_max` it lengthens the sitting; over it,
+generation splits it onto another day.** No new concept either way.
+
+**Unused margin already comes back.** §3.9's early-done truncation crosshatches
+the remainder and fires the removal toast (*leave open / backfill / protect*), so
+an over-booking is returned the moment you finish, not lost.
+
+### Where the number comes from — measured, never asked
+
+A self-reported confidence field was considered and **rejected**: it is a control
+you would fill in on every task, on the panel that the P4 cancellation already
+ruled must not grow more dials, and it asks for a number people cannot produce
+reliably. The app would be booking real time off a guess.
+
+Instead the app watches what it can already see: **you extending a block, or
+finishing well short of one.** Both are explicit actions you took, so this stays
+inside the P-1 boundary that forbids inferring from what you *skipped*.
+
+**This is a much safer thing to learn than the sitting-length curve the
+evaluations fought over.** That curve is an argmax over seven jagged buckets,
+confounded because the scheduler chose the lengths that then got rated. This is a
+**residual**: the app proposed `P`, you moved it to `A`, and the difference is
+entirely yours. Direct measurement, median estimator, no argmax, and not
+confounded by the scheduler's own choices.
+
+### The rules that keep it honest
+
+1. **The estimate is two-sided; the offer is one-sided.** Overruns and under-runs
+   both move the estimate, or the margin can only ever grow — a ratchet where one
+   bad fortnight permanently inflates your econ. But the app **never offers to
+   book less than the amount you typed.** Your number is the floor; under-runs
+   only pull the *margin* back toward zero. *(The user's call, and the reason is
+   good: an app that keeps shrinking your study time because you were quick
+   trains a bad habit — and finishing early is already rewarded by getting the
+   remainder back that same day. Shrinking the booking too would charge you twice
+   for being fast.)*
+2. **It offers; it never applies.** Same rule the evaluations landed on for the
+   duration curve: a learned number must not silently change a plan. The margin
+   is proposed inside the ritual's existing preview, where nothing is written
+   until you accept.
+3. **Cover most of your past sessions, not all of them.** Booking the full
+   observed overrun every time buys insurance against your worst session and
+   wastes time on every ordinary one, so the margin takes a conservative part of
+   the observed distribution rather than its maximum. This is the honest version
+   of "maybe half of it".
+4. **Past tense, with the sample.** *"Your essay sittings have run about 25%
+   long — 9 of the last 12. Book 2h30?"* Never *"essays take you 2h30."* The
+   answer is remembered the way a dismissed detector is, so it asks once rather
+   than every Sunday.
+5. **Nothing is claimed before it is earned.** Below the sample threshold there
+   is no factor, no line and no offer — the shape `learnedCapacity()` already
+   uses by returning `null`.
+6. **It lives in the Cabana, the wrap report and the plan preview. Never the
+   grid** (locked: insights live in the report and Cabana; the grid stays quiet).
+
+### The prerequisite, which is also a bug fix
+
+**None of this is possible today, because nothing records what was planned.**
+Resize a 2h block to 2h30 and the 2h is simply gone; `snapshot()` diffs
+planned-vs-actual at *week* level only. So per-sitting planned-vs-actual has to
+be recorded — additive fields, written in `toJSON` **and** read in the
+constructor (the `freq` lesson: a field in only one of the two is silently
+dropped), and stored on `occurrenceData[key]` for a recurring session.
+
+That recording is worth doing on its own schedule, for the same reason
+`energyAt` was: **every week used without it is data that cannot be
+reconstructed afterwards.**
+
+### Grain: tags
+
+The factor is keyed on **tags**, not on the commitment. Two reasons, and the
+second is the stronger:
+
+1. The essay is a one-off, so a commitment-grained factor could never reach it.
+2. **A tag is what makes a repeating commitment and a one-off task the same kind
+   of work.** Ratings, energy character and zone routing already transfer through
+   tags; keying the margin on them means "maths" learned from your standing
+   commitment also informs the one-off maths essay, across the structural
+   difference between them. It connects to the mechanism that exists rather than
+   adding one.
+
+**⚠️ Transfer is string-exact, so tag hygiene becomes load-bearing.** `maths` and
+`math` are two different worlds, and nothing today stops the second being created
+by typing it. Since commitments now carry tags precisely so data flows between
+structures, **the commitment editor must offer existing tags rather than accept
+free text silently** — the Tag Manager exists for this, and a typo otherwise
+severs the link without any symptom.
+
+---
+
+## 5. What this does NOT do
 
 - **No new placement algorithm.** Generated chunks are ordinary flexible tasks
   bounded to the period. `placeTask` scores them exactly as it does everything
@@ -492,15 +725,26 @@ hard as five 4-hour ones; the probe above shows 7h + 7h at n = 20.
 
 ## 7. Build order, if signed off
 
-0. **The `buffer` scoring weight** (§4.4) — independent of everything else here,
-   useful on its own for every deadlined task, and provable by probe in an
-   afternoon. Worth shipping first and separately.
+0. **The `buffer` scoring weight** (§4.4) — ✅ **SHIPPED**, and corrected on
+   2026-08-12 to measure the runway rather than the task's own length.
 1. **Engine**: the repeating-project object + generation for a period, reusing
    `sliceChunks`/`redistribute`, with §4.1's "ask the week what it has" as the
-   genuinely new part. Testable with no UI at all.
-2. **Cabana card**: list + editor on the `Drill` idiom.
-3. **The ritual**: planning-day banner, preview, accept/decline.
-4. **Wrap report line**: the plain fact, no verdict.
+   genuinely new part — **gap-shaped sittings per §4.1.1 step 4 (not equalised)**
+   and **sequential generation in `ρ` order per §4.1.2**. Testable with no UI at
+   all, and **no `scoring.js` change is needed or wanted** (§4.5).
+2. **Record planned-vs-actual per sitting** (§4.6) — additive fields, both halves
+   of the serialiser, `occurrenceData` for recurring sessions. Independent of
+   everything else, and the cost of delay is permanent: unrecorded weeks cannot
+   be reconstructed. Worth doing early even though the margin it feeds comes
+   later.
+3. **Cabana card**: list + editor on the `Drill` idiom, with tags offered from
+   the existing set rather than free text (§4.6).
+4. **The ritual**: planning-day banner, preview, accept/decline.
+5. **Wrap report line**: the plain fact, no verdict.
+6. **The duration margin** (§4.6) — only once step 2 has collected a term of
+   data. Offer-only, one-sided, conservative.
 
 Step 1 is worth doing first and alone — it is provable by probe, and it is where
-the design will be found to be wrong if it is.
+the design will be found to be wrong if it is. **Prove it by printing the
+placements**, not by going green: 573 tests could not see either of the two
+defects this feature's own scoring found (§4.4, §4.5).
