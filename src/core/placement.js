@@ -186,7 +186,13 @@ export function findBestSlot(schedule, task, opts = {}) {
   const occupied = opts.occupied || [];
   const ignoreZone = !!opts.ignoreZone;
   const ignoreBreaks = !!opts.ignoreBreaks;
-  const lookaheadHorizonMin = config.maxPlacementLookahead * 24 * 60;
+  // EXPERIMENT (Q6): normalise `proximity` by the ACTUAL search span rather than
+  // a fixed `maxPlacementLookahead`. When `to` is the default (`from` + lookahead)
+  // this is exactly the old value, so ordinary placement cannot move; it only
+  // differs when the caller widened the window — i.e. a deadlined task, where the
+  // fixed horizon made proximity identically 0 past day 3 and left `balance`
+  // nothing to push against (WEEKLY-PLANNING §4.5).
+  const lookaheadHorizonMin = Math.max(1, Math.round((to.getTime() - from.getTime()) / 60000));
   const weights = schedule._weights();
 
   let best = null;
