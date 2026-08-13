@@ -141,6 +141,22 @@ spread makes the streak *longer*.
 
 Testable with no UI. **Prove it by printing placements**, not by going green.
 
+### Step 1b — the energy clause in step 5 (`design/ENERGY-AWARE-PLACEMENT.md`)
+
+**Placement is energy-blind and always has been.** Probed 2026-08-13: across a
+fortnight with *identical time occupancy every day*, a 20h project put **960 of
+its 1200 minutes on the four mentally heaviest days**, tripling their dip from
+−4.0 to −12.0, while ten mentally-free days took 240m between them. `balance`
+counts minutes, so a day holding two hours of the hardest work you do reads as
+83% empty.
+
+Build it **inside step 5's day choice**, not as a scoring weight — same
+containment argument as §4.5, and D-1 in that doc explains why the general weight
+should wait until this has been lived with. It must be **comparative only**: rank
+days against each other, never against a capacity, because `learnedCapacity()`
+returns `null` until calibrated and a placement rule keyed to a ceiling would act
+on a number the app has not earned.
+
 ### Step 2 — record planned-vs-actual per sitting (`WEEKLY-PLANNING` §4.6)
 
 Additive fields, both halves of the serialiser, `occurrenceData` for recurring
@@ -298,6 +314,7 @@ placements. That is now three sessions in a row.
 | Doc | Change |
 |---|---|
 | `design/RATINGS-AND-LEARNING.md` | **NEW** — the ratings-plumbing bug, the one-door fix, what is recoverable (nothing) and why |
+| `design/ENERGY-AWARE-PLACEMENT.md` | **NEW** — placement never reads the energy model; 80% of a project lands on the worst days. Why it is a legitimate scoring term where `spread` was not, and why it must compare rather than judge |
 | `design/WEEKLY-PLANNING.md` | §4.1.1 step 4 withdrawn · §4.1.2 ordering **new** · §4.5 rejects the spread weight on evidence · §4.6 the duration margin **new** · restores the eaten `## 5` header |
 | `design/DAY-NOTES.md` | D-6 rewritten (model change, not rendering) · D-8 gains the `spanDays` validation + overlap rules |
 | `design/SPEC-COMB-2026-08.md` | D-8 retention table rewritten against real fields · session-8 addendum |
