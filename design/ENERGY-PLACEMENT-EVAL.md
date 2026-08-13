@@ -391,3 +391,67 @@ The learned upgrade path is unaffected: all of these are comparative, none state
 a capacity, and the move to `learnedCapacity()` as the normaliser remains blocked
 on the recurring-ratings fix (`design/RATINGS-AND-LEARNING.md`) while none of the
 candidates is.
+
+---
+
+# The blind scenarios, run against two REAL weeks — 2026-08-13
+
+Probe: `probe-real-weeks-uc.mjs`. Two anonymised shapes from the user's own
+calendar: a **dense** term week (285–580 committed minutes a day) and a
+**sparse** early-term week (0–475). Where a scenario invented a calendar, its
+*question* was posed against the real week instead.
+
+| scenario | dense | sparse |
+|---|---|---|
+| A1/N2 fresh mornings, nothing late | PASS — Sun 10:00, Sat 08:00, Wed 08:00 | PASS, same |
+| X6 is a 90-min sitting satisfiable? | PASS — 7/7 days | PASS — 7/7 days |
+| M6 restorative direction | PASS — sign −1 | PASS |
+| N5/A11 no-load gated + deterministic | PASS | PASS |
+| X13 five replans, nothing done | PASS — 1 distinct plan | PASS |
+| M1/M5 commitments sharing days | 1 shared day | Sunday carries all 3 |
+| sleep guard | never binds | never binds |
+
+## ⭐ The finding: the day ranking INVERTS with the hour you score
+
+```
+DENSE week        res@13:00                res@20:00
+  Wed               -2.5  (4th best)         -10.6  (worst day of the week)
+  Fri               -5.3  (6th)               -7.0  (3rd best)
+```
+
+Wednesday is fourth-best at 1pm and the **single worst day of the week at 8pm**;
+Friday moves the other way. A nominal sit-down hour is therefore not a parameter
+to tune — **it is the answer.**
+
+This lands precisely on the user's own pattern: their real studying happened
+20:00–24:00, where Wednesday sits at −10.6. A day chooser scoring at 13:00 hands
+them Wednesday evening and calls it a good pick. The probe's plan only *looks*
+right because `placeTask` independently chose 08:00 slots — **the day chooser and
+the placer were measuring different moments, and only the placer's moment was
+real.**
+
+> ### D-1 is settled on evidence: the energy term belongs in `scoring.js`, evaluated at the candidate slot.
+
+Four independent findings now point there — the C3 fixture, scenario X8, the
+nominal-13:00 bug in the sign-flip probe, and this. The containment argument for
+a day chooser rested on C1 winning, and C1 lost.
+
+## Two smaller readings, stated so they are not inflated
+
+- **The identical plan across a dense and a sparse week is benign.** The free
+  weekend days genuinely are the least depleted in both, so the same answer is
+  the right answer twice — not evidence that the energy term is inert.
+- **The sparse Sunday taking all three commitments is 4h on a 13h empty day**, so
+  M13's "short day swamped" does not fire. Cross-commitment spacing is still
+  worth having; it is not urgent.
+
+## Not run — and why, so nothing is quietly skipped
+
+- **Need a shape a real week cannot express:** X3 past deadline · X5 six-month
+  runway · X12 DST/spring-forward · X10 exact load cancellation · X2/X7
+  impossible amounts · X9 all-restorative week · A12 mid-week term start.
+- **Test WORDING, and there is no commitment UI yet:** N1, N3, N4, N6, N7, N8,
+  N9, N12. What the app may say on a brutal week, and the sentences it must never
+  produce ("you're behind", "streak broken", "more than you can handle"). These
+  are **acceptance criteria for the build**, not probes — and they are the ones
+  most likely to be dropped, because nothing fails when they are.
