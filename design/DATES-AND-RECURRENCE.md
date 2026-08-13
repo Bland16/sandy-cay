@@ -405,15 +405,19 @@ P2 slipped**, because it converts silent data loss into a visible fact.
 
 ## 5. Open decisions — sign-off needed before build
 
-- **D-1.** P1's date readback wording: "Thursday · 3 weeks ahead" vs just
-  "Thursday". The distance is useful when you have typed a date months out and
-  want to be sure you did not fat-finger the year.
+- **D-1. RESOLVED by shipping — the distance is in.** The readback reads
+  "Thursday · 7 weeks ahead", and it is tested. It earns its place exactly where
+  predicted: typing a date months out, the weekday alone cannot catch a
+  fat-fingered year and the distance can.
 - **D-2.** Should the **week grid's** day header, and the day view, gain an
   "add on this day" affordance that opens the panel pre-dated? Cheap once P1
   exists, and it is how most people add a dated event — by pointing at the day.
-- **D-3.** Does setting P4's "any time before <date>" window offer to set a
-  **deadline** to match? They are different things (§2.4) but a person who says
-  "before the 20th" usually means both.
+- **D-3. RESOLVED by shipping — NO, and the help text says so.** The control
+  reads "A search window, not a deadline — it only says where to look." They are
+  different in kind: a deadline is a promise the engine protects and the wrap
+  report measures; a search window is only where to look. Conflating them would
+  have the report claim a deadline you never set. Setting both is two
+  deliberate actions, which is correct.
 - **D-4. RESOLVED 2026-08-11** — no mode picker; options are generated from the
   chosen date as finished sentences, worded "the **first Tuesday**" (words, not
   "1st"), with a live four-date preview. See §3.5. What remains open is small:

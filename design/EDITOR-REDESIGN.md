@@ -498,13 +498,19 @@ the role-defaulted one.
 
 ## 12. Open decisions (flag before/at sign-off)
 
-- **D-1 — wave granularity:** ship the 5-stop snap (recommended, honest with the
+- **D-1 — RESOLVED by the build: CONTINUOUS, not snapped.** `energy.js` holds load
+  as "a continuous float in [-2, 2] — the wave control stores where the float
+  actually sits, not a snapped integer (smoother authoring). Clamp, don't round."
+  The original text follows.
+- ~~D-1 — wave granularity:~~ ship the 5-stop snap (recommended, honest with the
   model) vs widen the load scale for finer feel (adds a learning migration). *Lean:
   5-stop now.*
 - **D-2 — bucket-row lean glyph:** show a tiny static load sparkline on the list
   row, or nothing until you drill in. *Lean: nothing on the row (calmer); the
   control is one tap away.*
-- **D-3 — interactive prototype first?** Build a self-contained clickable prototype
+- **D-3 — MOOT.** P0–P5 shipped without one; the render-dump habit (see HANDOFF)
+  turned out to be the cheaper check.
+- ~~D-3 — interactive prototype first?~~ Build a self-contained clickable prototype
   of `<EnergyControl>` (Artifact) for you to *feel* the drag before it goes into
   the app, since it's the centerpiece and hardest to judge from a spec. *Lean:
   yes — it's cheap insurance on the one piece a written spec can't convey.*

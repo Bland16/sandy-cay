@@ -30,6 +30,30 @@ npm run build
 npx eslint src
 ```
 
+## Every open decision, in one place (2026-08-12)
+
+Resolved ones stay in their own spec. These are the ones **still needing an
+answer**, and nothing below is blocked on anything except the answer.
+
+| # | Question | Blocks | Cheapest default if you never answer |
+|---|---|---|---|
+| **COMB D-7** | Extract SPEC §4.3's shared window-row, or delete the claim? | Zones gaining the new frequency options (DATES D-5) | delete the claim; two editors, honestly documented |
+| **COMB D-8** | Retention horizon for `history`/`occurrenceData`/`snapshots`/`dismissed` | nothing yet; localStorage exhaustion eventually | keep 18 months, prune older |
+| **DATES D-2** | Should a day header get "add on this day", opening the panel pre-dated? | nothing | skip it; the date field already works |
+| **DATES D-5** | Do Zones get the monthly/yearly frequency options? | — | no, until someone wants a monthly zone |
+| **NOTES D-2** | Offer to block days at holiday-import time, or stay silent? | the import UX | silent; the note offers "Block this day" when clicked |
+| **NOTES D-6** | Does a blocked day's **tint** replace the `createBlocker` card, or accompany it? | the tint work | replace — a block is a property of the day, not an appointment |
+| **NOTES D-8** | A year-less **range** ("every year, 9–13 March") has no home | recurring multi-day notes only | don't support it; breaks move yearly anyway |
+| **PLAN D-1** | Repeating projects: count **hours** or **sessions**? | the whole feature | hours; "3 × 1h" expresses a session count |
+| **PLAN D-2** | Under-done week: let it go, or offer the shortfall forward? | — | let it go; §3.6 already offers carry-forward |
+| **PLAN D-3** | Open an unplanned future week — generate chunks, or wait to be asked? | — | generate on open |
+| **PLAN D-4** | Do repeating-project chunks show as a **group** on the grid? | — | no; ordinary cards |
+| **PLAN D-6** | Floor the deadline buffer for very short tasks? | — | no floor; 1/5 is the rule |
+| **EDITOR D-2/D-4/D-5** | Session-5 art polish (lean glyph, critter sprites, scalloped frame) | nothing | carried; low priority |
+
+**Every "cheapest default" above is a real, defensible answer** — so none of this
+blocks building. Answer one only when you disagree with its default.
+
 ## Session 6 — specs written this session (read before building)
 
 | Doc | State |

@@ -1,6 +1,10 @@
 # All-day events as day notes, not blocks
 
-**Session 6, 2026-08-11.** Status: **SPEC — awaiting sign-off. Nothing built.**
+**Session 6, 2026-08-11.** Status: **PARTLY BUILT.** The model (`DayNote`,
+`Schedule.dayNotes`, `notesForDate`) and the `.ics` import are **shipped** — an
+all-day event now becomes a note on the right day instead of a 1440-minute task
+on the wrong one. **Still spec:** the Cabana card (§7), the day-header line (§4),
+"Block this day", export, and the holiday packs of §8.
 
 A holiday is not 09:00–17:00. Neither is a birthday, a reading week, or "Mum
 visiting". They are **facts about a day**, not appointments inside it — so they
@@ -168,10 +172,14 @@ is a holiday.
   report doing your thinking for you, and *"understandably quiet week"* is
   sympathy — both are the judgement §7.1 forbids. State the day, state the
   count, stop.
-- **D-5.** Do day notes appear on the **phone day view** and in the **weekend
-  drawer**? Both render their own headers, so this is a third and fourth place
-  to draw them — and sharp edge #14 warns that a third copy of a day-walk
-  drifts from the first two.
+- **D-5. RESOLVED — yes, all surfaces, via ONE shared helper.** Not really a
+  choice: a note missing from the phone view is a fact the app knows and doesn't
+  tell you, on the surface you use most. The risk sharp edge #14 names is real
+  though — `zoneBands` had to be added to `WeekGrid` **and** `DayView`
+  separately, and #17's weekend drawer is a third real grid. So the rule is:
+  **one `notesForDate` call site rendered by one component**, dropped into each
+  header, never a per-surface reimplementation. Three copies of a day-walk is
+  how zone bands painted weeks the zone didn't run in.
 
 ---
 
