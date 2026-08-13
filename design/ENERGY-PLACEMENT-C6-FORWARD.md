@@ -1,6 +1,44 @@
 # Candidate 6 — what does taking this slot do to the rest of the day?
 
-**Session 8, 2026-08-13. STATUS: candidate, not evaluated.** The sixth candidate,
+> ## ⛔ EVALUATED AND REJECTED, 2026-08-13 — same day it was written.
+>
+> **`C3 + C6` is identically `C1`.** The two terms are the two halves of one
+> conserved quantity — the day's total demanding load, split at whichever slot
+> you pick — so their sum is invariant within a day and equals the deepest dip
+> **exactly**, verified on the real week:
+>
+> ```
+> Wed  08:00  arrive 0.0 + ahead 11.6 = 11.6      day's dip = -11.6
+> Mon  08:00  arrive 0.0 + ahead 10.7 = 10.7      day's dip = -10.7
+> Fri  any hour, arrive + ahead       =  7.0      day's dip =  -7.0
+> ```
+>
+> Adding C6 to C3 therefore **reconstitutes the candidate the evidence already
+> rejected**, and discards the information that made C3 win. Worse, where the sum
+> does move within a day it favours the **middle** — the inter-class gap the user
+> named as the failure case that started this whole line of work.
+>
+> **The hazard in §"What an evaluation has to answer" Q3 is also confirmed and
+> absolute:** forward load is *exactly* 0.0 at 20:00 on all seven days, so C6
+> alone is a "do it last" machine, opposing `buffer` and the user's explicit ask
+> to finish earlier.
+>
+> **Q2 is the one thing it passes:** C6 is not `balance` in disguise — only 2 of
+> 7 days agree on rank, with inversions (Sunday is C6's best and balance's 6th).
+> That is why it *looked* worth having.
+>
+> **Decision: keep C3 alone as the energy term. Do not build C6.** If a
+> forward-looking signal is ever wanted it needs a **non-additive** combination
+> and a specific reason — "both seem useful" is exactly the reasoning this
+> evaluation disproves. Probe: `probe-c6-eval.mjs`.
+>
+> **Option (c) below is CONFIRMED and recommended regardless.** Entering the
+> inter-class gaps as real rest tasks improves every weekday by 2–3 points
+> (Wed −11.6 → −8.1, Mon −10.7 → −8.2, Tue −9.7 → −6.7) while preserving which
+> days are hard — so it does not distort the ranking, it makes the magnitude
+> honest. It costs nothing and needs no new code.
+
+**Session 8, 2026-08-13. STATUS: written, then evaluated and rejected.** The sixth candidate,
 written after a real week showed that neither C1 (the day's depth) nor C3 (the
 reserve when you sit down) can express the user's actual complaint:
 
