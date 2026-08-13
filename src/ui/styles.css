@@ -278,20 +278,26 @@ body {
    A browser without color-mix simply ignores this and gets today's paper card —
    the tint is identity, never information (§9). */
 .card.tinted { background-color: color-mix(in oklab, var(--bucket-tint) 20%, var(--paper)); }
-/* …and a SPINE at full strength.
-   The 20% wash above cannot carry identity on its own, which real use proved
-   rather than argued: every `fixed` task paints the same teal gradient as a
+/* …and a DOT before the title, at full strength.
+   The 20% wash cannot carry identity on its own — real use proved that rather
+   than argued it. Every `fixed` task paints the same teal gradient as a
    background-IMAGE over the wash, so a gym session and a lecture came out
    indistinguishable and a dark purple club event read as faintly blue. The
-   states survived exactly as §9.1 intended; the bucket did not.
-   A left spine sits BESIDE the gradients instead of underneath them, so it is
-   the one place the bucket colour can be shown at 100% without competing with
-   the semantic read. Inset rather than a border so the 2px ink outline and the
-   11px corner are untouched, and it is decoration only — bucket names are still
-   on the card's title/aria-label, never colour alone (§9). */
-.card.tinted { box-shadow: inset 5px 0 0 var(--bucket-tint), 1.5px 2px 0 rgba(42,38,32,.13); }
-.card.tinted.pinned, .card.tinted.protected { box-shadow: inset 5px 0 0 var(--bucket-tint), 1.5px 2px 0 rgba(42,38,32,.13); }
-.card.tinted .t, .card.tinted .meta { padding-left: 4px; }
+   semantic states survived exactly as §9.1 intended; the bucket did not.
+
+   A left SPINE was tried first and rejected on sight: at 5px full strength down
+   every card it added six vertical edges to a dense day and fought the grid's
+   own rules. The dot puts the same colour at one point instead of along a whole
+   height — it reads as punctuation rather than structure, and it survives a
+   two-line or truncated title, which an underline does not. Chosen from seven
+   treatments rendered against this stylesheet (design/card-tint-mockups.html).
+
+   Decoration only: bucket names are on the card's title and aria-label, so
+   nothing here is meaning by colour alone (§9). */
+.card.tinted .t::before {
+  content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--bucket-tint); margin-right: 6px; vertical-align: baseline;
+}
 .card.warn { box-shadow: 1.5px 2px 0 rgba(226,104,95,.35); }
 .card.done { opacity: .55; }
 .card.done .t { text-decoration: line-through; }

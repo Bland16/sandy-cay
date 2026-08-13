@@ -425,6 +425,36 @@ carry an icon badge (anchor, lock, hammock), the matched bucket names are on the
 card's `title` and `aria-label`, and a browser without `color-mix` simply gets
 today's paper card.
 
+### ⚠️ AMENDED 2026-08-13 — the 20% wash cannot carry identity on its own
+
+**The layering argument above is half right, and real use is what showed it.** On
+a real imported week a gym session and a lecture were indistinguishable, and a
+dark purple club event read as faintly blue. The cause is exactly the mechanism
+this section describes: the bucket colour is the card's base `background-color`
+at 20%, and every `fixed` / `flexible` / `protected` state then paints a
+`background-image` **over** it. So the semantic read survived precisely as
+intended — and the bucket identity was overpainted. No choice of hex fixes it;
+anything at 20% under a gradient collapses.
+
+**Fix: a dot in the bucket colour before the card's title, at full strength.**
+It sits beside the gradients rather than beneath them, which is the only place
+the colour can be shown at 100% without competing with the state.
+
+**A left spine was tried first and rejected by eye** — at 5px down every card it
+added a vertical edge per card to a dense day and fought the grid's own rules.
+Seven treatments were rendered against the real stylesheet
+(`design/card-tint-mockups.html`, kept) and judged on screen: spine at three
+weights, a stub, the dot, an edge rule under the title in four positions, and a
+38% wash with no mark. The dot won for two reasons — it reads as punctuation
+rather than structure, and it survives a two-line or truncated title, which an
+underline attached to the words does not.
+
+**The lesson, and it is this project's recurring one:** §9.1 was reasoned
+carefully, shipped, and passes every test either way, because the suite cannot
+see presentation. One screenshot of a real week settled it. Anything
+presentational needs eyes, and the mockup page exists so the next one can get
+them cheaply.
+
 ## 10. Sprites across the redesign (decision: use the sprites)
 
 The user's call — **use the sprites**. This **supersedes the old "only 3 wired"

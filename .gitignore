@@ -24,3 +24,9 @@ Thumbs.db
 .vscode/
 *.log
 npm-debug.log*
+
+# Mockups copied into public/ only so the dev server can serve them. public/ is
+# published from Pages, and a working mockup is not something to publish — the
+# committed copy lives in design/ (HANDOFF, "public/ holds only what the app ships").
+public/*-mockups.html
+public/*-viewer.html
