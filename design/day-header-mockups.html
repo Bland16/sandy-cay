@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sandy Cay — the day-note header line</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Rye&family=Special+Elite&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet" />
+<style>
+/* Palette lifted from styles.css so these read as the real header, not a sketch. */
+:root{
+  --paper:#F1E9D8; --paper-shade:#E7DCC6; --ink:#2A2620; --ink-soft:#6E665A; --film:#141210;
+  --hair:#D2C6A9; --primary:#2E8C99; --fixed:#5FB8B0; --pinned:#C9A96E;
+  --rest:#7FBE8B; --warning:#E2685F; --cta:#E8B94D; --info:#8AA7C2;
+  --font-display:'Rye',Georgia,serif; --font-type:'Special Elite','Courier New',monospace; --font-body:'Nunito',system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--film);font-family:var(--font-body);color:var(--paper);padding:26px 20px 80px}
+h1{font-family:var(--font-display);font-size:25px;color:var(--cta);margin:0 0 3px}
+.lede{font-family:var(--font-type);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#b8ac96;margin:0 0 20px}
+h2{font-family:var(--font-display);font-size:18px;color:var(--cta);margin:38px 0 6px}
+h3{font-family:var(--font-type);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#c9b48f;margin:18px 0 7px;font-weight:400}
+.note{font-size:12.5px;line-height:1.65;color:#d8cdb8;max-width:940px;margin:0 0 14px}
+.note b{color:var(--cta)} .note code{font-family:var(--font-type);font-size:11.5px;color:#f0dcae}
+.note.tight{margin-bottom:8px}
+hr{border:none;border-top:1px solid #322b22;margin:30px 0 0}
+
+/* ---- the real thing: a slice of the week grid, at real column widths ---- */
+.stage{background:var(--paper);border-radius:10px;padding:0;display:inline-block;
+  box-shadow:0 8px 0 rgba(0,0,0,.35);overflow:hidden;vertical-align:top;margin:0 16px 14px 0}
+.stage .cap{font-family:var(--font-type);font-size:9.5px;letter-spacing:.07em;text-transform:uppercase;
+  color:#7d7263;background:var(--paper-shade);padding:5px 9px;border-bottom:1px solid var(--hair)}
+.wk{display:grid;position:relative}
+.gcell{border-left:1px solid var(--hair);text-align:center;padding:6px 3px;background:var(--paper);
+  color:var(--ink);position:relative;min-width:0}
+.gcell:first-child{border-left:none}
+.gcell.wknd{background:rgba(42,38,32,.045)}
+.gcell.today .dn{color:var(--primary)}
+.dn{font-family:var(--font-display);font-size:13.5px;line-height:1}
+.dd{font-family:var(--font-type);font-size:10.5px;color:var(--ink-soft)}
+/* the 24h column below the header, just enough to prove the header sits on a grid */
+.body{height:54px;border-left:1px solid var(--hair);
+  background-image:repeating-linear-gradient(180deg,transparent 0 17px,var(--hair) 17px 18px)}
+.body:first-child{border-left:none}
+.body.wknd{background-color:rgba(42,38,32,.045)}
+.headrow{border-bottom:2px solid var(--ink)}
+
+/* ---------- A · pennant + label (AS BUILT) ---------- */
+.a-line{display:flex;align-items:center;justify-content:center;gap:3px;padding:1px 3px 0;min-width:0;
+  font-family:var(--font-type);font-size:8.5px;line-height:1.35;color:var(--ink-soft)}
+.a-line svg{flex:0 0 auto}
+.a-line .lb{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.a-line .more{flex:0 0 auto;opacity:.7}
+.a-line.holiday{color:var(--primary)}
+
+/* ---------- B · label only ---------- */
+.b-line{display:flex;align-items:center;justify-content:center;gap:3px;padding:1px 3px 0;min-width:0;
+  font-family:var(--font-type);font-size:9px;line-height:1.35;color:var(--ink-soft)}
+.b-line .lb{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.b-line .more{flex:0 0 auto;opacity:.7}
+.b-line.holiday{color:var(--primary)}
+
+/* ---------- C · tinted bar ---------- */
+.c-line{display:flex;align-items:center;justify-content:center;gap:3px;margin:2px -3px 0;padding:1.5px 4px;
+  font-family:var(--font-type);font-size:8.5px;line-height:1.4;color:var(--ink);
+  background:rgba(46,140,153,.16);min-width:0}
+.c-line .lb{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.c-line .more{flex:0 0 auto;opacity:.65}
+.c-line.note{background:rgba(42,38,32,.09)}
+
+/* ---------- E · dot + label ---------- */
+.e-line{display:flex;align-items:center;justify-content:center;gap:4px;padding:2px 3px 0;min-width:0;
+  font-family:var(--font-type);font-size:8.5px;line-height:1.35;color:var(--ink-soft)}
+.e-line .dot{flex:0 0 auto;width:5px;height:5px;border-radius:50%;background:var(--primary)}
+.e-line.note .dot{background:var(--pinned)}
+.e-line .lb{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.e-line .more{flex:0 0 auto;opacity:.7}
+
+/* ---------- F · chip ---------- */
+.f-line{display:flex;justify-content:center;padding:2px 2px 0;min-width:0}
+.f-line .chip{display:inline-flex;align-items:center;gap:3px;min-width:0;max-width:100%;
+  border:1px solid rgba(46,140,153,.5);border-radius:7px;padding:0 4px;
+  font-family:var(--font-type);font-size:8px;line-height:1.6;color:var(--primary)}
+.f-line.note .chip{border-color:rgba(110,102,90,.42);color:var(--ink-soft)}
+.f-line .lb{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.f-line .more{flex:0 0 auto;opacity:.7}
+
+/* ---------- D · one continuous band across the days it covers ---------- */
+.d-bandrow{position:relative;display:grid;padding:3px 0 1px;min-height:15px}
+.d-band{grid-row:1;display:flex;align-items:center;gap:3px;padding:0 5px;margin:0 1px;min-width:0;
+  font-family:var(--font-type);font-size:8.5px;line-height:1.55;
+  background:rgba(46,140,153,.18);color:var(--ink);border-radius:3px}
+.d-band.note{background:rgba(201,169,110,.30)}
+.d-band .lb{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ---------- the day view's list ---------- */
+.dvstage{background:var(--paper);border-radius:10px;box-shadow:0 8px 0 rgba(0,0,0,.35);
+  width:390px;overflow:hidden;display:inline-block;vertical-align:top;margin:0 16px 14px 0}
+.dvhead{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:2px solid var(--ink);
+  background:linear-gradient(180deg,#ece2ce,#f1e9d8);color:var(--ink)}
+.dvt{font-family:var(--font-display);font-size:21px}
+.dvt small{font-family:var(--font-type);font-size:11px;color:var(--ink-soft);display:block;letter-spacing:.05em}
+.dnlist{list-style:none;margin:0;padding:8px 16px;display:flex;flex-direction:column;gap:5px;
+  border-bottom:1px solid var(--hair);background:var(--paper-shade)}
+.dnitem{display:flex;align-items:center;gap:6px;font-family:var(--font-type);font-size:11.5px;color:var(--ink)}
+.dnitem svg{flex:0 0 auto;color:var(--ink-soft)}
+.dnitem.holiday svg{color:var(--primary)}
+.dnitem .meta{color:var(--ink-soft);font-size:10.5px}
+/* list variant 2: the range leads, right-aligned source */
+.dnlist.v2 .dnitem{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:baseline}
+.dnlist.v2 .dnitem .meta.range{font-size:10px;color:var(--ink-soft);white-space:nowrap}
+.dnlist.v2 .dnitem .meta.src{text-align:right;font-size:9.5px;opacity:.8}
+.dvbody{height:70px;background:var(--paper);
+  background-image:repeating-linear-gradient(180deg,transparent 0 20px,var(--hair) 20px 21px)}
+
+/* ---------- ITEM 2 preview: blocked tint under a note ---------- */
+.blockmark{font-family:var(--font-type);font-size:8px;letter-spacing:.05em;text-transform:uppercase;
+  color:#8a6b32;padding-top:1px}
+
+.legend{font-family:var(--font-type);font-size:10.5px;color:#b8ac96;margin:6px 0 0}
+.pick{font-family:var(--font-type);font-size:10px;color:#8f8471;margin:4px 0 0}
+</style>
+</head>
+<body>
+
+<h1>The day-note header line</h1>
+<p class="lede">design/DAY-NOTES.md §4 · six treatments, at the three real column widths</p>
+
+<p class="note">
+  Day notes now render (<code>DayNotes.jsx</code>, one component, three surfaces). What the
+  suite <b>cannot</b> see is whether the line reads at the widths it actually has to live in —
+  jsdom has no layout, so truncation, crowding and the multi-day band are all unproven.
+  That is the whole question here.
+</p>
+<p class="note">
+  Every column below is a <b>real</b> width taken from the app: <b>150px</b> is a desktop day,
+  <b>110px</b> is a tablet weekday (Mon–Fri sharing the room the weekend gave up), and
+  <b>74px</b> is the phone's week overview — that number comes straight out of
+  <code>.grid{min-width:calc(46px + var(--cols)*74px)}</code>, so it is the narrowest the line
+  ever has to survive.
+</p>
+<p class="note">
+  The week is <b>Mon 23 – Sun 29 Nov 2026</b>, and Thanksgiving 2026 genuinely is Thursday 26.
+  The hard cases are deliberate: <b>Thu has three notes</b> (one with a long institutional
+  label), <b>Thanksgiving spans Wed–Fri</b>, <b>Make-a-thon spans the weekend</b>, and
+  <b>Mon is clear</b> — an ordinary day header must keep the shape it has always had.
+</p>
+<p class="note">
+  Nothing here is coral, and no treatment tints the column. A holiday is a fact about the day,
+  not a scheduling problem (P-1). A tint means <b>blocked</b>, which is D-6's model change and
+  the next item — previewed at the bottom so you can see the two do not collide.
+</p>
+
+<div id="out"></div>
+
+<hr />
+<h2>If you want a recommendation</h2>
+<p class="note">
+  <b>A is what shipped</b>, and at 150px and 110px it is fine. At 74px the pennant costs about a
+  character and a half of label, which is why <b>B</b> exists. <b>D is the one worth looking at
+  hardest</b>: §4 says a multi-day note should read "as a band across the week rather than a mark
+  on its first day", and repeating the label on each of Wed/Thu/Fri is the weaker reading of
+  that sentence — D draws it once, continuous, and is the only treatment where "Thanksgiving is
+  three days long" is visible rather than inferred. It costs a real layout change (a band row
+  spanning grid columns, which the weekend drawer would have to be taught, since a band from
+  Friday into Saturday is cut in half by the drawer's edge) — so it is a genuine trade, not a
+  free upgrade. <b>C</b> is the loudest and starts to read as a state rather than an annotation,
+  which is the line D-1 drew. <b>F</b> loses the most characters to its own border.
+</p>
+<p class="pick">Tell me a letter (and a different one for the phone if you want) and I'll wire it.</p>
+
+<script>
+const PENNANT = '<svg viewBox="0 0 24 24" width="9" height="9" aria-hidden="true"><path d="M5 4h13l-4 4 4 4H5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>';
+const PENNANT11 = PENNANT.replace(/width="9" height="9"/, 'width="11" height="11"');
+
+const DAYS = [
+  { dn:'Mon', dd:23, wknd:false },
+  { dn:'Tue', dd:24, wknd:false },
+  { dn:'Wed', dd:25, wknd:false, today:true },
+  { dn:'Thu', dd:26, wknd:false },
+  { dn:'Fri', dd:27, wknd:false },
+  { dn:'Sat', dd:28, wknd:true  },
+  { dn:'Sun', dd:29, wknd:true  },
+];
+
+// label, kind, and which day indices it covers
+const NOTES = [
+  { label:'Mum’s birthday',  kind:'note',    days:[1] },
+  { label:'Thanksgiving',         kind:'holiday', days:[2,3,4] },
+  { label:'Add/drop deadline',    kind:'note',    days:[3] },
+  { label:'Final exams begin',    kind:'note',    days:[3] },
+  { label:'Make-a-thon',          kind:'note',    days:[5,6] },
+];
+
+const notesOn = (i) => NOTES.filter((n) => n.days.includes(i));
+
+const WIDTHS = [
+  { w:150, cap:'desktop · 150px column' },
+  { w:110, cap:'tablet · 110px column' },
+  { w:74,  cap:'phone week overview · 74px column' },
+];
+
+/** Per-day line renderers. Each gets the notes covering that day. */
+const TREATMENTS = [
+  {
+    key:'A', title:'A · pennant + label',
+    blurb:'As built and committed. The icon marks it as a note rather than a second date line; the label is the only thing allowed to shrink, so the "+2" always survives.',
+    render(ns){
+      if(!ns.length) return '';
+      const [f,...r]=ns;
+      return `<div class="a-line ${f.kind}" title="${ns.map(n=>n.label).join(' · ')}">${PENNANT}<span class="lb">${f.label}</span>${r.length?`<span class="more">+${r.length}</span>`:''}</div>`;
+    },
+  },
+  {
+    key:'B', title:'B · label only',
+    blurb:'The pennant costs roughly a character and a half at 74px. This buys them back and leans on colour alone to say "holiday" — which is why it needs checking against §10 (never meaning by colour alone); the label itself still carries the meaning, so it survives that test.',
+    render(ns){
+      if(!ns.length) return '';
+      const [f,...r]=ns;
+      return `<div class="b-line ${f.kind}" title="${ns.map(n=>n.label).join(' · ')}"><span class="lb">${f.label}</span>${r.length?`<span class="more">+${r.length}</span>`:''}</div>`;
+    },
+  },
+  {
+    key:'C', title:'C · tinted bar',
+    blurb:'Full-bleed bar under the date. Reads instantly across a week — but it is the loudest option and starts to feel like a STATE rather than an annotation, which is exactly the line D-1 drew between a note and a blocked day.',
+    render(ns){
+      if(!ns.length) return '';
+      const [f,...r]=ns;
+      return `<div class="c-line ${f.kind}"><span class="lb">${f.label}</span>${r.length?`<span class="more">+${r.length}</span>`:''}</div>`;
+    },
+  },
+  {
+    key:'E', title:'E · dot + label',
+    blurb:'A dot is cheaper than a glyph and still distinguishes holiday from note. Weakest at a glance — a 5px dot at the top of a column is easy to miss.',
+    render(ns){
+      if(!ns.length) return '';
+      const [f,...r]=ns;
+      return `<div class="e-line ${f.kind}" title="${ns.map(n=>n.label).join(' · ')}"><span class="dot"></span><span class="lb">${f.label}</span>${r.length?`<span class="more">+${r.length}</span>`:''}</div>`;
+    },
+  },
+  {
+    key:'F', title:'F · chip',
+    blurb:'Matches the tag chips elsewhere in the app, so it costs no new vocabulary. It also loses the most characters to its own border and padding, which shows badly at 74px.',
+    render(ns){
+      if(!ns.length) return '';
+      const [f,...r]=ns;
+      return `<div class="f-line ${f.kind}"><span class="chip"><span class="lb">${f.label}</span>${r.length?`<span class="more">+${r.length}</span>`:''}</span></div>`;
+    },
+  },
+];
+
+function stage(cap, w, headHTML){
+  const cols = `repeat(7, ${w}px)`;
+  return `<div class="stage"><div class="cap">${cap}</div>
+    <div class="wk headrow" style="grid-template-columns:${cols}">${headHTML}</div>
+    <div class="wk" style="grid-template-columns:${cols}">${
+      DAYS.map((d)=>`<div class="body${d.wknd?' wknd':''}"></div>`).join('')
+    }</div></div>`;
+}
+
+let html = '';
+
+for (const t of TREATMENTS){
+  html += `<h2>${t.title}</h2><p class="note tight">${t.blurb}</p>`;
+  for (const {w,cap} of WIDTHS){
+    const head = DAYS.map((d,i)=>{
+      const ns = notesOn(i);
+      return `<div class="gcell${d.wknd?' wknd':''}${d.today?' today':''}">
+        <div class="dn">${d.dn}</div><div class="dd">${d.dd}</div>${t.render(ns)}</div>`;
+    }).join('');
+    html += stage(cap, w, head);
+  }
+}
+
+/* ---- D: one continuous band, drawn once across the days it covers ---- */
+html += `<h2>D · one continuous band</h2>
+<p class="note tight">Structurally different from the others: a multi-day note is drawn <b>once</b>,
+spanning the grid columns it covers, instead of its label repeating on each day. This is the only
+treatment where "Thanksgiving is three days" is <b>visible</b> rather than inferred from the same
+word appearing three times — and §4's own wording ("a band across the week") describes it.
+The cost is real: it needs a band row that spans columns, the weekend drawer would have to be
+taught about a band running from Friday into Saturday (it renders Sat/Sun as a separate
+&lt;WeekGrid&gt;, so the band is cut in half at the drawer's edge), and a day with three notes
+needs a third row of bands or a "+N" fallback.</p>`;
+
+// lanes: each note gets a row; overlapping notes stack.
+function bandRows(){
+  const lanes = [];
+  for (const n of NOTES){
+    let lane = lanes.find((L) => !L.some((m) => m.days.some((d) => n.days.includes(d))));
+    if (!lane) { lane = []; lanes.push(lane); }
+    lane.push(n);
+  }
+  return lanes;
+}
+
+for (const {w,cap} of WIDTHS){
+  const cols = `repeat(7, ${w}px)`;
+  const head = DAYS.map((d)=>`<div class="gcell${d.wknd?' wknd':''}${d.today?' today':''}">
+      <div class="dn">${d.dn}</div><div class="dd">${d.dd}</div></div>`).join('');
+  const lanes = bandRows().map((lane)=>{
+    const bands = lane.map((n)=>{
+      const from = Math.min(...n.days), to = Math.max(...n.days);
+      return `<div class="d-band ${n.kind}" style="grid-column:${from+1} / ${to+2}" title="${n.label}"><span class="lb">${n.label}</span></div>`;
+    }).join('');
+    return `<div class="d-bandrow" style="grid-template-columns:${cols}">${bands}</div>`;
+  }).join('');
+  html += `<div class="stage"><div class="cap">${cap}</div>
+    <div class="wk" style="grid-template-columns:${cols}">${head}</div>
+    ${lanes}
+    <div class="wk headrow" style="grid-template-columns:${cols}">${DAYS.map((d)=>`<div class="gcell${d.wknd?' wknd':''}" style="padding:0;height:2px"></div>`).join('')}</div>
+    <div class="wk" style="grid-template-columns:${cols}">${DAYS.map((d)=>`<div class="body${d.wknd?' wknd':''}"></div>`).join('')}</div></div>`;
+}
+
+/* ---- the day view's list ---- */
+html += `<hr /><h2>The day view's list</h2>
+<p class="note tight">§4's "click the header to see them all". Left is what shipped; right pulls the
+range out into its own column and right-aligns the source, which stops a long label from pushing
+the range off the end. Thursday, the worst case, is shown in both.</p>`;
+
+const LIST = [
+  { label:'Thanksgiving', kind:'holiday', range:'25–27 Nov', src:'US Holidays' },
+  { label:'Add/drop deadline', kind:'note', range:'26 Nov', src:'' },
+  { label:'Final exams begin', kind:'note', range:'26 Nov', src:'Registrar' },
+];
+
+html += `<div class="dvstage">
+  <div class="dvhead"><div class="dvt">Thursday<small>Nov 26 · 2026</small></div></div>
+  <ul class="dnlist">${LIST.map((n)=>`<li class="dnitem ${n.kind}">${PENNANT11}<span class="lb">${n.label}</span><span class="meta">${n.range}${n.src?' · '+n.src:''}</span></li>`).join('')}</ul>
+  <div class="dvbody"></div></div>`;
+
+html += `<div class="dvstage">
+  <div class="dvhead"><div class="dvt">Thursday<small>Nov 26 · 2026</small></div></div>
+  <ul class="dnlist v2">${LIST.map((n)=>`<li class="dnitem ${n.kind}">${PENNANT11}<span class="lb">${n.label}</span><span class="meta range">${n.range}</span></li>`).join('')}</ul>
+  <div class="dvbody"></div></div>`;
+
+/* ---- ITEM 2 preview ---- */
+html += `<hr /><h2>Next item, previewed: a blocked day</h2>
+<p class="note tight">Not built — this is D-6, the model change that is <b>ITEM 2</b>. It is here only
+to check the two do not collide: the <b>note</b> keeps its quiet header line, and the <b>tint</b>
+(a real scheduling state: the autoscheduler stays out, your hand still gets in) lives on the column
+below. Thanksgiving Thu 26 is blocked here; Wed and Fri carry the same note and are not.</p>`;
+
+{
+  const w = 150, cols = `repeat(7, ${w}px)`;
+  const head = DAYS.map((d,i)=>{
+    const ns = notesOn(i);
+    const t = TREATMENTS[0];
+    return `<div class="gcell${d.wknd?' wknd':''}${d.today?' today':''}">
+      <div class="dn">${d.dn}</div><div class="dd">${d.dd}</div>${t.render(ns)}
+      ${i===3?'<div class="blockmark">blocked</div>':''}</div>`;
+  }).join('');
+  const body = DAYS.map((d,i)=>`<div class="body${d.wknd?' wknd':''}" ${i===3?'style="background-color:rgba(201,169,110,.22)"':''}></div>`).join('');
+  html += `<div class="stage"><div class="cap">desktop · blocked column tinted, note line unchanged</div>
+    <div class="wk headrow" style="grid-template-columns:${cols}">${head}</div>
+    <div class="wk" style="grid-template-columns:${cols}">${body}</div></div>`;
+}
+
+document.getElementById('out').innerHTML = html;
+</script>
+</body>
+</html>
