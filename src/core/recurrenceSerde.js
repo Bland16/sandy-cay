@@ -45,6 +45,29 @@ export function recurrenceToJSON(rec) {
       effectiveUntil: dateToJSON(p.effectiveUntil),
     })),
     anchorDate: dateToJSON(rec.anchorDate),
-    exceptions: rec.exceptions.map((e) => ({ ...e })),
+    exceptions: rec.exceptions.map(normalizeExceptionTimes),
   };
+}
+
+/**
+ * An exception's `start`/`end` may be `'HH:MM'`, a Date, or an epoch number —
+ * `recurrence.js#resolveTime` accepts all three. Only two of them SURVIVE a
+ * save: a Date gets shallow-copied into a full ISO string ("2026-09-08T15:00:
+ * 00.000Z"), nothing revives it, and `resolveTime` then hands that string to its
+ * `'HH:MM'` branch. The result is not a wrong time — the session **disappears**,
+ * silently, on the next load.
+ *
+ * No current writer does this (the UI uses `formatHHMM`), so this closes a trap
+ * rather than fixing a live bug. Normalising here means the format accepted in
+ * memory is the format that persists, instead of one of the three being a
+ * landmine for the next caller.
+ */
+function normalizeExceptionTimes(e) {
+  const out = { ...e };
+  for (const k of ['start', 'end']) {
+    if (out[k] instanceof Date) {
+      out[k] = `${String(out[k].getHours()).padStart(2, '0')}:${String(out[k].getMinutes()).padStart(2, '0')}`;
+    }
+  }
+  return out;
 }

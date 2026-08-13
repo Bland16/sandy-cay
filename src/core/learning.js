@@ -95,9 +95,18 @@ export class LearningModule {
       ...['dur:<15', 'dur:15-30', 'dur:30-45', 'dur:45-90', 'dur:90-150', 'dur:150-240', 'dur:>240'],
       'priority', 'dayFill', 'placedByUser', 'moveCount',
     ];
-    // No interaction terms in the base model (role rip-out). Kept as an empty set
-    // so the grouped-ridge / gating machinery below simply no-ops.
-    this.interactionIdx = [];
+    // The gated set. It was empty after the role rip-out, so the gating
+    // machinery below no-opped — and the DURATION buckets were the columns that
+    // needed it most. A sitting length you have tried twice and disliked earns a
+    // real negative weight; one you have never been offered stays at exactly
+    // +0.000 and therefore OUTRANKS it. Gating stops a column speaking at all
+    // until it has `interactionMinSamples` observations behind it.
+    //
+    // (`observations` below is what lets a caller tell "0 because unobserved"
+    // from "0 because neutral" — the two are indistinguishable in the weight.)
+    const durStart = this.vocab.length + TIME_BUCKETS.length + 7; // tags · times · weekdays
+    const durCount = DURATION_EDGES.length + 1;
+    this.interactionIdx = Array.from({ length: durCount }, (_, k) => durStart + k);
   }
 
   /**
@@ -141,11 +150,14 @@ export class LearningModule {
     const minSamples = this.config.learning.interactionMinSamples ?? 4;
     const gates = new Array(dim).fill(1);
     const interaction = new Set(this.interactionIdx);
+    const observations = new Array(dim).fill(0);
     for (const j of this.interactionIdx) {
       let n = 0;
       for (const sm of samples) if (sm.x[j] !== 0) n += 1;
+      observations[j] = n;
       if (n < minSamples) gates[j] = 0;
     }
+    this.observations = observations;
     for (const sm of samples) for (const j of this.interactionIdx) if (gates[j] === 0) sm.x[j] = 0;
 
     const lr = opts.learningRate ?? this.config.learning.learningRate;
@@ -203,9 +215,19 @@ export class LearningModule {
   }
 
   /** Inspectable learned preferences for the Cabana ("study +0.8 mornings").
-   *  Gated-off interaction cells read as 0 — they aren't firing yet. */
+   *  Gated-off cells read as 0 — they aren't firing yet.
+   *
+   *  `observations` is the count behind each column, and it is the difference
+   *  between "0 because you have never tried this" and "0 because it is
+   *  genuinely neutral". A caller that ranks on `weight` alone will rank an
+   *  untried sitting length above one you have tried and disliked. */
   inspect() {
-    return this.labels.map((label, i) => ({ label, weight: (this.weights[i] ?? 0) * (this.gates[i] ?? 1) }));
+    return this.labels.map((label, i) => ({
+      label,
+      weight: (this.weights[i] ?? 0) * (this.gates[i] ?? 1),
+      observations: this.observations ? (this.observations[i] ?? 0) : 0,
+      gated: (this.gates[i] ?? 1) === 0,
+    }));
   }
 
   toJSON() {
