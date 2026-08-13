@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sandy Cay — day notes &amp; holiday packs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Rye&family=Special+Elite&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet" />
+<style>
+/* Cabana palette, lifted from styles.css so this reads as the real card. */
+:root{
+  --paper:#F1E9D8; --paper-shade:#E7DCC6; --ink:#2A2620; --ink-soft:#6E665A; --film:#141210;
+  --hair:#D2C6A9; --primary:#2E8C99; --fixed:#5FB8B0; --pinned:#C9A96E;
+  --rest:#7FBE8B; --warning:#E2685F; --cta:#E8B94D; --info:#8AA7C2;
+  --cab-bg:#4E3B2A; --cab-surface:#6B5138; --cab-trim:#8B6F52; --cab-text:#F5E9D9; --cab-accent:#FFD166;
+  --font-display:'Rye',Georgia,serif; --font-type:'Special Elite','Courier New',monospace; --font-body:'Nunito',system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--film);font-family:var(--font-body);color:var(--paper);padding:26px 20px 60px}
+h1{font-family:var(--font-display);font-size:25px;color:var(--cta);margin:0 0 3px}
+.lede{font-family:var(--font-type);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#b8ac96;margin:0 0 24px}
+h2{font-family:var(--font-display);font-size:18px;color:var(--cta);margin:34px 0 6px}
+.note{font-size:12.5px;line-height:1.6;color:#d8cdb8;max-width:900px;margin:0 0 14px}
+.note b{color:var(--cta)} .note code{font-family:var(--font-type);font-size:11.5px;color:#f0dcae}
+.wrap{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start}
+
+/* the cabana card */
+.cabcard{background:rgba(20,12,6,.34);border:2px solid var(--cab-trim);border-radius:14px;padding:14px;width:430px;color:var(--cab-text)}
+.cabsign{font-family:var(--font-display);font-size:16px;color:var(--cab-accent);background:rgba(0,0,0,.28);border:2px solid var(--cab-trim);border-radius:8px;padding:4px 12px;display:inline-block;margin-bottom:11px;box-shadow:0 4px 0 rgba(0,0,0,.3)}
+.field{display:flex;gap:8px;align-items:center;margin:7px 0;font-family:var(--font-type);font-size:11px;color:#e9dcc4}
+.field>.flabel{flex:none;width:62px;text-align:right;color:#c9b48f;text-transform:uppercase;letter-spacing:.06em;font-size:9px}
+.field>.fctl{flex:1;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.control{background:rgba(0,0,0,.28);border:1.5px solid var(--cab-trim);border-radius:7px;padding:6px 9px;color:var(--cab-text);font-family:var(--font-body);font-size:12px}
+.control.grow{flex:1}
+.btn2{font-family:var(--font-body);font-weight:800;font-size:11.5px;color:#2c2016;background:var(--cab-accent);border:2px solid #2c2016;border-radius:9px;padding:8px 11px;cursor:pointer}
+.btn2.ghost{background:transparent;color:var(--cab-text);border-color:var(--cab-trim)}
+.editrow{display:flex;align-items:center;gap:9px;padding:8px 9px;border:1.5px solid var(--cab-trim);border-radius:9px;margin:5px 0;background:rgba(0,0,0,.18)}
+.editrow .lbl{font-weight:700;font-size:12.5px}
+.editrow .meta{font-family:var(--font-type);font-size:10px;color:#c9b48f;margin-left:auto;text-align:right}
+.src{margin:11px 0 4px;display:flex;align-items:center;gap:8px}
+.src .name{font-family:var(--font-type);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--cab-accent)}
+.src .count{font-family:var(--font-type);font-size:10px;color:#c9b48f}
+.tw{width:38px;height:21px;border:2px solid var(--cab-trim);border-radius:12px;background:rgba(0,0,0,.3);position:relative;cursor:pointer;padding:0;margin-left:auto;flex:none}
+.tw .knob{position:absolute;top:1px;left:1.5px;width:15px;height:15px;border-radius:50%;background:var(--cab-text);transition:left .14s}
+.tw.on{background:var(--cab-accent)} .tw.on .knob{left:18px;background:#2c2016}
+.hidden .lbl,.hidden .meta{opacity:.38}
+.expiry{font-family:var(--font-type);font-size:10px;color:var(--warning);margin:3px 0 0 6px}
+.ok{color:var(--rest)}
+textarea.control{width:100%;height:88px;font-family:var(--font-type);font-size:11.5px;resize:vertical}
+table.k{border-collapse:collapse;font-size:12px;margin:6px 0 18px;max-width:900px}
+table.k th,table.k td{border:1px solid #4a4034;padding:6px 10px;text-align:left;color:#d8cdb8;vertical-align:top}
+table.k th{font-family:var(--font-type);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--cta)}
+table.k code{font-family:var(--font-type);color:#f0dcae}
+.callout{border-left:3px solid var(--cta);padding:3px 0 3px 13px;margin:14px 0 18px;max-width:900px}
+.callout p{margin:0 0 6px;font-size:12.5px;line-height:1.6;color:#d8cdb8}
+.day{width:150px;border:2px solid var(--ink);background:var(--paper-shade);border-radius:6px;color:var(--ink);padding:0 0 10px}
+.dayhead{padding:7px 9px;border-bottom:2px solid var(--ink)}
+.dayhead .d{font-family:var(--font-display);font-size:15px}
+.dayhead .n{font-family:var(--font-type);font-size:9.5px;color:var(--ink-soft)}
+.chip{display:inline-block;font-family:var(--font-type);font-size:9.5px;padding:2px 6px;border-radius:5px;background:rgba(46,140,153,.16);border:1px solid var(--primary);margin-top:4px}
+.chip.blocked{background:rgba(226,104,95,.14);border-color:var(--warning)}
+.daybody{height:120px;background:repeating-linear-gradient(180deg,transparent 0 19px,rgba(0,0,0,.06) 19px 20px)}
+.daybody.tint{background:repeating-linear-gradient(180deg,rgba(226,104,95,.10) 0 19px,rgba(226,104,95,.16) 19px 20px)}
+</style>
+</head>
+<body>
+
+<h1>Day notes — packs, paste, and by hand</h1>
+<p class="lede">Mockup · nothing built beyond the model + .ics import · design/DAY-NOTES.md</p>
+
+<h2>The idea splits in two, and that decides everything</h2>
+<p class="note">
+Some holidays are a <b>rule</b> — computable forever, never wrong, never stale. Others are a <b>table</b> —
+someone published dates, and the table runs out. A pack that mixes them silently without saying which is
+which is a pack that quietly goes wrong in 2029.
+</p>
+
+<table class="k">
+  <tr><th>Kind</th><th>Examples</th><th>Can we compute it?</th></tr>
+  <tr>
+    <td><b>Fixed date</b></td>
+    <td>Christmas · New Year · Independence Day · Valentine's</td>
+    <td class="ok">✓ <b>Works today.</b> <code>yearly { month, monthDay }</code> — the window we shipped this session.</td>
+  </tr>
+  <tr>
+    <td><b>Ordinal weekday</b></td>
+    <td>Thanksgiving (4th Thu Nov) · Labor Day (1st Mon Sep) · MLK (3rd Mon Jan) · Memorial (last Mon May)</td>
+    <td>⚠ <b>Small extension.</b> We already compute "the 4th Thursday" for monthly patterns; yearly just needs to accept <code>{ month, nth, day }</code> too. Then most US federal holidays are rules that never expire.</td>
+  </tr>
+  <tr>
+    <td><b>Computed</b></td>
+    <td>Easter — and Ash Wednesday, Good Friday, Pentecost, which are all offsets from it</td>
+    <td>⚠ <b>~20 lines.</b> The computus is a known, deterministic algorithm. One function unlocks the whole moveable set.</td>
+  </tr>
+  <tr>
+    <td><b>Another calendar</b></td>
+    <td>Rosh Hashanah, Yom Kippur, Passover · Ramadan, Eid</td>
+    <td class="ok" style="color:var(--warning)">✗ <b>Do not hand-roll.</b> Hebrew and Islamic calendars are lunisolar. Getting these subtly wrong is worse than not shipping them — these are people's religious observances. Either a dated table with a visible expiry, or import a published .ics.</td>
+  </tr>
+  <tr>
+    <td><b>Institutional</b></td>
+    <td>BC's fall break, reading period, commencement</td>
+    <td style="color:var(--warning)">✗ <b>No algorithm exists.</b> The registrar decides each year. A bundled "BC" code is a table that rots every August — and BC publishes an academic calendar you can just import.</td>
+  </tr>
+</table>
+
+<div class="callout">
+  <p><b>So the recommendation:</b> ship packs, but make each one declare which it is. A <b>rule pack</b> is
+  permanent and silent. A <b>table pack</b> shows the years it covers, so it can tell you it has run out
+  instead of just being wrong.</p>
+  <p><b>And for BC specifically</b> — that's an <b>import</b>, not a code. A code that needs re-publishing
+  every August is a promise the app can't keep.</p>
+</div>
+
+<h2>The Cabana card</h2>
+<div class="wrap">
+  <div class="cabcard">
+    <div class="cabsign">Day notes</div>
+
+    <div class="field">
+      <div class="flabel">Add a set</div>
+      <div class="fctl">
+        <input class="control grow" placeholder="type a code…  US · CHRISTIAN · JEWISH" value="US" />
+        <button class="btn2">Add</button>
+      </div>
+    </div>
+
+    <div class="src">
+      <span class="name">US federal</span><span class="count">11 · rules</span>
+      <button class="tw on" aria-label="Show"><span class="knob"></span></button>
+    </div>
+    <div class="editrow"><span class="lbl">Thanksgiving</span><span class="meta">4th Thu Nov · every year</span></div>
+    <div class="editrow"><span class="lbl">Labor Day</span><span class="meta">1st Mon Sep · every year</span></div>
+    <div class="editrow" style="opacity:.6"><span class="lbl">…9 more</span><span class="meta"></span></div>
+
+    <div class="src">
+      <span class="name">Jewish holidays</span><span class="count">14 · dated</span>
+      <button class="tw on" aria-label="Show"><span class="knob"></span></button>
+    </div>
+    <div class="editrow"><span class="lbl">Rosh Hashanah</span><span class="meta">11–13 Sep 2026</span></div>
+    <div class="editrow"><span class="lbl">Yom Kippur</span><span class="meta">20–21 Sep 2026</span></div>
+    <div class="expiry">⚠ dated set — covers 2026–2029, then needs refreshing</div>
+
+    <div class="src hidden">
+      <span class="name">BC academic</span><span class="count">8 · imported</span>
+      <button class="tw" aria-label="Show"><span class="knob"></span></button>
+    </div>
+    <div class="editrow hidden"><span class="lbl">Fall break</span><span class="meta">5–6 Oct 2026</span></div>
+    <div class="editrow hidden"><span class="lbl">Reading period</span><span class="meta">10–11 Dec 2026</span></div>
+    <div class="expiry" style="color:#c9b48f">hidden — kept, not deleted, so re-importing won't resurrect it</div>
+
+    <div class="src">
+      <span class="name">By hand</span><span class="count">2</span>
+      <button class="tw on" aria-label="Show"><span class="knob"></span></button>
+    </div>
+    <div class="editrow"><span class="lbl">Mum's birthday</span><span class="meta">3 Sep · every year</span></div>
+    <div class="editrow"><span class="lbl">Spring break</span><span class="meta">9–13 Mar 2027</span></div>
+
+    <div class="field" style="margin-top:14px">
+      <div class="flabel">Paste</div>
+      <div class="fctl"><textarea class="control">Fall break | 2026-10-05 | 2026-10-06
+Commencement | 2027-05-24
+Mum's birthday | 09-03
+Christmas | 12-25</textarea></div>
+    </div>
+    <div class="field"><div class="flabel"></div><div class="fctl">
+      <button class="btn2">Add 3</button>
+      <button class="btn2 ghost">＋ one by hand</button>
+      <button class="btn2 ghost">⤓ import .ics</button>
+    </div></div>
+  </div>
+
+  <div>
+    <p class="note" style="width:330px;margin-bottom:8px"><b>On the grid.</b> A note is a line in the day's
+    header and nothing more. Only a <b>blocked</b> day is tinted — that is a real scheduling state, which is
+    the only thing P-1 lets colour mean.</p>
+    <div class="wrap" style="gap:10px">
+      <div class="day">
+        <div class="dayhead"><div class="d">THU 26</div><div class="n">Nov</div>
+          <span class="chip">Thanksgiving</span></div>
+        <div class="daybody"></div>
+      </div>
+      <div class="day">
+        <div class="dayhead"><div class="d">FRI 27</div><div class="n">Nov</div>
+          <span class="chip blocked">Blocked · Thanksgiving</span></div>
+        <div class="daybody tint"></div>
+      </div>
+    </div>
+    <p class="note" style="width:330px;margin-top:10px">Left: a note, no tint, the day is still yours to
+    schedule. Right: you chose <b>Block this day</b> — now it is tinted, because now nothing can be placed
+    there.</p>
+  </div>
+</div>
+
+<h2>The year is optional — and that is how you say "every year"</h2>
+<p class="note">
+Write <code>2027-05-24</code> and it happens once, in 2027. Drop the year — <code>09-03</code> — and it
+happens <b>every</b> year. No "repeats" toggle for the common case, because the way people already write a
+birthday says it: a birthday has a month and a day, and no year.
+</p>
+<table class="k">
+  <tr><th>You type</th><th>It means</th><th>Stored as</th></tr>
+  <tr><td><code>Commencement | 2027-05-24</code></td><td>once, 24 May 2027</td><td><code>from/to</code>, no recurrence</td></tr>
+  <tr><td><code>Mum's birthday | 09-03</code></td><td>every 3 September</td><td><code>yearly { month:9, monthDay:3 }</code></td></tr>
+  <tr><td><code>Fall break | 2026-10-05 | 2026-10-06</code></td><td>once, two days</td><td><code>from/to</code>, inclusive</td></tr>
+  <tr><td><code>Spring break | 03-09 | 03-13</code></td><td>every year, those five days</td><td>a yearly range — <b>see the open question</b></td></tr>
+</table>
+<div class="callout">
+  <p><b>The one that needs a decision:</b> a year-less <i>range</i>. "Every year, 9–13 March" is expressible,
+  but our yearly window is a single day — a range would need five windows, or a new "spans N days" field on
+  the note. Worth asking whether anyone actually wants a recurring multi-day note, given breaks move
+  every year anyway (which is exactly why BC's calendar is an import, not a rule).</p>
+</div>
+
+<h2>What a code actually is</h2>
+<p class="note">
+A code is just a named set. A <b>rule</b> entry is a recurrence — the same shape a repeating task uses, so
+it reuses everything, including the skip rules (29 February appears only in leap years, no new code). A
+<b>dated</b> entry is a plain from/to, and the pack carries the years it covers so the card can warn you.
+</p>
+<table class="k">
+  <tr><th>Code</th><th>Contains</th><th>Expires?</th></tr>
+  <tr><td><code>US</code></td><td>11 federal holidays, all as rules</td><td class="ok">never</td></tr>
+  <tr><td><code>CHRISTIAN</code></td><td>Christmas &amp; Epiphany as fixed rules; Easter and its offsets computed</td><td class="ok">never</td></tr>
+  <tr><td><code>JEWISH</code></td><td>major observances, dated</td><td style="color:var(--warning)">shows a coverage range</td></tr>
+  <tr><td><code>UK</code>, <code>CA</code>…</td><td>bank holidays, mostly rules</td><td class="ok">mostly never</td></tr>
+  <tr><td><s><code>BC</code></s></td><td>— use <b>import</b>; the registrar republishes yearly</td><td style="color:var(--warning)">would rot annually</td></tr>
+</table>
+
+<p class="lede" style="margin-top:26px">Open questions: which packs are worth shipping first, and whether a dated pack should refuse to load once it is past its coverage rather than silently showing nothing.</p>
+</body>
+</html>

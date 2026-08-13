@@ -245,7 +245,49 @@ it exists twice and the two have already diverged. One editor, one quick-add.
 
 ---
 
-## 8. Build order
+## 8. Holiday packs, paste, and the optional year
+
+**Proposed 2026-08-12.** Short codes that add a named set: `US`, `CHRISTIAN`,
+`JEWISH`. Plus paste-many and one-at-a-time, as the buckets already have.
+
+### 8.1 The split that decides the design
+
+Some holidays are a **rule** — computable forever, never stale. Others are a
+**table** someone published, which runs out. **A pack must declare which it is**,
+or it quietly goes wrong in 2029.
+
+| Kind | Example | Us |
+|---|---|---|
+| Fixed date | Christmas, 4 July | ✅ **works today** — `yearly { month, monthDay }` |
+| Ordinal weekday | Thanksgiving (4th Thu Nov), Labor Day, MLK, Memorial | ⚠️ **small extension** — yearly must accept `{ month, nth, day }`; the nth-weekday maths already exists for monthly |
+| Computed | Easter, and Ash Wednesday / Good Friday / Pentecost as offsets from it | ⚠️ **~20 lines** — the computus is deterministic; one function unlocks the set |
+| Another calendar | Rosh Hashanah, Yom Kippur · Ramadan, Eid | ❌ **do not hand-roll.** Lunisolar. Subtly wrong religious observances are worse than none — a dated table with a visible expiry, or an imported `.ics` |
+| Institutional | BC's fall break, reading period | ❌ **no algorithm exists** — the registrar decides yearly, so a bundled code rots every August. This is an **import**, not a code |
+
+**Rule packs are permanent and silent. Table packs show the years they cover**,
+so the card can say it has run out rather than just being wrong.
+
+### 8.2 The year is optional — and that IS "every year"
+
+**The user's call, and it removes a control.** Write the year and it happens
+once; leave it out and it happens every year. No "repeats" toggle for the common
+case, because the way people already write a birthday says it — a birthday has a
+month and a day and no year.
+
+| Typed | Means | Stored |
+|---|---|---|
+| `Commencement \| 2027-05-24` | once | `from`/`to`, no recurrence |
+| `Mum's birthday \| 09-03` | every 3 September | `yearly { month: 9, monthDay: 3 }` |
+| `Fall break \| 2026-10-05 \| 2026-10-06` | once, two days | `from`/`to`, inclusive |
+
+**Open (D-8): a year-less RANGE.** "Every year, 9–13 March" has no home — the
+yearly window is a single day, so it would need five windows or a "spans N days"
+field. Possibly nobody wants one: breaks move every year, which is exactly why an
+institutional calendar is an import rather than a rule.
+
+---
+
+## 9. Build order
 
 1. **The model + `.ics` import** — a day note is data; getting holidays in
    correctly is the whole payoff, and it is provable by probe with no UI at all.
