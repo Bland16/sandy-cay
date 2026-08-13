@@ -217,6 +217,36 @@ body {
 .dayhead:hover .open { opacity: 1; }
 .dayhead.wknd { background: rgba(42,38,32,.045); }
 .dayhead.today .dn { color: var(--primary); }
+
+/* Day notes (design/DAY-NOTES.md §4) — a fact about the day, in its header.
+   Deliberately NOT coral and deliberately not a tint on the column: a holiday
+   is not a scheduling problem, and P-1 keeps colour for physics. A tint means
+   the day is BLOCKED, which is a different state entirely (D-1/D-6). */
+.dnline {
+  display: flex; align-items: center; justify-content: center; gap: 3px;
+  padding: 1px 3px 0; min-width: 0;
+  font-family: var(--font-type); font-size: 8.5px; line-height: 1.35;
+  color: var(--ink-soft);
+}
+.dnline svg { flex: 0 0 auto; }
+/* The label is the only thing allowed to shrink — the "+2" must survive, since
+   a truncated count would understate the day. */
+.dnline .dnlabel { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dnline .dnmore { flex: 0 0 auto; opacity: .7; }
+.dnline.holiday { color: var(--primary); }
+.dayhead.compact .dnline { font-size: 8px; }
+
+/* The day view's full list — label, range, source. */
+.dnlist {
+  list-style: none; margin: 0; padding: 8px 16px;
+  display: flex; flex-direction: column; gap: 5px;
+  border-bottom: 1px solid var(--hair); background: var(--paper-shade);
+}
+.dnitem { display: flex; align-items: center; gap: 6px; font-family: var(--font-type); font-size: 11.5px; }
+.dnitem svg { flex: 0 0 auto; color: var(--ink-soft); }
+.dnitem.holiday svg { color: var(--primary); }
+.dnitem .dnmeta { color: var(--ink-soft); font-size: 10.5px; }
+
 .dhdots {
   position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; padding: 0;
   border: none; background: none; border-radius: 5px; cursor: pointer; color: var(--ink-soft);

@@ -5,6 +5,7 @@ import { addDays, sameDay, hhmmToMinutes } from '../../core/index.js';
 import { DAY_NAMES, DAY_KEYS, hourLabel, gridBounds, windowForDay, gridDayOf } from '../format.js';
 import { layoutDay, layoutRemainders } from '../layout.js';
 import TaskCard from './TaskCard.jsx';
+import { DayNoteLine } from './DayNotes.jsx';
 import Icon from '../Icon.jsx';
 
 const PXH = 34;
@@ -99,6 +100,10 @@ export default function WeekGrid({
               <button className="dhopen" onClick={() => onOpenDay(i)}>
                 <div className="dn">{dn}</div>
                 <div className="dd">{date.getDate()}</div>
+                {/* One line under the date (DAY-NOTES §4). Inside the open-day
+                    button on purpose: §4 says clicking the header is how you
+                    see them all, and the day view is where the full list is. */}
+                <DayNoteLine sched={sched} date={date} />
                 <div className="open">open ↓</div>
               </button>
               {onDayMenu && (

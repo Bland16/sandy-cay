@@ -4,6 +4,7 @@ import { addDays, sameDay, hhmmToMinutes } from '../../core/index.js';
 import { DAY_FULL, DAY_KEYS, MONTHS, hourLabel, gridBounds, gridDayOf } from '../format.js';
 import { layoutDay, layoutRemainders } from '../layout.js';
 import TaskCard from './TaskCard.jsx';
+import { DayNoteList } from './DayNotes.jsx';
 import Icon from '../Icon.jsx';
 
 const PXH = 42;
@@ -46,6 +47,10 @@ export default function DayView({
           <small>{MONTHS[date.getMonth()]} {date.getDate()} · {date.getFullYear()}</small>
         </div>
       </div>
+      {/* The full list, not the header's truncated line: this IS §4's "click the
+          header to see them all", and on a phone the day view is the whole
+          layout, so it is the only place the notes can be read in full. */}
+      <DayNoteList sched={sched} date={date} />
       <div className="dvgrid">
         <div className="axis" style={{ position: 'relative' }}>
           {hours.map((h) => <div className="h" key={h} style={{ height: PXH }}><span>{hourLabel(h)}</span></div>)}
