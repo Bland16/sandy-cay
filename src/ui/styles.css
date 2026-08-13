@@ -278,26 +278,11 @@ body {
    A browser without color-mix simply ignores this and gets today's paper card —
    the tint is identity, never information (§9). */
 .card.tinted { background-color: color-mix(in oklab, var(--bucket-tint) 20%, var(--paper)); }
-/* …and a DOT before the title, at full strength.
-   The 20% wash cannot carry identity on its own — real use proved that rather
-   than argued it. Every `fixed` task paints the same teal gradient as a
-   background-IMAGE over the wash, so a gym session and a lecture came out
-   indistinguishable and a dark purple club event read as faintly blue. The
-   semantic states survived exactly as §9.1 intended; the bucket did not.
-
-   A left SPINE was tried first and rejected on sight: at 5px full strength down
-   every card it added six vertical edges to a dense day and fought the grid's
-   own rules. The dot puts the same colour at one point instead of along a whole
-   height — it reads as punctuation rather than structure, and it survives a
-   two-line or truncated title, which an underline does not. Chosen from seven
-   treatments rendered against this stylesheet (design/card-tint-mockups.html).
-
-   Decoration only: bucket names are on the card's title and aria-label, so
-   nothing here is meaning by colour alone (§9). */
-.card.tinted .t::before {
-  content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%;
-  background: var(--bucket-tint); margin-right: 6px; vertical-align: baseline;
-}
+/* The bucket colour is carried by the WAVE strip — see the resize-border
+   section below. A spine and a dot were both tried first and both added an
+   element to the card; the wave was already there. Decoration only either way:
+   bucket names are on the card's title and aria-label, so nothing is meaning
+   by colour alone (§9). */
 .card.warn { box-shadow: 1.5px 2px 0 rgba(226,104,95,.35); }
 .card.done { opacity: .55; }
 .card.done .t { text-decoration: line-through; }
@@ -321,11 +306,30 @@ body {
 /* Swell (chosen): a fuller ribbon of water — a crest over a translucent body —
    that rises a touch on hover so it reads as a grabbable handle, not a hairline.
    Band kept low at rest so it clears the top badges and short (compact) cards. */
+/* THE WAVE CARRIES THE BUCKET COLOUR (2026-08-13).
+   The 20% background wash cannot show a bucket — every state paints a gradient
+   over it — and a spine, then a dot, were both tried and beaten by this: the
+   wave is already on every card, already a strip, and was doing nothing but
+   marking a resize edge. Colouring it adds no element to a dense grid.
+   The shape was an SVG data-URI with the teal baked in, and a data-URI cannot
+   read a custom property — so the SVG becomes a MASK and the colour comes from
+   `background-color` behind it. The mask's own alpha (0.34 body, solid crest)
+   reproduces the two-tone swell for free, in whatever colour it is given.
+   Falls back to the original teal on a card with no bucket. Without mask
+   support the strip degrades to a plain coloured band — still a handle, still
+   the right colour, just not wave-shaped. */
 .wave::after {
   top: 0; height: 4px; opacity: .9;
-  background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='4' viewBox='0 0 24 4'><path d='M0 2.4 Q6 0.6 12 2.4 T24 2.4 V4 H0 Z' fill='%235FB8B0' fill-opacity='0.34'/><path d='M0 2.4 Q6 0.6 12 2.4 T24 2.4' fill='none' stroke='%232E8C99' stroke-width='1.2' stroke-linecap='round'/></svg>") repeat-x left top / 24px 4px;
+  background-color: var(--bucket-tint, #2E8C99);
+  -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='4' viewBox='0 0 24 4'><path d='M0 2.4 Q6 0.6 12 2.4 T24 2.4 V4 H0 Z' fill='black' fill-opacity='0.34'/><path d='M0 2.4 Q6 0.6 12 2.4 T24 2.4' fill='none' stroke='black' stroke-width='1.2' stroke-linecap='round'/></svg>") repeat-x left top / 24px 4px;
+  mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='4' viewBox='0 0 24 4'><path d='M0 2.4 Q6 0.6 12 2.4 T24 2.4 V4 H0 Z' fill='black' fill-opacity='0.34'/><path d='M0 2.4 Q6 0.6 12 2.4 T24 2.4' fill='none' stroke='black' stroke-width='1.2' stroke-linecap='round'/></svg>") repeat-x left top / 24px 4px;
 }
-.wave:hover::after { height: 6px; background-size: 24px 6px; opacity: 1; filter: brightness(1.1) saturate(1.15); }
+/* Still reads as a grabbable handle: it rises and brightens on hover exactly as
+   before — the affordance is the motion, not the hue. */
+.wave:hover::after {
+  height: 6px; opacity: 1; filter: brightness(1.1) saturate(1.15);
+  -webkit-mask-size: 24px 6px; mask-size: 24px 6px;
+}
 .sand::after {
   bottom: 0; height: 3px; opacity: .9;
   background: linear-gradient(180deg, rgba(232,185,77,0), rgba(232,185,77,.5) 55%, var(--pinned));
