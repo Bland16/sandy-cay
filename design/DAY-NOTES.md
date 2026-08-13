@@ -261,11 +261,54 @@ or it quietly goes wrong in 2029.
 | Fixed date | Christmas, 4 July | ✅ **works today** — `yearly { month, monthDay }` |
 | Ordinal weekday | Thanksgiving (4th Thu Nov), Labor Day, MLK, Memorial | ⚠️ **small extension** — yearly must accept `{ month, nth, day }`; the nth-weekday maths already exists for monthly |
 | Computed | Easter, and Ash Wednesday / Good Friday / Pentecost as offsets from it | ⚠️ **~20 lines** — the computus is deterministic; one function unlocks the set |
-| Another calendar | Rosh Hashanah, Yom Kippur · Ramadan, Eid | ❌ **do not hand-roll.** Lunisolar. Subtly wrong religious observances are worse than none — a dated table with a visible expiry, or an imported `.ics` |
-| Institutional | BC's fall break, reading period | ❌ **no algorithm exists** — the registrar decides yearly, so a bundled code rots every August. This is an **import**, not a code |
+| Another calendar | Rosh Hashanah, Yom Kippur · Ramadan, Eid · Lunar New Year | 🟡 **ASK PACK** (§8.3) — the app knows the names, you supply the dates |
+| Institutional | BC's fall break, reading period | 🟡 **ASK PACK** or an import — the registrar decides yearly, and no algorithm exists |
 
-**Rule packs are permanent and silent. Table packs show the years they cover**,
-so the card can say it has run out rather than just being wrong.
+**Two kinds of pack, and the second is the interesting one.** A **rule pack** is
+permanent and silent. An **ask pack** knows *what* it contains but not *when* —
+so it asks.
+
+### 8.3 Ask packs — the app names them, you date them
+
+**The user's design, and it is the right answer.** Rather than hand-roll the
+Hebrew, Islamic or Chinese calendars — or ship a table that silently runs out —
+a pack can carry the **names** and ask for the **dates** for the year ahead:
+
+```
+JEWISH HOLIDAYS · 2026–27
+These move each year. Fill in what you want; leave the rest blank.
+
+  Rosh Hashanah   [ 2026-09-11 ] → [ 2026-09-13 ]     optional range
+  Yom Kippur      [ 2026-09-20 ] → [            ]
+  Sukkot          [            ] → [            ]     ← left blank, not added
+  Hanukkah        [            ] → [            ]
+  Passover        [            ] → [            ]
+
+  ＋ one that isn't listed                    [ Add 2 ]
+```
+
+**A blank date adds nothing.** No error, no placeholder, no nag — the same way
+an unrated day contributes nothing to capacity. You take the two you observe and
+leave the rest.
+
+**Why this is better than a bundled table.** A table is wrong silently; an ask
+pack is simply empty until you fill it, and asks again when the year turns. And
+it puts the dates with the person who actually knows them — you, or the calendar
+your community publishes — rather than with a guess baked into a build.
+
+**This is the same rule the energy model already follows.** `learnedCapacity`
+returns `null` until your ratings earn a number, because the app may not state
+what it has not learned (P-2). A lunisolar date it cannot compute is the same
+kind of thing: **not knowing and saying so beats inventing.** Getting someone's
+Yom Kippur subtly wrong is exactly the failure that rule exists to prevent.
+
+**When it asks.** On adding the pack, and once when the covered year runs out —
+as an **offer**, in the same shape as the rollover banner, never a repeated
+prompt. Ignoring it is a real answer; the pack simply stays as far as you filled
+it.
+
+**BC becomes an ask pack too**, or an import. Either is honest; a bundled `BC`
+code that rots every August is not.
 
 ### 8.2 The year is optional — and that IS "every year"
 
