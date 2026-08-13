@@ -1,9 +1,9 @@
 // Project placement across four week shapes, plus the energy question.
 // Q: is project placement good on an empty / somewhat-empty / busy week, and on
 // a week already carrying heavy mental load at the front?
-import { Schedule } from './src/core/Schedule.js';
-import { seedStarterBuckets } from './src/core/index.js';
-import { energyTrajectory } from './src/core/energy.js';
+import { Schedule } from '../../src/core/Schedule.js';
+import { seedStarterBuckets } from '../../src/core/index.js';
+import { energyTrajectory } from '../../src/core/energy.js';
 
 const D = (m, d, h = 0, mi = 0) => new Date(2026, m - 1, d, h, mi, 0, 0);
 const from = D(9, 7);            // Mon 7 Sep 2026

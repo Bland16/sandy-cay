@@ -2,8 +2,8 @@
 // intuition that a gap between two demanding blocks has recovery value — the
 // user's "it hit during my break times and I needed rest". Check whether the
 // model can represent that at all.
-import { Schedule } from './src/core/Schedule.js';
-import { energyTrajectory } from './src/core/energy.js';
+import { Schedule } from '../../src/core/Schedule.js';
+import { energyTrajectory } from '../../src/core/energy.js';
 
 const D = (d, h, mi = 0) => new Date(2026, 8, d, h, mi, 0, 0);
 

@@ -2,10 +2,10 @@
 // Each is implemented as a DAY-CHOICE rule (D-1's lean: generation time), then the
 // sittings are placed with placeTask({from: day, to: day}) — the idiom §4.1.1 step 6
 // specifies. Sizing is held constant at 5 x 240m so the ONLY variable is day choice.
-import { Schedule } from './src/core/Schedule.js';
-import { Task } from './src/core/Task.js';
-import { energyTrajectory, loadForTask } from './src/core/energy.js';
-import { placeTask } from './src/core/placement.js';
+import { Schedule } from '../../src/core/Schedule.js';
+import { Task } from '../../src/core/Task.js';
+import { energyTrajectory, loadForTask } from '../../src/core/energy.js';
+import { placeTask } from '../../src/core/placement.js';
 
 const D = (m, d, h = 0, mi = 0) => new Date(2026, m - 1, d, h, mi, 0, 0);
 const from = D(9, 7);

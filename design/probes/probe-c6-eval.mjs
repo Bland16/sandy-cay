@@ -6,9 +6,9 @@
 //   Q2 does it just restate `balance` (time-fill)?
 //   Q3 does its optimum drift to the LATEST slot, fighting `buffer`?
 //   (c) if the breaks are entered as rest tasks, does C3 alone read them right?
-import { Schedule } from './src/core/Schedule.js';
-import { Task } from './src/core/Task.js';
-import { energyTrajectory, loadForTask } from './src/core/energy.js';
+import { Schedule } from '../../src/core/Schedule.js';
+import { Task } from '../../src/core/Task.js';
+import { energyTrajectory, loadForTask } from '../../src/core/energy.js';
 
 const DAY = 86400000;
 const AXES = ['mental', 'physical', 'social', 'creative'];

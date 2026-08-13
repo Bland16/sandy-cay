@@ -8,10 +8,10 @@
 //
 // The question: would our placement rule put a commitment in the SAME slots the
 // user already demonstrably ignores?
-import { Schedule } from './src/core/Schedule.js';
-import { Task } from './src/core/Task.js';
-import { energyTrajectory, loadForTask } from './src/core/energy.js';
-import { placeTask } from './src/core/placement.js';
+import { Schedule } from '../../src/core/Schedule.js';
+import { Task } from '../../src/core/Task.js';
+import { energyTrajectory, loadForTask } from '../../src/core/energy.js';
+import { placeTask } from '../../src/core/placement.js';
 
 const Y = 2026, M = 3;
 const D = (day, h, mi = 0) => new Date(Y, M - 1, day, h, mi, 0, 0);

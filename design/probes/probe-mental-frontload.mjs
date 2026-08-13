@@ -1,8 +1,8 @@
 // The isolated version: front days are mentally HEAVY but time-FREE, back days
 // are mentally LIGHT and equally time-free. Identical occupancy, opposite load.
 // If placement is energy-blind, the project piles onto the heavy front anyway.
-import { Schedule } from './src/core/Schedule.js';
-import { energyTrajectory, loadForTask } from './src/core/energy.js';
+import { Schedule } from '../../src/core/Schedule.js';
+import { energyTrajectory, loadForTask } from '../../src/core/energy.js';
 
 const D = (m, d, h = 0, mi = 0) => new Date(2026, m - 1, d, h, mi, 0, 0);
 const from = D(9, 7);

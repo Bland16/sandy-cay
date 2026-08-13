@@ -6,10 +6,10 @@
 // real week instead. Scenarios that need a shape a real week cannot express
 // (DST, past deadlines, six-month runways) or that test UI wording are listed as
 // not-run rather than quietly skipped.
-import { Schedule } from './src/core/Schedule.js';
-import { Task } from './src/core/Task.js';
-import { energyTrajectory, loadForTask } from './src/core/energy.js';
-import { placeTask, sleepCutoff, computeWindows } from './src/core/placement.js';
+import { Schedule } from '../../src/core/Schedule.js';
+import { Task } from '../../src/core/Task.js';
+import { energyTrajectory, loadForTask } from '../../src/core/energy.js';
+import { placeTask, sleepCutoff, computeWindows } from '../../src/core/placement.js';
 
 const DAY = 86400000;
 const AXES = ['mental', 'physical', 'social', 'creative'];

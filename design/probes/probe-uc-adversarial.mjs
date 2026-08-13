@@ -8,9 +8,9 @@
 //  X8  "every day identically depleted" — a clinic 09:00-12:00 every day, so at
 //      13:00 every day is identically -6 but at 08:00 every day is 0. Tests
 //      whether the rule can express "sit down BEFORE the clinic".
-import { Schedule } from './src/core/Schedule.js';
-import { Task } from './src/core/Task.js';
-import { energyTrajectory, loadForTask } from './src/core/energy.js';
+import { Schedule } from '../../src/core/Schedule.js';
+import { Task } from '../../src/core/Task.js';
+import { energyTrajectory, loadForTask } from '../../src/core/energy.js';
 
 const D = (m, d, h = 0, mi = 0) => new Date(2026, m - 1, d, h, mi, 0, 0);
 const AXES = ['mental', 'physical', 'social', 'creative'];

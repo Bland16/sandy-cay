@@ -2,7 +2,7 @@
 // fixed maxPlacementLookahead=3d) spread long-runway work, WITHOUT changing how an
 // ordinary task is placed? Run once on shipped code, once with placement.js:189
 // changed. Same script both times.
-import { Schedule } from './src/core/Schedule.js';
+import { Schedule } from '../../src/core/Schedule.js';
 
 const D = (m, d, h = 0, mi = 0) => new Date(2026, m - 1, d, h, mi, 0, 0);
 const from = D(9, 7);           // Mon 7 Sep 2026

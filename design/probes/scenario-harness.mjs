@@ -8,10 +8,10 @@
 // design/import/ and *.ics are gitignored because this repo is public and a real
 // week carries other people's names. Anonymise (titles -> "Class A") before any
 // scenario built from real data goes into the tree.
-import { Schedule } from './src/core/Schedule.js';
-import { Task } from './src/core/Task.js';
-import { energyTrajectory, loadForTask } from './src/core/energy.js';
-import { placeTask } from './src/core/placement.js';
+import { Schedule } from '../../src/core/Schedule.js';
+import { Task } from '../../src/core/Task.js';
+import { energyTrajectory, loadForTask } from '../../src/core/energy.js';
+import { placeTask } from '../../src/core/placement.js';
 
 const AXES = ['mental', 'physical', 'social', 'creative'];
 const DAY = 86400000;

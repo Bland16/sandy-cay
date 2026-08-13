@@ -8,9 +8,9 @@
 //      a Sunday sitting in week 1 and a Monday sitting in week 2 are each
 //      "perfectly spaced" and 18 hours apart. Seed the spacing memory with the
 //      commitment's recent sittings from the PREVIOUS period.
-import { Schedule } from './src/core/Schedule.js';
-import { Task } from './src/core/Task.js';
-import { energyTrajectory, loadForTask } from './src/core/energy.js';
+import { Schedule } from '../../src/core/Schedule.js';
+import { Task } from '../../src/core/Task.js';
+import { energyTrajectory, loadForTask } from '../../src/core/energy.js';
 
 const D = (m, d, h = 0, mi = 0) => new Date(2026, m - 1, d, h, mi, 0, 0);
 const AXES = ['mental', 'physical', 'social', 'creative'];

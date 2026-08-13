@@ -141,7 +141,35 @@ spread makes the streak *longer*.
 
 Testable with no UI. **Prove it by printing placements**, not by going green.
 
-### Step 1b — the energy clause in step 5 (`design/ENERGY-AWARE-PLACEMENT.md`)
+### ⚠️ Step 1b was RE-DECIDED at the end of session 8 — read this box, not the text below
+
+The energy term does **not** go in step 5's day chooser. It goes in
+`scoring.js`, **evaluated at the real candidate slot.** Four independent findings
+forced it, the last from the user's own calendar: on their real week Wednesday
+reads −2.5 at 13:00 (fourth-best day) and −10.6 at 20:00 (worst day of the
+week). A nominal sit-down hour is not a parameter to tune — it *is* the answer,
+and a day chooser has to invent one.
+
+**The term, in full, after everything that was tested and dropped:**
+
+```
+energy(slot) = |L(task)| = 0            ? 0                    // gated: no load, no opinion
+             : sign(L[dominant axis]) > 0
+                 ? 1 − |reserve(slot.start)| / worst           // spending seeks shallow
+                 :     |reserve(slot.start)| / worst           // restoring seeks deep
+```
+
+plus **sibling spacing** at generation time (a separate concern, seeded with the
+previous period's sittings). Everything else proposed was built and rejected:
+C1 (day depth) lost to C3 on the real week · a `spread` scoring weight lengthens
+the streak · C6 (forward load) sums with C3 to reconstitute C1 exactly.
+
+**The risk this carries, stated plainly:** it is an app-wide change to placement,
+which is what this codebase has twice got wrong. The mitigation is the standing
+rule — prove it by printing placements, not by going green. `design/probes/`
+holds the fixtures to prove it against.
+
+### The original step 1b text (kept for its reasoning)
 
 **Placement is energy-blind and always has been.** Probed 2026-08-13: across a
 fortnight with *identical time occupancy every day*, a 20h project put **960 of
@@ -309,12 +337,32 @@ premise, not just the conclusion.
 over three days moves. Placement quality has to be proven by printing
 placements. That is now three sessions in a row.
 
+### Shipped this session (engine, not just spec)
+
+- **`config.windows` widened to 23:00.** The 18:00 weekday end meant the
+  scheduler could not see the evening at all, while the real week it schedules
+  for did most of its studying 20:00–24:00.
+- **`config.sleep.minHoursBeforeNextDay` (default 8).** Nothing may be
+  *automatically* placed so late that it leaves under 8 hours before the next
+  day's first commitment. Clips the window rather than scoring, because it is
+  physics; recurrence-aware; clips zones too; exempt from the user's own hand.
+  **It rarely fires as configured** — with a 23:00 window it only bites when
+  tomorrow starts before 07:00. That asymmetry is deliberate.
+- **581 tests green**, 8 of them new. Four pre-existing tests tracked the old
+  window rather than the engine and were fixed at the level each meant to test —
+  including the urgency-sort test, which now pins its own 08:00–18:00 week
+  because fifteen-hour days legitimately stopped its task being endangered.
+
 ### What changed on disk this session
 
 | Doc | Change |
 |---|---|
 | `design/RATINGS-AND-LEARNING.md` | **NEW** — the ratings-plumbing bug, the one-door fix, what is recoverable (nothing) and why |
 | `design/ENERGY-AWARE-PLACEMENT.md` | **NEW** — placement never reads the energy model; 80% of a project lands on the worst days. Why it is a legitimate scoring term where `spread` was not, and why it must compare rather than judge |
+| `design/ENERGY-PLACEMENT-CANDIDATES.md` | **NEW** — five candidate equations, written so they could be evaluated rather than argued |
+| `design/ENERGY-PLACEMENT-EVAL.md` | **NEW** — all five run, then the two owed tests, then the blind scenarios against two real weeks. Carries the decision trail and the numbers |
+| `design/ENERGY-PLACEMENT-C6-FORWARD.md` | **NEW** — the forward-looking candidate, written and rejected the same day: `C3 + C6` is identically `C1` |
+| `design/probes/` | **NEW** — 13 probes + a README. Kept (unlike session 7's) because several carry re-runnable fixtures, including two anonymised real weeks |
 | `design/WEEKLY-PLANNING.md` | §4.1.1 step 4 withdrawn · §4.1.2 ordering **new** · §4.5 rejects the spread weight on evidence · §4.6 the duration margin **new** · restores the eaten `## 5` header |
 | `design/DAY-NOTES.md` | D-6 rewritten (model change, not rendering) · D-8 gains the `spanDays` validation + overlap rules |
 | `design/SPEC-COMB-2026-08.md` | D-8 retention table rewritten against real fields · session-8 addendum |

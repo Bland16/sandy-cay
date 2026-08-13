@@ -3,10 +3,10 @@
 //      for reasons the user did not cause.
 //   2. THE C3 FIXTURE — a week where load varies WITHIN a day, which is the only
 //      thing that can distinguish "reserve when you sit down" from "the day's dip".
-import { Schedule } from './src/core/Schedule.js';
-import { Task } from './src/core/Task.js';
-import { energyTrajectory, loadForTask } from './src/core/energy.js';
-import { placeTask } from './src/core/placement.js';
+import { Schedule } from '../../src/core/Schedule.js';
+import { Task } from '../../src/core/Task.js';
+import { energyTrajectory, loadForTask } from '../../src/core/energy.js';
+import { placeTask } from '../../src/core/placement.js';
 
 const D = (m, d, h = 0, mi = 0) => new Date(2026, m - 1, d, h, mi, 0, 0);
 const from = D(9, 7);

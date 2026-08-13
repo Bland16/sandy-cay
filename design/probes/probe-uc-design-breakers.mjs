@@ -6,9 +6,9 @@
 //  N10 Minimising the deepest dip is minimised by chopping work into the
 //      smallest legal sittings: 4h in one block dips -12; eight 30m blocks dip
 //      -1.5 each. Does the rule chase the statistic?
-import { Schedule } from './src/core/Schedule.js';
-import { Task } from './src/core/Task.js';
-import { energyTrajectory, loadForTask } from './src/core/energy.js';
+import { Schedule } from '../../src/core/Schedule.js';
+import { Task } from '../../src/core/Task.js';
+import { energyTrajectory, loadForTask } from '../../src/core/energy.js';
 
 const D = (m, d, h = 0, mi = 0) => new Date(2026, m - 1, d, h, mi, 0, 0);
 const AXES = ['mental', 'physical', 'social', 'creative'];
