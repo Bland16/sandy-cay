@@ -160,6 +160,63 @@ it* — a real description of how a person works. `sliceChunks` already takes a
 min and a max; what it does **not** do is look at the week's actual shape before
 choosing. That is the engine work, and it is the interesting part of this build.
 
+### 4.1.1 The algorithm — DECIDED 2026-08-12. Build this one.
+
+Chosen after seven candidates were written down (`design/SESSION-SPLITTING.md`)
+and evaluated by two independent passes, one code-grounded and one scenario-driven
+(`SESSION-SPLITTING-EVAL-ENGINE.md`, `-EVAL-LIVED.md`). **Six candidates lost. Do
+not rebuild from the candidate list — build this.**
+
+```
+Given  A (amount owed, min), the period's end as deadline,
+       s_min, s_max, maxPerDay, and the schedule.
+
+1.  R*  = the period, ending one fifth of the runway early (§4.4's buffer)
+2.  G   = open gaps per day inside R*, each clamped to s_max, from the
+          REAL week — anchors, zones and break padding already subtracted
+3.  n   = fewest gaps whose total ≥ A, taking longest first,
+          never counting a gap below s_min, never more than maxPerDay a day
+4.  s   ← A / n           ← EQUALISE. Do not skip this line.
+5.  days ← spread the n sittings EVENLY across the days of R* that can
+          hold s — not the earliest n days
+6.  place each sitting with placeTask({from: day, to: day})
+```
+
+**Why each line is there:**
+
+- **Steps 2–3 are candidate 5**, and they are the reason it won: it is the only
+  candidate that outputs sittings the week can actually hold, and the only one
+  whose answer the placer cannot undo — because step 6 bounds each sitting to a
+  single day using the idiom DATES-P1 already built (`from === to`).
+- **Step 4 is a bug fix in advance.** Four of the seven candidates fixed `s`
+  before looking at `A`, so a 45-minute task booked a 4-hour block and three
+  commitments totalling 8h booked 12h of the week. Equalise after `n` is known.
+- **Step 5 is the whole finding.** Burnout is **clustering**, not sitting length:
+  5 × 4h taken greedily lands on five consecutive evenings, and shortening the
+  sitting to "fix" it produces *nine* consecutive evenings. Spreading the same
+  5 × 4h across alternate days gives a streak of one. See §4.5 for why the
+  scorer will not do this for you.
+- **No `κ`, `δ`, `s_free` or `τ`.** Every invented constant is gone. What remains
+  is `s_max` (the user typed it) and arithmetic over their own calendar. This is
+  not tidiness: `learnedCapacity()` returns `null` and a prior stays *invisible*
+  until calibrated, so shipping a constant that shapes the plan would be the app
+  asserting something it has not earned (P-2).
+
+**Learning is ADVISORY here, and never silently changes the plan.** The model
+already learns satisfaction by sitting length, but the two evaluations disagreed
+on whether that curve is stable enough to *set* `s` — one recovered the true peak
+from 19 noisy ratings, the other got 5, 7 or 10 sittings for the same project
+depending which ratings were in hand, still at sixty. Unresolved, so take the safe
+reading of both: the curve earns **a Cabana line** ("your best sittings have been
+about 2h") **and a one-time offer to raise `s_max`**, nothing more. Note also that
+a short-only scheduler is self-confirming — it never offers a length it can then
+learn from — so any future move here needs an exploration story, not just a gate.
+
+**When it does not fit**, §4.3 still governs: state the shortfall as a fact and
+stop. Do not let a shortfall grow each time the user merely *looks* at the week —
+that was a real defect in three of the losing candidates, and it contradicts D-3
+(opening a week is looking, not asking).
+
 ### 4.2 Placement: open slots always — until the deadline is at risk
 
 **Per the user, the per-commitment mode knob is dropped.** There is one

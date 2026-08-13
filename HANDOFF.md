@@ -89,6 +89,64 @@ minute. And `report.js#buildDeadlineBuffer` had been measuring the exact quantit
 that would have shown it all along — *the app was already reporting the evidence
 against its own scoring.*
 
+## ▶ START HERE — the todo (written 2026-08-12, end of session 7)
+
+**Branch `worktree-spec-signoff-session7`, pushed, NOT merged.** `main`
+auto-deploys on push, so merging is a release — the user's call, not yours.
+
+The design is decided and written down: **`WEEKLY-PLANNING` §4.1.1** has the
+algorithm, §4.5 has the placement finding behind it, and
+`design/SESSION-SPLITTING.md` has the seven candidates plus what two independent
+evaluations found. **Read §4.1.1 before building anything here** — do not
+reconstruct the design from the candidate list, six of the seven lost.
+
+### Step 0 — three small fixes, no design risk, all provable by probe
+
+1. **`resizeChunk` never clamps to `chunking.maxChunk`** (`projects.js:114`) — a
+   user can silently exceed their own stated maximum sitting. One line + a test.
+2. **Wire `dayFill`** in `Schedule#_snapshotEnergy` (~7 lines), the way `energyAt`
+   already is. **Not** as an intensity cap — that was tried and refuted (§4.5) —
+   but because every week without it is training data that cannot be
+   reconstructed afterwards. `_dayFillAtCompletion` currently has one repo hit,
+   is not a `Task` field and is not serialised, so this is more than flipping a
+   flag.
+3. **Gate the duration buckets** in `learning.js`. The per-column gate at
+   `:131–139` already exists and is applied to an empty set (`:90`), so
+   unobserved buckets sit at exactly `+0.000` and a **never-tried sitting length
+   outranks a tried-and-hated one** (−0.365 vs +0.000). Do it before ratings
+   accumulate; the trap only fires once the model trains.
+
+### Step 1 — the generation engine (`WEEKLY-PLANNING` step 1)
+
+Candidate 5 sizing + the spread rule, per §4.1.1. **Testable with no UI at all**,
+and it is where the design will be found wrong if it is. Do this alone and prove
+it by probe before any surface is built.
+
+### Step 2 — the surfaces (`WEEKLY-PLANNING` steps 2–4)
+
+Cabana card on the `Drill` idiom, the Sunday ritual with preview, the wrap line.
+Every open decision on these is now answered — see the decision table below.
+
+### Deferred deliberately
+
+A general **`spread` weight in `scoring.js`**. §4.5 found that nothing spreads
+work past three days, but the effect is largely *latent*: the default search
+window is `maxPlacementLookahead = 3` days, so ordinary tasks rarely see it, and
+§4.1.1 sidesteps it entirely by assigning days at generation time. A scoring-level
+fix changes how **everything** is placed and should not ride along with a feature.
+
+### Needs the user, not an agent
+
+- **`design/session7-mockups.html`** (gitignored, also copied to the main
+  checkout) — PLAN D-4 chunk grouping, EDITOR D-2 bucket-row sparkline, EDITOR
+  D-5 scalloped frame. All three are judged by eye.
+- **The desktop day view.** The user says it isn't good and is sending a
+  screenshot. Removing it would reverse locked Layout B+C, so it is parked. Phone
+  keeps its day view regardless.
+- **Whether five whole evenings is acceptable** for a 20h project. No analysis can
+  settle it; only their ratings can, and it is the one place both evaluations
+  agree learning genuinely belongs.
+
 ## Session 7 — how work splits into sittings, and the placer that undoes it
 
 Branch `worktree-spec-signoff-session7`, not merged. Read in this order:
