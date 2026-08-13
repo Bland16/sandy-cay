@@ -191,7 +191,9 @@ Given  A (amount owed, min), the period's end as deadline,
           re-derive from step 3.
 5.  days ← spread the n sittings EVENLY across the days of R* that can
           hold them — not the earliest n days — counting days already
-          taken by ANOTHER commitment as taken (§4.1.2)
+          taken by ANOTHER commitment as taken (§4.1.2), and preferring
+          days whose ENERGY reserve is least depleted
+          (design/ENERGY-AWARE-PLACEMENT.md)
 6.  place each sitting with placeTask({from: day, to: day})
 ```
 
@@ -222,6 +224,13 @@ Given  A (amount owed, min), the period's end as deadline,
   hours" is easier to hold than "3h/2h/2h/1h". **Decided: fitting the week wins**
   (the user's call: it "feels easier to fit into a schedule"). Equal numbers are
   only tidy when the week is tidy.
+- **Step 5's energy clause was added 2026-08-13**, after a probe showed the
+  shipped placer putting **80% of a 20-hour project onto the four mentally
+  heaviest days of a fortnight** whose time occupancy was identical everywhere.
+  `balance` measures minutes, so a day holding two hours of the hardest work you
+  do reads as 83% empty. Spreading by day *count* alone would still choose those
+  days. Full finding and the P-2 constraints:
+  `design/ENERGY-AWARE-PLACEMENT.md`.
 - **Step 5 is the whole finding.** Burnout is **clustering**, not sitting length:
   5 × 4h taken greedily lands on five consecutive evenings, and shortening the
   sitting to "fix" it produces *nine* consecutive evenings. Spreading the same
@@ -532,6 +541,38 @@ quality has to be proven by printing placements, not by going green.
 
 **Do not "fix" this by shortening sittings.** Ten 2-hour chunks bunch just as
 hard as five 4-hour ones; the probe above shows 7h + 7h at n = 20.
+
+### ⚠️ The half-full week is the WORST case, not the middle one (2026-08-13)
+
+The engine evaluation's caveat said the bunching is *"specific to open weeks"* and
+that on a busy week it is *"masked, because long runs simply do not exist on the
+near days."* **That is wrong for the week this user actually has.** Same 20h /
+14d project, shipped placer, four shapes:
+
+| week shape | days used | heaviest day | streak |
+|---|---|---|---|
+| empty | 3 of 14 | 480m | 3 |
+| **~40% full — two 90-min classes each weekday** | **2 of 14** | **720m** | 1 |
+| busy — Work zone + recurring gym | 2 of 14 | 720m | 1 |
+| front-loaded with fixed blocks | 5 of 14 | 240m | 3 |
+
+**A realistically busy week concentrates the project harder than an empty one:
+twelve hours on one Saturday and eight on another.** The mechanism is
+`config.windows` — Saturday's default window is 08:00–22:00, fourteen hours,
+against ten on a weekday. Fill the weekdays with classes and the only runs long
+enough to be taken greedily are at the weekend, so busy weekdays do not mask the
+bunching, they **aim** it. The masking the evaluation predicted needs a week
+that is busy *everywhere*, weekends included, which a student week is not.
+
+Two consequences:
+
+1. **Step 5's spread rule matters more, not less, as real life fills the week.**
+   The case for it was argued on an empty fortnight, which is the *mildest*
+   version of the problem.
+2. **`maxPerDay` is doing more work than the spec credits.** It is the only thing
+   standing between this user and a twelve-hour Saturday, and §4 presents it as a
+   nicety ("don't stack two maths sessions on one evening"). The Cabana help text
+   should say what it actually prevents.
 
 ---
 
