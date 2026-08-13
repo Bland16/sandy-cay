@@ -312,7 +312,57 @@ the same. The rule keeps exactly one number.
 
 ---
 
-## 5. What this does NOT do
+## 4.5 ⚠️ Nothing in the scorer spreads work over a runway longer than 3 days
+
+**Found 2026-08-12 by probe, and it reframes this whole feature.** Twenty hours
+due in fourteen days, placed on an empty week by the shipped engine:
+
+```
+8h Monday · 8h Tuesday · 4h Wednesday · eleven days untouched
+```
+
+Forcing twenty chunks instead of five still gives 7h Monday + 7h Tuesday. Widening
+`config.windows` to 06:00–23:00 — which the HANDOFF explicitly tells this user to
+do — makes it **12 hours on Monday.**
+
+**Cause, proven, not guessed.** `proximity` is normalised by
+`maxPlacementLookahead = 3` days (`config.js:12`), so past day 3 it is
+*identically zero* for every candidate slot. `buffer` **saturates at 1.000** for
+12 of the 15 days once the runway target is met — by design, and §4.4 argues that
+saturation is the virtue. But the two together mean that beyond day 3 **only
+`balance` still discriminates between slots**, and ties break to the earliest.
+So the scorer is flat across most of a long runway and everything slides forward.
+
+### What this does to the session-splitting question
+
+**The named acceptance test was measuring the wrong thing.** "20h in two weeks
+must not be two sittings" cannot fail: `sliceChunks` needs `maxChunk ≥ 600` to
+return n = 2, which no sane bound produces. All seven candidates pass it, so it
+discriminates nothing.
+
+The pathology was never the *number* of sittings — it is *where they land*. A
+candidate that answers "five sittings of four hours" and hands those durations to
+today's placer produces four-hour blocks on Monday, Tuesday and Wednesday, which
+is precisely the burnout the user asked to avoid. **Choosing `n` well cannot fix
+a placer that bunches.**
+
+This is why candidate 5 (greedy fit over the week's real gaps) is structurally
+different from the rest: it is the only one that outputs **days**, not durations,
+and so is the only one that cannot be undone by the placer. `placeTask({from:
+day, to: day})` bounds a task to a single day through the idiom DATES-P1 already
+built, so it needs no new solver.
+
+### The fix is a spreading term, and it is not this feature's job
+
+A `spread` weight — or making `proximity`'s horizon the runway rather than a
+fixed 3 days — belongs in `scoring.js`, applies to every deadlined task, and
+should ship independently, exactly as the `buffer` weight did as step 0. Note
+the same shape of finding as the buffer correction on the same day: a term that
+was reasoned about and shipped green, whose actual behaviour over a long runway
+nobody had printed.
+
+**Do not "fix" this by shortening sittings.** Ten 2-hour chunks bunch just as
+hard as five 4-hour ones; the probe above shows 7h + 7h at n = 20.
 
 - **No new placement algorithm.** Generated chunks are ordinary flexible tasks
   bounded to the period. `placeTask` scores them exactly as it does everything

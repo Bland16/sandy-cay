@@ -12,12 +12,20 @@ export const defaultConfig = {
   maxPlacementLookahead: 3, // days
   defaultDuration: 60,
   // `buffer` is the finish-early preference (WEEKLY-PLANNING §4.4): aim to be
-  // done one fifth of the task's own length before its deadline. Weighted high
-  // on purpose — the user's call was "not a must, but a strong preference" —
-  // and being a WEIGHT is what lets an overburdened week or a two-day deadline
-  // override it with no special-case logic. It only ever moves deadlined tasks;
-  // for everything else `bufferScore` returns a constant, which cannot change a
-  // ranking. Renormalised with the rest, so these are ratios, not percentages.
+  // done one fifth of the RUNWAY — plan time → deadline — before that deadline.
+  // (Corrected 2026-08-12; it originally read one fifth of the task's own
+  // length, which scored a 20-minute task the same at Monday 09:00 as at Friday
+  // 16:45 and so did almost nothing.) Weighted high on purpose — the user's call
+  // was "not a must, but a strong preference" — and being a WEIGHT is what lets
+  // an overburdened week or a two-day deadline override it with no special-case
+  // logic. It only ever moves deadlined tasks; for everything else `bufferScore`
+  // returns a constant, which cannot change a ranking.
+  //
+  // ⚠️ `buffer` SATURATES once the target is met, and `proximity` is normalised
+  // by `maxPlacementLookahead` above, so it is identically 0 past day 3. Beyond
+  // that horizon only `balance` still discriminates, which is why long-runway
+  // work bunches into the first days — see WEEKLY-PLANNING §4.5.
+  // Renormalised with the rest, so these are ratios, not percentages.
   weights: { proximity: 0.5, balance: 0.35, stability: 0.15, preference: 0.15, buffer: 0.4 },
   urgencyFactor: 1.5,
   evacuationPenalty: 120, // minutes-equivalent cost of forcing one evacuation (OD-8)
