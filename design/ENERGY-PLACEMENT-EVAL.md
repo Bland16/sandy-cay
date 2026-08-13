@@ -151,10 +151,96 @@ to today". The run shows that was conflating two things:
 - ~~**D-2: should a characterless task be steered away from wrecked days?**~~
   **DISSOLVED 2026-08-13 by the gate** (see the recommendation). A task with no
   load cannot make a day worse, so it gets no opinion. One line, no decision.
-- **Stability was not measured.** The candidates document's question 2 — re-plan
-  on each of days 0…10 and count sittings that move for reasons the user did not
-  cause — has not been run. C1's denominator moves when an unrelated day changes,
-  so it is the one at risk. **Do this before building.**
+- ~~**Stability was not measured.**~~ **RUN 2026-08-13 — see below.**
+
+---
+
+# The two owed tests — run 2026-08-13
+
+Probe: `probe-stability-and-c3.mjs`.
+
+## Stability: the energy terms are innocent; spacing causes all the churn
+
+Re-planned on each of days 0…10 with nothing else changing, counting sittings on
+days ≥ r+1 that moved between consecutive replans.
+
+| rule | unprovoked moves |
+|---|---|
+| C1 only (depth) | **0** |
+| C3 only (reserve) | **0** |
+| H4 = depth + spacing | **4** |
+| H5 = reserve + spacing | **4** |
+
+**The prediction was wrong about which term was at risk.** The candidates
+document expected C1's moving denominator to be the problem; it is perfectly
+stable, because re-normalising against a shifting candidate set does not change
+the *ranking*. All churn comes from **spacing**: when a chosen day drops out of
+the window the greedy comb re-phases from a new start —
+`[4,6,8,10,13]` → `[5,7,9,11,13]` at r=5, three future sittings moving with
+nothing in the user's life having changed.
+
+**Mitigation, and it is the shape the codebase already uses:** on replan, **keep
+the previously chosen days that are still available and only fill the gaps**,
+rather than re-deriving the comb. `redistribute` already preserves chunks that
+are lived or user-placed (`projects.js:70`); this extends the same instinct to
+"a plan you have already been shown". Without it, four moves per fortnight is
+the floor.
+
+## The C3 fixture: C1 is structurally blind, and C3 wins
+
+The fixture the earlier evaluation could not build. Every day carries an
+identical 2-hour mental block; days 0–6 in the **morning**, days 7–13 in the
+**evening**. Because the battery is additive, the day's total dip is **identical**
+either way — only the order within the day differs.
+
+```
+  day dip        -4.0 everywhere        <- C1's quantity: no information at all
+  reserve@13:00  -4.0 (d+0..6)  0.0 (d+7..13)   <- C3's quantity
+```
+
+| rule | days chosen | sat down fresh |
+|---|---|---|
+| C1 only | 0,1,2,3,4 | 0/5 |
+| C3 only | 7,8,9,10,11 | **5/5** |
+| H4 depth + spacing | 0,3,6,9,13 | 2/5 |
+| **H5 reserve + spacing** | 7,8,9,10,13 | **5/5** |
+
+And on the acceptance fixture C3 **ties** C1 exactly (front 0m; streak 1 for both
+hybrids). So C3 is never worse and sometimes much better.
+
+> ### The recommendation changes: build **H5** — gated *reserve-at-sit-down* (C3) for energy, sibling spacing for clustering.
+
+### Two caveats that must not be lost
+
+1. **The better equation wants the riskier home.** C3's quantity is defined at a
+   **slot**, not a day; this probe finessed it by scoring a nominal 13:00
+   sitting. A real day-chooser must either fix an arbitrary nominal slot — which
+   invents a number — or the term belongs in `scoring.js`, which is D-1's
+   riskier branch. **This is now the deciding question for D-1**, and it did not
+   exist while C1 was the front-runner.
+2. **C3 optimises the moment, not the day, and that is a human question.** On the
+   fixture both day types still *end* at −12; C3 chose the ones where you start
+   fresh. Whether "fresh start, wrecked finish" beats "spent start, equally
+   wrecked finish" is not something the model can adjudicate. C3 has strictly
+   more information than C1; whether that information should decide is a
+   judgement, and it is the user's.
+
+### Corrections to this probe, recorded
+
+`'C3only'` never matched the `rule === 'C3'` string check, so it silently ran C1
+and produced a table that looked like proof C3 was blind. Replaced with explicit
+`{energy, spacing}` flags, which is when C3's real behaviour appeared. **A
+string-matched mode selector that fails closed is exactly the kind of silent
+default this evaluation criticised C5 for.**
+
+## The no-load fallback — confirmed
+
+Per the user: with no tags, use the single equation rather than the hybrid. That
+is already the gate's behaviour — energy contributes 0 and **sibling spacing
+alone** decides. Worth being precise that the surviving term is *sibling*
+spacing, **not C5**: C5 ranks by the task's dominant axis, which a tagless task
+does not have, and its silent alphabetical default is what sent a characterless
+task to the end of the runway.
 
 ## What did not change
 
