@@ -23,7 +23,9 @@ describe('§5D/6F/6J queries', () => {
     expect(load.perDay[0].scheduledMin).toBe(120);
     expect(load.perDay[1].scheduledMin).toBe(60);
     // Mon-Fri 600 each, Sat 840, Sun 240 → capacity total.
-    expect(load.capacityMin).toBe(600 * 5 + 840 + 240);
+    // Sum of the day windows: Mon–Fri 08:00–23:00, Sat 08:00–23:00,
+    // Sun 10:00–23:00. Tracks config.windows, widened 2026-08-13.
+    expect(load.capacityMin).toBe(900 * 5 + 900 + 780);
     expect(load.pinnedRatio).toBeCloseTo(60 / 180, 5);
   });
 

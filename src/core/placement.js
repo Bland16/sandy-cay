@@ -91,6 +91,44 @@ function zoneIntervalsOnDay(zone, date) {
  * they drew. Same at the other end: an 18:00–22:00 study zone against a day
  * ending at 18:00.
  */
+/**
+ * The latest an AUTOMATICALLY-placed task may end on `date`, so that the next
+ * day's first commitment is still `config.sleep.minHoursBeforeNextDay` away.
+ * Returns null when the guard is off, or when tomorrow holds nothing.
+ *
+ * This is physics, so it clips the legal window rather than merely scoring
+ * badly — a preference can be outvoted by a busy week, and "you get four hours'
+ * sleep because Thursday was full" is not a trade the scheduler may make. Like
+ * every other window rule it binds the scheduler and not the user's hand (R-1):
+ * a manual drop never consults `computeWindows`.
+ *
+ * Recurrence matters here. Tomorrow's 09:00 lecture is usually an OCCURRENCE,
+ * not a stored task, so filtering `!t.recurrence` without adding the occurrences
+ * back would make the guard blind to exactly the commitments it exists to
+ * protect (sharp edge #3).
+ */
+export function sleepCutoff(schedule, date) {
+  const cfg = (schedule.config && schedule.config.sleep) || {};
+  const hours = cfg.minHoursBeforeNextDay ?? 0;
+  if (!hours) return null;
+  const tomorrow = dayStart(addDays(date, 1));
+  const dayAfter = addDays(tomorrow, 1);
+  let earliest = null;
+  const consider = (start) => {
+    if (!start) return;
+    const t = start.getTime();
+    if (t < tomorrow.getTime() || t >= dayAfter.getTime()) return;
+    if (!earliest || t < earliest.getTime()) earliest = start;
+  };
+  for (const t of schedule.tasks) {
+    if (t.chunking || t.recurrence) continue;
+    consider(t.startTime);
+  }
+  for (const iv of recurrenceIntervals(schedule, tomorrow, dayAfter)) consider(iv.start);
+  if (!earliest) return null;
+  return addMinutes(earliest, -hours * 60);
+}
+
 export function computeWindows(schedule, task, date, { ignoreZone = false } = {}) {
   const b = dayWindowBounds(schedule.config, date);
   const base = [{ start: b.start, end: b.end }];
@@ -122,6 +160,15 @@ export function computeWindows(schedule, task, date, { ignoreZone = false } = {}
   if (task.deadline) {
     windows = windows
       .map((iv) => ({ start: iv.start, end: new Date(Math.min(iv.end.getTime(), task.deadline.getTime())) }))
+      .filter((iv) => iv.end.getTime() > iv.start.getTime());
+  }
+  // Sleep guard last, so it clips whatever survived — including a zone's own
+  // window. A zone defines when its tags may run; it does not get to override
+  // the night before a 06:00 start.
+  const cutoff = sleepCutoff(schedule, date);
+  if (cutoff) {
+    windows = windows
+      .map((iv) => ({ start: iv.start, end: new Date(Math.min(iv.end.getTime(), cutoff.getTime())) }))
       .filter((iv) => iv.end.getTime() > iv.start.getTime());
   }
   return windows;

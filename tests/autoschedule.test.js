@@ -19,6 +19,17 @@ describe('2E — urgency-aware sort (slack trips priority)', () => {
   });
 
   it('Monday packed → lower-priority Wed task places before higher-priority Thu task', () => {
+    // This test is about the URGENCY RULE, not about the default day window, so
+    // it pins its own 08:00–18:00 week. When the default moved to 23:00 on
+    // 2026-08-13 the extra five hours on Tuesday gave A enough slack that it
+    // stopped being endangered — the rule behaved correctly and the fixture
+    // stopped posing the question. Pinning keeps the scenario tight whatever
+    // the default becomes.
+    const bounded = { start: '08:00', end: '18:00' };
+    s = new Schedule({ config: { ...defaultConfig, windows: {
+      monFri: bounded, sat: bounded, sun: { ...bounded, maxTasks: 2, lightDay: true },
+    } } });
+
     // Pack Monday fully with a fixed anchor 08:00–18:00.
     s.tasks.push(new Task({ title: 'All-day Monday offsite', type: 'fixed', startTime: D(0, 8), endTime: D(0, 18) }));
 

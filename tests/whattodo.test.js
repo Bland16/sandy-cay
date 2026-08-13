@@ -37,13 +37,13 @@ describe('§6 whatToDo (cold start)', () => {
   });
 
   it('the opening is clamped to the day window — 00:50 is not a 7-hour opening', () => {
-    // Window is Mon–Fri 08:00–18:00; nothing else scheduled.
+    // Window is Mon–Fri 08:00–23:00 (widened 2026-08-13); nothing else scheduled.
     const open = currentOpening(s, D(0, 0, 50));
     expect(open).not.toBeNull();
     // Starts at the window, not at 00:50, and is flagged as not-yet-open.
     expect(open.start.getHours()).toBe(8);
     expect(open.startsLater).toBe(true);
-    expect(open.minutes).toBe(600); // 08:00 → 18:00
+    expect(open.minutes).toBe(900); // 08:00 → 23:00
   });
 
   it('no opening once the day window has closed', () => {

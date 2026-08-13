@@ -77,8 +77,8 @@ describe('dayState is read from the real day (§3.2)', () => {
     expect(ds.downstreamCount).toBe(3);
     expect(ds.spareBreakMin).toBe(45); // == the engine's absorbedByBreaks for delta 60
     expect(ds.taskMin).toBe(30);
-    // Mon window ends 18:00; the chain's tail is 12:30 → 330 minutes of room.
-    expect(ds.tailRoomMin).toBe(330);
+    // Mon window ends 23:00 (widened 2026-08-13); tail is 12:30 → 630 minutes.
+    expect(ds.tailRoomMin).toBe(630);
     expect(ds.displaceMoveMin).toBe(0); // no blockers passed → nothing to evict
   });
 

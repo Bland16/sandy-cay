@@ -2,11 +2,27 @@
 // unless noted. Kept as plain data so it round-trips through JSON untouched.
 
 export const defaultConfig = {
+  // Widened to 23:00 on 2026-08-13, at the user's request. The old 18:00 weekday
+  // end meant the scheduler could not see the evening at all — while the real
+  // week it was scheduling for did most of its studying 20:00–24:00. A window is
+  // the DEFAULT AVAILABILITY for automatic placement, not a claim that those
+  // hours are free; `sleep` below is what stops the evening running away.
   windows: {
-    monFri: { start: '08:00', end: '18:00' },
-    sat: { start: '08:00', end: '22:00' },
-    sun: { start: '10:00', end: '14:00', maxTasks: 2, lightDay: true },
+    monFri: { start: '08:00', end: '23:00' },
+    sat: { start: '08:00', end: '23:00' },
+    sun: { start: '10:00', end: '23:00', maxTasks: 2, lightDay: true },
   },
+  // Sleep safeguard: nothing may be AUTOMATICALLY placed so late that it leaves
+  // less than this many hours before the next day's first commitment. Physics,
+  // not bookkeeping — so it clips the legal window rather than scoring badly,
+  // and like every other window rule it binds the scheduler and not the user's
+  // own hand (R-1). Set `minHoursBeforeNextDay: 0` to switch it off.
+  //
+  // It only bites when tomorrow starts early: with a 23:00 window and an 09:00
+  // first class it never triggers, and with a 07:00 start it pulls tonight's
+  // cutoff back to 23:00 exactly. That asymmetry is the point — the guard exists
+  // for the early mornings, which are the nights that actually cost you sleep.
+  sleep: { minHoursBeforeNextDay: 8 },
   breaks: { default: 30, medium: 15, minimum: 5 },
   breakThresholds: { medium: 0.5, minimum: 0.7 },
   maxPlacementLookahead: 3, // days
