@@ -12,6 +12,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { buildWrapReport, applySuggestion } from '../report.js';
 import { fmtDur, DAY_NAMES } from '../format.js';
+import EnergyShape from './EnergyShape.jsx';
 import Icon from '../Icon.jsx';
 
 // Deadline buffer, in plain words — hours under a day, whole days beyond it.
@@ -203,6 +204,9 @@ export default function WrapReport({ sched, weekStart, version, onBack, onOpenTa
             <section className="rp-section">
               <h2>The shape of the week</h2>
               <SandBars load={stats.load} />
+
+              <h3>What it took, and what it gave back</h3>
+              <EnergyShape energy={stats.energy} />
 
               <div className="rp-cols">
                 <div>

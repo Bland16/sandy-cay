@@ -16,7 +16,7 @@ import {
   getWeekLoad, getTagBreakdown, getSatisfactionMatrix, getBreakCompression,
   snapshot, snapshotDiff, isoWeekKey, addDays, dateKey, weekStart as weekStartOf,
   driftCheck, starvationCheck, skipStreakCheck, pinnedRatioNote, durationFitSuggestion,
-  splitPeriod, endRecurrence,
+  splitPeriod, endRecurrence, spendRestore, learnedCapacity,
 } from '../core/index.js';
 import { fmtDur } from './format.js';
 
@@ -391,6 +391,10 @@ export function buildWrapReport(sched, weekStartDate) {
       breaks: getBreakCompression(sched, ws),
       plan: buildPlanDiff(sched, ws),
       deadlines: buildDeadlineBuffer(sched, weekTasks),
+      // Spend and restore kept APART. `capacity` is null until ratings earn it
+      // (P-2), and the chart must draw no ceiling while it is — a ring that
+      // appears later would mean the earlier weeks' charts were lying.
+      energy: { ...spendRestore(sched, weekTasks), capacity: learnedCapacity(sched) },
     },
     insight: buildInsight(sched),
     suggestions: buildSuggestions(sched, ws, weekLoad, weekTasks),

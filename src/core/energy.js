@@ -100,6 +100,52 @@ function reserveWalk(schedule, tasks) {
   return { net, low, reserve: { ...reserve }, points };
 }
 
+/**
+ * Per-axis SPEND and RESTORE over a set of tasks, kept apart instead of netted.
+ *
+ * Why this exists rather than reusing `net`. Net is what the engine acts on, and
+ * it throws away the one thing a person most wants to see: a week that spends 15
+ * and restores 15 nets to zero and reads identically to a week where nothing
+ * happened. Those are not the same week. Keeping the two totals apart is what
+ * lets the report draw the difference.
+ *
+ * ⚠️ The honest limit, so nobody describes this as more than it is:
+ * `loadForTask` has ALREADY merged a task's own positive and negative
+ * contributions per axis (`posMean + negMean`). So this splits *hours that spent
+ * you* from *hours that gave back* — the true shape of the week at task
+ * granularity, not a double-entry ledger of one task doing both.
+ *
+ * Hours-weighted, exactly as `reserveWalk` is, so `spend − restore` equals the
+ * `net` that walk reports and the two readings can never disagree.
+ *
+ * @returns {{ axes: Object, totals: {spend,restore,net}, any: boolean }}
+ */
+export function spendRestore(schedule, tasks) {
+  const axes = {};
+  for (const a of LOAD_AXES) axes[a] = { spend: 0, restore: 0, net: 0 };
+  for (const t of tasks || []) {
+    if (!t || t.chunking || t.completion === 'skipped') continue;
+    const l = loadForTask(schedule, t);
+    const h = durationHours(t);
+    for (const a of LOAD_AXES) {
+      const v = l[a] * h;
+      if (v > 0) axes[a].spend += v;
+      else if (v < 0) axes[a].restore += -v;
+    }
+  }
+  const totals = { spend: 0, restore: 0, net: 0 };
+  for (const a of LOAD_AXES) {
+    axes[a].net = axes[a].spend - axes[a].restore;
+    totals.spend += axes[a].spend;
+    totals.restore += axes[a].restore;
+  }
+  totals.net = totals.spend - totals.restore;
+  // A week whose buckets carry no load at all computes to all zeros, which is
+  // not the same as a quiet week — the caller must be able to say so instead of
+  // drawing an empty diamond that looks like a finding.
+  return { axes, totals, any: totals.spend > 0 || totals.restore > 0 };
+}
+
 /** The day's reserve TRAJECTORY — per-axis reserve after each task, in time order.
  *  The "time points" a future model can learn bottom-out patterns from, and the
  *  basis for a when-you-dip read in the card. */

@@ -41,7 +41,7 @@ export {
   activityUsage, activityPage, filterActivities, sortActivities, paginate, activityCfg,
   dedupeDrafts, dedupeBulk, parseActivityLine, parseBulkBlock, SORTS, SORT_LABELS,
 } from './activityList.js';
-export { energyBudget, energyCalibration, learnedCapacity, energyTrajectory, reserveAt, loadForTask, normalizeLoad, LOAD_AXES } from './energy.js';
+export { energyBudget, energyCalibration, learnedCapacity, energyTrajectory, reserveAt, loadForTask, normalizeLoad, spendRestore, LOAD_AXES } from './energy.js';
 export {
   toICS, parseICS, importEvents, eventToTask, deriveTags,
   toRRULE, fromRRULE, toICSDate, fromICSDate, eventToDayNote,
