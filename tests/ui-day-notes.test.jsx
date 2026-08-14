@@ -214,6 +214,36 @@ describe('the bar opens the day\'s notes in the panel', () => {
     expect(within(panel).queryByText('Add/drop deadline')).toBeNull();
   });
 
+  it('offers "Block this day" — §3\'s fact and decision, one click apart', () => {
+    seedNotes();
+    render(<App />);
+    fireEvent.click(barIn(document, 'Thu'));
+    const panel = document.querySelector('.panel');
+
+    // A holiday does not decide for you that you aren't working, so the note
+    // states the day and the blocking is yours to choose.
+    expect(document.querySelectorAll('.day')[3].classList.contains('blocked')).toBe(false);
+    fireEvent.click(within(panel).getByText('Block this day'));
+
+    expect(document.querySelectorAll('.day')[3].classList.contains('blocked')).toBe(true);
+    expect(within(document.querySelector('.panel')).getByText('Unblock this day')).toBeTruthy();
+    // ...and it is reversible from the same place.
+    fireEvent.click(within(document.querySelector('.panel')).getByText('Unblock this day'));
+    expect(document.querySelectorAll('.day')[3].classList.contains('blocked')).toBe(false);
+  });
+
+  it('blocking one day leaves the rest of the note\'s run alone', () => {
+    seedNotes();
+    render(<App />);
+    // Thanksgiving covers Wed–Fri; blocking Thursday says nothing about the others.
+    fireEvent.click(barIn(document, 'Thu'));
+    fireEvent.click(within(document.querySelector('.panel')).getByText('Block this day'));
+    const cols = document.querySelectorAll('.day');
+    expect(cols[2].classList.contains('blocked')).toBe(false); // Wed
+    expect(cols[3].classList.contains('blocked')).toBe(true);  // Thu
+    expect(cols[4].classList.contains('blocked')).toBe(false); // Fri
+  });
+
   it('names how many without a second row, however many there are', () => {
     seedNotes();
     render(<App />);

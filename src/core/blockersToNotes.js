@@ -14,17 +14,20 @@
 // for one generator's output and quietly miss the next one's.
 //
 // ⚠️ This CONVERTS, it does not copy: the tasks are removed. That is the point —
-// the card is what was wrong — but it does mean a behaviour is dropped, exactly
-// as D-6 warned. Today a full-window blocker leaves automatic placement no legal
-// room; a day note has no effect on placement at all. Restoring "the scheduler
-// stays out" is the `blockedDays` collection D-6 specifies, and it is its own
-// piece of work. Nothing regresses for a schedule with no flexible work in it,
-// which is the case this was written for, but do not mistake that for the
-// behaviour having been preserved.
+// the card is what was wrong.
+//
+// It also BLOCKS every day it converts, and that is not a bonus, it is the
+// correctness condition. A full-window blocker was doing two jobs: drawing a
+// card (wrong) and keeping automatic placement off the day (right). An earlier
+// version of this dropped the second along with the first, because
+// `blockedDays` did not exist yet. It does now (D-6), so the conversion
+// preserves the behaviour instead of quietly discarding it — the day keeps its
+// name as a NOTE and its unavailability as a BLOCK, which is exactly the
+// fact/decision split §3 describes, arrived at from the other direction.
 
 import { DayNote } from './DayNote.js';
 import { dayWindowBounds } from './placement.js';
-import { dateKey, addDays, dayStart } from './time.js';
+import { dateKey, dateFromKey, addDays, dayStart } from './time.js';
 
 /**
  * Is this task a whole-day blocker rather than an appointment inside the day?
@@ -95,23 +98,51 @@ export function planBlockerConversion(schedule) {
 }
 
 /**
- * Apply the plan: add the notes, remove the tasks.
- * @returns {{ notesAdded: number, tasksRemoved: number }}
+ * Apply the plan: add the notes, block the days, remove the tasks.
+ * @returns {{ notesAdded: number, tasksRemoved: number, daysBlocked: number }}
  */
 export function convertBlockersToDayNotes(schedule) {
   const plan = planBlockerConversion(schedule);
-  if (plan.taskIds.length === 0) return { notesAdded: 0, tasksRemoved: 0 };
+  if (plan.taskIds.length === 0) return { notesAdded: 0, tasksRemoved: 0, daysBlocked: 0 };
 
+  let daysBlocked = 0;
   for (const n of plan.notes) {
     schedule.addDayNote({
       label: n.label, from: n.from, to: n.to, kind: n.kind, tags: n.tags,
       source: 'converted from blockers',
     });
+    // Every day the note covers keeps the unavailability the task was
+    // enforcing. Without this the conversion would trade a correct behaviour
+    // for a tidier picture.
+    for (const d of daysBetween(n.from, n.to)) {
+      if (blockDayKey(schedule, d)) daysBlocked += 1;
+    }
   }
   const gone = new Set(plan.taskIds);
   const before = schedule.tasks.length;
   schedule.tasks = schedule.tasks.filter((t) => !gone.has(t.id));
-  return { notesAdded: plan.notes.length, tasksRemoved: before - schedule.tasks.length };
+  return { notesAdded: plan.notes.length, tasksRemoved: before - schedule.tasks.length, daysBlocked };
+}
+
+/** Inclusive list of 'YYYY-MM-DD' keys from `from` to `to`. */
+function daysBetween(from, to) {
+  const out = [];
+  let d = dateFromKey(from);
+  const last = dateFromKey(to);
+  while (d.getTime() <= last.getTime()) {
+    out.push(dateKey(d));
+    d = addDays(d, 1);
+  }
+  return out;
+}
+
+/** Block by key, tolerating a bare test double without a Schedule's methods. */
+function blockDayKey(schedule, key) {
+  if (!Array.isArray(schedule.blockedDays)) schedule.blockedDays = [];
+  if (schedule.blockedDays.includes(key)) return false;
+  schedule.blockedDays.push(key);
+  schedule.blockedDays.sort();
+  return true;
 }
 
 /** A DayNote for each planned note, without touching the schedule (for preview). */

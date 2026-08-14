@@ -105,9 +105,28 @@ describe('converting', () => {
     s.tasks.push(cls);
 
     const res = convertBlockersToDayNotes(s);
-    expect(res).toEqual({ notesAdded: 1, tasksRemoved: 3 });
+    expect(res).toEqual({ notesAdded: 1, tasksRemoved: 3, daysBlocked: 3 });
     expect(s.tasks.map((t) => t.title)).toEqual(['CHEM1109']); // the class survives
     expect(s.dayNotes).toHaveLength(1);
+  });
+
+  it('KEEPS the day unavailable — the card was wrong, the blocking was right', () => {
+    const s = seed();
+    blocker(s, 25); blocker(s, 26); blocker(s, 27);
+    convertBlockersToDayNotes(s);
+    // A full-window blocker did two jobs: drew a card (wrong) and kept
+    // automatic placement off the day (right). Converting must not trade the
+    // second away for the first.
+    for (const d of [25, 26, 27]) expect(s.isDayBlocked(at(2026, 10, d, 12))).toBe(true);
+    expect(s.isDayBlocked(at(2026, 10, 24, 12))).toBe(false);
+  });
+
+  it('blocks every day of a multi-day run, not just its first', () => {
+    const s = seed();
+    blocker(s, 25); blocker(s, 26); blocker(s, 27);
+    const res = convertBlockersToDayNotes(s);
+    expect(res.daysBlocked).toBe(3);
+    expect(s.blockedDays).toEqual(['2026-11-25', '2026-11-26', '2026-11-27']);
   });
 
   it('the note then covers every day it spans — the run the grid draws', () => {
@@ -123,11 +142,11 @@ describe('converting', () => {
 
   it('is a no-op on a schedule that has none, and is idempotent', () => {
     const s = seed();
-    expect(convertBlockersToDayNotes(s)).toEqual({ notesAdded: 0, tasksRemoved: 0 });
+    expect(convertBlockersToDayNotes(s)).toEqual({ notesAdded: 0, tasksRemoved: 0, daysBlocked: 0 });
     blocker(s, 25);
     convertBlockersToDayNotes(s);
     // Running it twice must not duplicate the note or invent a second one.
-    expect(convertBlockersToDayNotes(s)).toEqual({ notesAdded: 0, tasksRemoved: 0 });
+    expect(convertBlockersToDayNotes(s)).toEqual({ notesAdded: 0, tasksRemoved: 0, daysBlocked: 0 });
     expect(s.dayNotes).toHaveLength(1);
   });
 

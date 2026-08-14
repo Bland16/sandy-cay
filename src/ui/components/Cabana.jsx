@@ -54,8 +54,7 @@ export default function Cabana({ sched, mutate, weekStart, onBack, onReplace, on
   const retrain = () => { const n = mutate((s) => s.retrain()); showToast(`Retrained on ${n} ratings`); bump(); };
 
   // Whole-day blockers modelled as TASKS (DAY-NOTES §1) — offered, never done
-  // silently, because converting removes the tasks and a day note has no effect
-  // on placement (D-6). Stating both counts before asking is what makes it
+  // silently. Stating the counts and the dates before asking is what makes it
   // consentable: an action you cannot preview is one you cannot agree to.
   const blockerPlan = planBlockerConversion(sched);
   const convertBlockers = () => {
@@ -64,13 +63,17 @@ export default function Cabana({ sched, mutate, weekStart, onBack, onReplace, on
       `Turn ${taskIds.length} whole-day blocker task${taskIds.length === 1 ? '' : 's'} into `
       + `${notes.length} day note${notes.length === 1 ? '' : 's'}?\n\n`
       + notes.map((n) => `  ${n.label}  ${n.from}${n.to !== n.from ? ` → ${n.to}` : ''}`).join('\n')
-      + '\n\nThe cards go; the days keep their names in the header. '
-      + 'A day note does not hold time, so these days stop being protected from '
-      + 'automatic placement. Export first if you want the old shape back.',
+      + '\n\nThe cards go and the days keep their names in the header. '
+      + 'Each day stays BLOCKED, so the scheduler still keeps off it — but you '
+      + 'can now put things there yourself, which the cards used to refuse. '
+      + 'Export first if you want the old shape back.',
     );
     if (!ok) return;
     const r = mutate((s) => convertBlockersToDayNotes(s));
-    showToast(`${r.tasksRemoved} cards → ${r.notesAdded} day note${r.notesAdded === 1 ? '' : 's'}`);
+    showToast(
+      `${r.tasksRemoved} card${r.tasksRemoved === 1 ? '' : 's'} → `
+      + `${r.notesAdded} note${r.notesAdded === 1 ? '' : 's'} · ${r.daysBlocked} day${r.daysBlocked === 1 ? '' : 's'} blocked`,
+    );
     bump();
   };
 
@@ -131,7 +134,8 @@ export default function Cabana({ sched, mutate, weekStart, onBack, onReplace, on
                 {' '}{blockerPlan.taskIds.length === 1 ? 'it draws' : 'they draw'} as full-height
                 cards standing where the day&rsquo;s contents belong. Converted, they become
                 {' '}<b>{blockerPlan.notes.length} day note{blockerPlan.notes.length === 1 ? '' : 's'}</b>
-                {' '}in the header instead.
+                {' '}in the header, and each day stays <b>blocked</b> — the scheduler keeps
+                off it, but your own hand is no longer refused.
               </p>
               <button className="btn2 ghost" style={{ marginTop: 6 }} onClick={convertBlockers}>
                 Convert to day notes

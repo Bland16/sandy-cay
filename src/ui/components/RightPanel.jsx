@@ -19,6 +19,12 @@ export default function RightPanel({ selection, resolvedTask, sched, mutate, wee
         date={addDays(weekStart, notesDay)}
         dayName={DAY_FULL[notesDay]}
         onClose={onClose}
+        onToggleBlock={(d) => {
+          const nowBlocked = mutate((s) => (s.isDayBlocked(d) ? !s.unblockDay(d) : s.blockDay(d)));
+          showToast(nowBlocked
+            ? 'Blocked — the scheduler stays off this day.'
+            : 'Unblocked — this day is back in play.');
+        }}
       />
     );
   } else if (selection === 'add-task') {

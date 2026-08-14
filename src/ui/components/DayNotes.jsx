@@ -137,18 +137,23 @@ export function DayNoteList({ sched, date }) {
 }
 
 /**
- * The right panel behind the bar. Facts only — each note, its range and where it
- * came from. No actions yet: "Block this day" is a MODEL change (D-6, a
- * `blockedDays` collection subtracted in `computeWindows`) and belongs with that
- * work, not with a rendering change.
+ * The right panel behind the bar: each note, its range, where it came from —
+ * and the one action §3 always specified.
+ *
+ * "Block this day" is here because the FACT and the DECISION are deliberately
+ * one click apart. A holiday does not decide for you that you aren't working —
+ * plenty of people study on Thanksgiving — so the note states the day and you
+ * choose what it means. It could only be built once `blockedDays` existed
+ * (D-6); before that there was nothing honest for the button to do.
  */
-export function DayNotesPanel({ sched, date, dayName, onClose }) {
+export function DayNotesPanel({ sched, date, dayName, onClose, onToggleBlock }) {
   const notes = notesFor(sched, date);
+  const blocked = sched.isDayBlocked(date);
   return (
     <>
       <PanelHeader
         title={`${dayName} ${date.getDate()}`}
-        sub={`${notes.length} note${notes.length === 1 ? '' : 's'}`}
+        sub={`${notes.length} note${notes.length === 1 ? '' : 's'}${blocked ? ' · blocked' : ''}`}
         onClose={onClose}
       />
       {notes.length === 0
@@ -166,6 +171,18 @@ export function DayNotesPanel({ sched, date, dayName, onClose }) {
             ))}
           </ul>
         )}
+      {onToggleBlock && (
+        <div className="dnact">
+          <button type="button" className="dnblock" onClick={() => onToggleBlock(date)}>
+            {blocked ? 'Unblock this day' : 'Block this day'}
+          </button>
+          <p className="dnhint">
+            {blocked
+              ? 'Nothing is scheduled here automatically. You can still put things here yourself.'
+              : 'Keeps the scheduler off this day. You could still put things here yourself.'}
+          </p>
+        </div>
+      )}
     </>
   );
 }
