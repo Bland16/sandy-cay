@@ -146,7 +146,12 @@ export default function WeekGrid({
           const laid = layoutDay(dayTasks, start, PXH);
           return (
             <div
-              className={`day${i >= 5 ? ' wknd' : ''}`}
+              /* The tint IS the statement that the scheduler stays out (D-6) —
+                 it replaced a full-height card that said the same thing and
+                 also, wrongly, refused your own hand. `isDayBlocked` lives on
+                 the engine so this and `computeWindows` can never disagree;
+                 `zoneBands` is the cautionary tale (sharp edge #14). */
+              className={`day${i >= 5 ? ' wknd' : ''}${sched.isDayBlocked(date) ? ' blocked' : ''}`}
               key={dn}
               style={{ height: colHeight }}
               /* drop-geometry contract — see useCardInteraction.js */

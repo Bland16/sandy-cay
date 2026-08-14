@@ -291,6 +291,26 @@ body {
 }
 .day.wknd { background-color: rgba(42,38,32,.045); }
 
+/* A BLOCKED day (design/DAY-NOTES.md D-6). This tint replaced a full-day
+   protected card, and it is allowed to be a tint precisely because blocking is
+   a real scheduling state rather than an annotation — P-1 reserves colour for
+   physics, which this is. Deliberately NOT coral: a day you took off is not a
+   warning. Sand, and a slightly heavier weave than the off-window shading, so
+   the two read as related rather than identical.
+
+   It must not swallow the grid's hour lines: the day is still droppable BY HAND
+   (that is the whole correction D-6 makes), so it has to keep looking like a
+   place you can put something. */
+.day.blocked, .dvcol.blocked {
+  background-color: rgba(201,169,110,.20);
+  background-image:
+    repeating-linear-gradient(135deg, transparent 0 6px, rgba(138,107,50,.10) 6px 12px),
+    repeating-linear-gradient(180deg, transparent 0 33px, var(--hair) 33px 34px);
+}
+.dvcol.blocked { background-image:
+  repeating-linear-gradient(135deg, transparent 0 6px, rgba(138,107,50,.10) 6px 12px),
+  repeating-linear-gradient(180deg, transparent 0 41px, var(--hair) 41px 42px); }
+
 .zone {
   position: absolute; left: 0; right: 0; z-index: var(--z-zone); background: rgba(46,140,153,.10);
   border-block: 1px dashed rgba(46,140,153,.55); pointer-events: none;

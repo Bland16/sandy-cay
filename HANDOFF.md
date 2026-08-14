@@ -202,7 +202,53 @@ is live and completely invisible.
 
 **STOP. Report. Wait.**
 
-### ITEM 2 — blocked days become a real state, not 12 giant cards
+### ITEM 2 — blocked days become a real state ✅ BUILT 2026-08-14
+
+`schedule.blockedDays` is a list of `'YYYY-MM-DD'` strings beside `dayNotes`
+(additive, `schemaVersion` stays 1). **`computeWindows` returns `[]` for a
+blocked day**, which is the single subtraction that covers `autoSchedule`,
+displacement, `carryOver` and ripple's overflow branch at once — they all route
+through `placeTask` (SPEC §2.2). `Schedule#isDayBlocked` is the ONE predicate;
+`WeekGrid` and `DayView` both ask the engine, so the tint and the hole in the
+windows cannot disagree (sharp edge #14's lesson).
+
+The three behaviours D-6 asked for, each locked by a test: **automatic placement
+stays out · your own hand still lands · What-To-Do still answers.** The last two
+came free — a manual drop was only ever rejected because it collided with the
+blocker *task*, and `whatToDo` never calls `computeWindows` at all.
+Block/unblock is on the day ⋯ menu. **644 tests green**, eslint and build clean.
+
+**`createBlocker` is GONE, not kept.** D-6 preserved it on paper for §3.9's
+"protect this gap", but that case never used it — `gapActions#protectGap` builds
+its own "Recovery time" via `addFixed`, and rightly, because a protected gap IS
+a genuine appointment with a start and an end. Nothing called it.
+
+### ⚠️ ITEM 2's ripple instruction was WRONG — do not re-add that check
+
+The brief below says blocked days must join ripple's plain-shift guard "or a
+ripple will slide work onto Christmas". **Two probes say otherwise, and the
+check was written, measured and removed.**
+
+1. **It cannot happen.** `downstream` is `sameDay(t, pivotTask)` and `limit` is
+   capped at that day's window end, so a plain shift never leaves the pivot's
+   own day. Probed: a next-day task is never even a candidate for the chain.
+   Anything that *would* overflow already goes to the branch that calls
+   `placeTask` — hence `computeWindows`, hence blocked days are honoured.
+2. **Adding it does harm.** The only case where such a check can fire is a task
+   *already* on a blocked day — which means the user put it there by hand.
+   Probed with the guard in: Christmas brunch grows and **"Board games" is
+   evacuated off Christmas to Friday 08:00.** That is exactly what D-6 abolishes
+   and what R-1 protects. A zone is a rule about hours that may not be about
+   this task; a blocked day is a rule *you* wrote, and your own hand outranks it.
+
+`tests/blocked-days.test.js` locks both directions — it fails if the guard is
+re-added, which was verified by re-adding it.
+
+**The general lesson, again:** the instruction was reasoned about and written
+down by a session that had just fixed the identical bug for zones. Pattern-match
+plus plausibility is not proof. One probe printing the chain settled it.
+
+The original brief:
 
 Their file contains **12 full-day protected blocker tasks** which currently
 render as cards spanning 08:00–23:00 across Thanksgiving, spring break and 4 Oct.

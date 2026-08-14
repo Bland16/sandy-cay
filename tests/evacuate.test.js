@@ -28,24 +28,32 @@ describe('3A — evacuateDay (Clear Day)', () => {
     expect(flex.getDayIndex(MON)).toBeGreaterThan(1);
   });
 
-  it('blockDay:true creates a full-day protected blocker', () => {
+  it('blockDay:true marks the DAY blocked — it does not add a task (D-6)', () => {
     s.addFlexible({ title: 'Study', startTime: D(1, 10), endTime: D(1, 11) });
+    const before = s.tasks.length;
     const res = s.evacuateDay(D(1, 0), { blockDay: true });
-    const blocker = s.tasks.find((t) => t.title === 'Out sick');
-    expect(blocker).toBeTruthy();
-    expect(blocker.tags).toContain('rest');
+    // Blocking used to mean a 15-hour protected card drawn over the day's real
+    // contents, which also refused the user's own hand. It is a property of the
+    // day now.
+    expect(s.isDayBlocked(D(1, 0))).toBe(true);
+    expect(s.tasks.length).toBe(before);
+    expect(s.tasks.some((t) => t.title === 'Out sick')).toBe(false);
     expect(res.relocated.length).toBe(1);
   });
 });
 
 describe('5C — blockRange', () => {
-  it('emits one protected blocker per day and evacuates flexibles', () => {
+  it('marks every day in the range and evacuates flexibles off it', () => {
     resetIds();
     const s = new Schedule({ config: defaultConfig });
     const flex = s.addFlexible({ title: 'Errand', startTime: D(5, 10), endTime: D(5, 11) });
-    const blockers = s.blockRange(D(5, 0), D(6, 0), 'Friend visiting');
-    expect(blockers.length).toBe(2); // Sat + Sun
-    expect(blockers.every((b) => b.tags.includes('rest'))).toBe(true);
+    const blocked = s.blockRange(D(5, 0), D(6, 0), 'Friend visiting');
+    expect(blocked.length).toBe(2); // Sat + Sun
+    expect(s.isDayBlocked(D(5, 0))).toBe(true);
+    expect(s.isDayBlocked(D(6, 0))).toBe(true);
+    // ...and it adds no tasks: a blocked day has no title, because it is not a
+    // thing ON the day. If you want the day named, that is a day NOTE.
+    expect(s.tasks.some((t) => t.title === 'Friend visiting')).toBe(false);
     // Flexible on Saturday evacuated off the blocked range.
     expect([5, 6]).not.toContain(flex.getDayIndex(MON));
   });

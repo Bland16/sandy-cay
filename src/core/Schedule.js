@@ -72,6 +72,17 @@ export class Schedule {
     // (sharp edge #15). They consume no time and do not affect placement.
     this.dayNotes = (init.dayNotes || []).map((n) => (n instanceof DayNote ? n : DayNote.fromJSON(n)));
     this._dedupeIds(this.dayNotes);
+    // Days the SCHEDULER stays out of (design/DAY-NOTES.md D-6). Held as
+    // 'YYYY-MM-DD' strings for the same reason a day note is: a day has no time
+    // of day, and a string cannot be misread as UTC midnight (sharp edge #4 in
+    // a form that cannot occur). Additive, so old saves load empty and
+    // schemaVersion stays 1 (#15).
+    //
+    // ⚠️ Blocked means "automatic placement stays out", NOT "you may not go
+    // here". A hand drop still lands and What-To-Do still answers, because
+    // opening the picker IS asking. That is R-1 applied honestly: a rule you
+    // set yourself is the clearest case of one you are entitled to overrule.
+    this.blockedDays = [...new Set((init.blockedDays || []).map(String))].sort();
     this.learning = init.model instanceof LearningModule
       ? init.model
       : LearningModule.fromJSON(init.model, this.config);
@@ -360,6 +371,36 @@ export class Schedule {
   /** Every note covering a date — the day header's whole question. */
   notesForDate(date) {
     return this.dayNotes.filter((n) => n.coversDate(date));
+  }
+
+  /**
+   * Is automatic placement barred from this day? (D-6.)
+   *
+   * The ONE predicate — engine and UI both ask it, so the tint on the grid and
+   * the hole in the windows can never disagree. `zoneBands` is the cautionary
+   * tale: it was reimplemented per surface and painted zones into weeks the
+   * scheduler correctly saw as free (sharp edge #14).
+   */
+  isDayBlocked(date) {
+    return this.blockedDays.includes(dateKey(date));
+  }
+
+  blockDay(date) {
+    const k = dateKey(date);
+    if (this.blockedDays.includes(k)) return false;
+    this.blockedDays.push(k);
+    this.blockedDays.sort();
+    this._touch();
+    return true;
+  }
+
+  unblockDay(date) {
+    const k = dateKey(date);
+    const i = this.blockedDays.indexOf(k);
+    if (i < 0) return false;
+    this.blockedDays.splice(i, 1);
+    this._touch();
+    return true;
   }
 
   removeZone(id) {
@@ -700,6 +741,7 @@ export class Schedule {
       activities: this.activities.map((a) => a.toJSON()),
       retiredTags: [...this.retiredTags],
       dayNotes: this.dayNotes.map((n) => n.toJSON()),
+      blockedDays: [...this.blockedDays],
       config: this.config,
       model: this.learning.toJSON(),
       // The planned baseline has to survive a reload or the Wrap report can
@@ -721,6 +763,7 @@ export class Schedule {
       activities: (json.activities || []).map((a) => Activity.fromJSON(a)),
       retiredTags: json.retiredTags,
       dayNotes: json.dayNotes,
+      blockedDays: json.blockedDays,
       model: json.model,
       // Absent on every save written before this shipped — an old file loads as
       // a schedule with no baselines, which is exactly right. schemaVersion

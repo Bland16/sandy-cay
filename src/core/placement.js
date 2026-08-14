@@ -12,11 +12,25 @@ import {
   weekdayIndex,
   dayKeyOf,
   clamp,
+  dateKey,
   weekStart as weekStartOf,
 } from './time.js';
 import { walkGaps, breakMinForFill } from './gaps.js';
 import { score } from './scoring.js';
 import { expandRecurrence } from './recurrence.js';
+
+/**
+ * Is automatic placement barred from this day? (design/DAY-NOTES.md D-6.)
+ *
+ * Reads the collection directly rather than calling `Schedule#isDayBlocked`,
+ * because the placement engine is handed bare `{config, tasks, zones}` objects
+ * by several tests and probes. Absent collection → nothing is blocked, which is
+ * what every save written before this feature means.
+ */
+export function isDayBlocked(schedule, date) {
+  const days = schedule && schedule.blockedDays;
+  return Array.isArray(days) && days.includes(dateKey(date));
+}
 
 /** Config window bounds for a calendar day. */
 export function dayWindowBounds(config, date) {
@@ -130,6 +144,20 @@ export function sleepCutoff(schedule, date) {
 }
 
 export function computeWindows(schedule, task, date, { ignoreZone = false } = {}) {
+  // A blocked day has no legal window for AUTOMATIC placement (D-6). One
+  // subtraction here covers every automatic path at once — autoSchedule,
+  // displacement, carryOver and ripple's overflow branch all route through
+  // placeTask → computeWindows (SPEC §2.2).
+  //
+  // ⚠️ It deliberately does NOT reach the hand. A manual drop never comes
+  // through here, so dropping Christmas brunch onto a blocked day still lands,
+  // and What-To-Do (which does not call this at all) still answers. Blocked
+  // means the scheduler stays out, not that you may not go there.
+  //
+  // Note this is NOT relaxed by `ignoreZone`: that escape hatch exists so a
+  // deadline can outrank a zone, and a day you blocked yourself is not a
+  // scheduling constraint to be optimised around.
+  if (isDayBlocked(schedule, date)) return [];
   const b = dayWindowBounds(schedule.config, date);
   const base = [{ start: b.start, end: b.end }];
   let windows;

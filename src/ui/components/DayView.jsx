@@ -56,7 +56,8 @@ export default function DayView({
           {hours.map((h) => <div className="h" key={h} style={{ height: PXH }}><span>{hourLabel(h)}</span></div>)}
         </div>
         <div
-          className="dvcol"
+          /* Same predicate as the week grid, asked of the engine — see WeekGrid. */
+          className={`dvcol${sched.isDayBlocked(date) ? ' blocked' : ''}`}
           style={{ height: colHeight }}
           /* drop-geometry contract — see useCardInteraction.js */
           data-dropzone=""

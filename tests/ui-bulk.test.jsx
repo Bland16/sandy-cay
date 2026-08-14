@@ -199,8 +199,12 @@ describe('D — Clear Day panel (§3.4 / OD-7)', () => {
     expect(document.querySelector('.claripanel')).toBeNull();
     // Forward-only: it went to a LATER day, never an earlier one (§3.4).
     expect(columnOf(cardFor('Read novel'))).toBeGreaterThan(2);
-    // Block-day was on → the engine's full-day blocker holds the day open.
-    expect(columnOf(cardFor('Out sick'))).toBe(2);
+    // Block-day was on → the DAY is blocked (D-6). It used to be a full-day
+    // protected card, which drew over the day's real contents and refused the
+    // user's own hand as well as the scheduler's; now it is a state on the
+    // column, and no task was invented to express it.
+    expect(document.querySelectorAll('.day')[2].classList.contains('blocked')).toBe(true);
+    expect(screen.queryByText('Out sick')).toBeNull();
   });
 
   it('a resolved row is acted on: "next same weekday" moves that task a week on', () => {

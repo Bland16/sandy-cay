@@ -95,6 +95,26 @@ export function rippleShift(schedule, pivotTask, deltaMin) {
     // #14/#17). Matching tasks are unaffected — the zone is theirs to sit in.
     const entersZone = entersExclusiveZone(schedule, t, newStart, newEnd);
 
+    // ⚠️ There is deliberately NO blocked-day check here, and the handoff's
+    // instruction to add one ("blocked days must join that check or a ripple
+    // will slide work onto Christmas") is wrong. Two probes, both above the
+    // level of argument:
+    //
+    //   1. It cannot happen. `downstream` is `sameDay(t, pivotTask)` and
+    //      `limit` is capped at that day's window end, so a plain shift never
+    //      leaves the pivot's own day. Anything that would has already gone to
+    //      the overflow branch below — which calls placeTask, hence
+    //      computeWindows, hence honours blocked days. Probed: a next-day task
+    //      is never even a candidate for the chain.
+    //   2. Adding it does harm. The only case where such a check could fire is
+    //      a task ALREADY on a blocked day — which means the user put it there
+    //      by hand. Probed with the guard in place: Christmas brunch grows, and
+    //      "Board games" is evacuated off Christmas to Friday 08:00. That is
+    //      precisely the behaviour D-6 exists to abolish ("blocked means the
+    //      scheduler stays out, not that you may not go here") and R-1's manual
+    //      autonomy. The zone case is different because a zone is a rule about
+    //      HOURS you may not have written for this task; a blocked day is a
+    //      rule you wrote about a day, and your own hand outranks it.
     if (shift > 0 && (newEnd.getTime() > limit.getTime() || breaksDeadline || entersZone)) {
       // Overflow (past the wall, the day window, its deadline, or into a zone) → evacuate.
       const from = new Date(pivotEnd.getTime()); // forward-only from the pivot

@@ -559,6 +559,24 @@ export default function App() {
           >
             <Icon name="cal" size={15} /> Open day view
           </button>
+          {/* Blocking on its own, without Clear Day's evacuation — "keep the
+              scheduler off Christmas" and "move everything already on it" are
+              different intentions, and only one of them is destructive. */}
+          <button
+            className="menu-item"
+            role="menuitem"
+            onClick={() => {
+              const d = addDays(weekStart, dayMenu.dayIndex);
+              const nowBlocked = mutate((s) => (s.isDayBlocked(d) ? !s.unblockDay(d) : s.blockDay(d)));
+              showToast(nowBlocked
+                ? 'Blocked — the scheduler stays off this day. You can still put things here yourself.'
+                : 'Unblocked — this day is back in play.');
+              setDayMenu(null);
+            }}
+          >
+            <Icon name="lock" size={15} />
+            {sched.isDayBlocked(addDays(weekStart, dayMenu.dayIndex)) ? 'Unblock this day' : 'Block this day'}
+          </button>
         </div>
       )}
 
