@@ -145,18 +145,18 @@ export default function EnergyShape({ energy }) {
         <Diamond axes={axes} max={max} capacity={capacity} />
         <Butterfly axes={axes} max={max} />
       </div>
+      {/* The totals, and nothing else. The chart's rationale is documented at the
+          top of this file, which is where it belongs — a report that explains
+          its own design is a report with a paragraph you skip. A fact, and no
+          verdict on it: "you overdid it" is the judgement §7.1 forbids.
+
+          P-2 is still satisfied without a sentence about it. Drawing no ring
+          claims nothing, so a ring appearing once ratings calibrate contradicts
+          nothing printed earlier — the forbidden thing was inventing a ceiling,
+          not declining to narrate its absence. */}
       <p className="rp-etot">
         Spent <b>{fx(totals.spend)}</b> · restored <b>{fx(totals.restore)}</b> · net{' '}
         <b>{fx(totals.net)}</b> <span className="rp-dim">(hours × load)</span>
-      </p>
-      {/* A fact, not a verdict: it states what net cannot distinguish and stops.
-          "You overdid it" would be the judgement §7.1 forbids. */}
-      <p className="rp-dim rp-enote">
-        Spend and restore are kept apart because their difference alone can’t tell a
-        busy, balanced week from an empty one — both net to zero.
-        {capacity
-          ? ' The dashed ring is what your ratings show you sustain.'
-          : ' No ceiling is drawn: capacity is learned from your ratings, and there aren’t enough yet.'}
       </p>
     </div>
   );

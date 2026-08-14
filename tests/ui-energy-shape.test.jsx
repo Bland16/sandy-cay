@@ -89,9 +89,12 @@ describe('the energy shape in the report', () => {
     render(<App />);
     openReport();
     // The most useful mark on the chart is exactly the one that may not be
-    // invented. A ring that appeared later would mean this week's chart lied.
+    // invented. Drawing no ring claims nothing, so a ring appearing once
+    // ratings calibrate contradicts nothing printed earlier — which is why the
+    // absence needs no sentence explaining it.
     expect(document.querySelector('.rp-dcap')).toBeNull();
-    expect(document.querySelector('.rp-enote').textContent).toMatch(/no ceiling is drawn/i);
+    // The section is the charts and the totals. Nothing else.
+    expect(document.querySelectorAll('.rp-energy p')).toHaveLength(1);
   });
 
   it('says there is nothing to weigh, rather than drawing an empty shape', () => {

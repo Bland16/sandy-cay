@@ -1312,7 +1312,6 @@ button:focus-visible, .dhopen:focus-visible, .card:focus-visible, .slot:focus-vi
 .rp-bftrack.rp-l .rp-bfnum { left: 4px; }
 .rp-bftrack.rp-r .rp-bfnum { right: 4px; }
 .rp-etot { margin: 8px 0 2px; font-size: 11.5px; }
-.rp-enote { font-size: 10.5px; margin: 0; max-width: 62ch; }
 
 @media print {
   /* Everything that is app rather than document. The report is a full page
