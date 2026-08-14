@@ -3,7 +3,7 @@
 // Tag roles (protected tags), Footlocker (export/import), Insights
 // (getTagBreakdown + learned weights read), Retrain.
 import { useRef, useState } from 'react';
-import { exportState, summarizeImport } from '../../core/index.js';
+import { exportState, summarizeImport, planBlockerConversion, convertBlockersToDayNotes } from '../../core/index.js';
 import { fmtDur } from '../format.js';
 import Icon from '../Icon.jsx';
 import CalendarCard from './CalendarCard.jsx';
@@ -52,6 +52,27 @@ export default function Cabana({ sched, mutate, weekStart, onBack, onReplace, on
   };
 
   const retrain = () => { const n = mutate((s) => s.retrain()); showToast(`Retrained on ${n} ratings`); bump(); };
+
+  // Whole-day blockers modelled as TASKS (DAY-NOTES §1) — offered, never done
+  // silently, because converting removes the tasks and a day note has no effect
+  // on placement (D-6). Stating both counts before asking is what makes it
+  // consentable: an action you cannot preview is one you cannot agree to.
+  const blockerPlan = planBlockerConversion(sched);
+  const convertBlockers = () => {
+    const { notes, taskIds } = blockerPlan;
+    const ok = window.confirm(
+      `Turn ${taskIds.length} whole-day blocker task${taskIds.length === 1 ? '' : 's'} into `
+      + `${notes.length} day note${notes.length === 1 ? '' : 's'}?\n\n`
+      + notes.map((n) => `  ${n.label}  ${n.from}${n.to !== n.from ? ` → ${n.to}` : ''}`).join('\n')
+      + '\n\nThe cards go; the days keep their names in the header. '
+      + 'A day note does not hold time, so these days stop being protected from '
+      + 'automatic placement. Export first if you want the old shape back.',
+    );
+    if (!ok) return;
+    const r = mutate((s) => convertBlockersToDayNotes(s));
+    showToast(`${r.tasksRemoved} cards → ${r.notesAdded} day note${r.notesAdded === 1 ? '' : 's'}`);
+    bump();
+  };
 
   const breakdown = sched.getTagBreakdown(weekStart);
   const maxTag = Math.max(1, ...breakdown.map((r) => r.scheduledMin));
@@ -102,6 +123,21 @@ export default function Cabana({ sched, mutate, weekStart, onBack, onReplace, on
             <button className="btn2 ghost" onClick={() => fileRef.current && fileRef.current.click()}><Icon name="key" /> Import</button>
             <input ref={fileRef} type="file" accept="application/json" style={{ display: 'none' }} onChange={doImport} />
           </div>
+          {blockerPlan.taskIds.length > 0 && (
+            <>
+              <p className="insight" style={{ marginTop: 10 }}>
+                <b>{blockerPlan.taskIds.length} task{blockerPlan.taskIds.length === 1 ? '' : 's'}</b>
+                {' '}here cover{blockerPlan.taskIds.length === 1 ? 's' : ''} a whole day, so
+                {' '}{blockerPlan.taskIds.length === 1 ? 'it draws' : 'they draw'} as full-height
+                cards standing where the day&rsquo;s contents belong. Converted, they become
+                {' '}<b>{blockerPlan.notes.length} day note{blockerPlan.notes.length === 1 ? '' : 's'}</b>
+                {' '}in the header instead.
+              </p>
+              <button className="btn2 ghost" style={{ marginTop: 6 }} onClick={convertBlockers}>
+                Convert to day notes
+              </button>
+            </>
+          )}
           <p className="insight" style={{ opacity: 0.75, marginTop: 10 }}>
             Starting fresh erases every task, zone and rating on this device. Export first
             if you want it back.
