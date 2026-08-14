@@ -338,47 +338,46 @@ reconstructed, the same argument that made `dayFill` urgent.
   (`ClearDayPanel`, scope choice + a row per anchor), so this is a launcher for
   it, not a second implementation of it.
 
-### ⚠️ OPEN BUG — a pattern edit that does not move the card (unresolved)
+### ⚠️ RECURRENCE PATTERN EDITING IS BROKEN SIX WAYS (audited 2026-08-14)
 
-**Reported 2026-08-14 with a screenshot, and it reproduces on the Pages site,
-so it is on `main` and predates sessions 7 and 8.** Not the occurrence-identity
-work, not the blocked-days work.
+Reported by the user, reproduces **on the Pages site**, so all of this is on
+`main` and predates sessions 7 and 8. Every finding below was proven by driving
+the real `<App/>` and printing the rendered cards — none is reasoning.
 
-Symptom: open a recurring Gym, set the pattern to 06:15–07:15, and the card
-stays at 17:00–19:00. The panel header reads `17:00–19:00 · DURATION` (the
-parent's own start/end) while the recurrence row reads `06:15`.
+**Findings 1 and 2 share ONE root, and it is the thing to fix:** `applyPattern`
+decides where to split *from the clock*, and both it and `modelFromTask`
+identify "the current period" as `periods.find((p) => !p.effectiveUntil)`
+— rather than as *the period governing the occurrence the user actually opened*.
+`task.occurrenceDate` / `task.startTime` is available in `applyPattern`
+(`TaskPanel.jsx`) and is never used.
 
-**Ruled OUT by probe, so do not re-tread these:**
-- A plain pattern edit works in a clean fixture (17:00 → 06:15 moved).
-- A hand-dragged `move` exception on that date does **not** block the update.
-- The "from now on" scope default is not it — the week in the screenshot is in
-  the *future* of today, so the split boundary cannot be suppressing it.
+| # | Defect | Origin |
+|---|---|---|
+| **1** | **The card you are looking at in the CURRENT week never moves.** `scope:'future'` (the default) splits at `new Date()`, so every occurrence earlier in the viewed week keeps the old period — while the toast says "Pattern updated". Editing a Monday routine on a Tuesday is the everyday case. | `TaskPanel.jsx:102` |
+| **2** | **A `temporaryChange` sandwich leaves TWO open-ended periods**, and the stale one sits EARLIER in `periods` so it wins for ever (`expandRecurrence` iterates in array order, `emit` is first-wins). The editor shows a third time that governs neither. "Including past" then edits only the tail. | `recurrence.js:287`, amplified by `:170`/`:146` |
+| **3** | **Editing the TIME of a monthly/yearly pattern rewrites WHICH DAY it lands on**, because `windowsForOption` manufactures the window from `patternAnchor` = the parent's stale `startTime`. "The first Tuesday" became the first *Monday*; the card vanishes from the date you were looking at. | `recurrenceModel.js:177–184` + `TaskPanel.jsx:37` |
+| **4** | **Any pattern edit resets a monthly/yearly interval to 1.** `applyPattern` passes four args to `windowsForOption`; the fifth is `intervalOverride`. "Every 3rd month" silently becomes every month — extra occurrences appear. | `TaskPanel.jsx:93–98` |
+| **5** | **"Temporary only": the day labelled "last day" runs at the OLD time.** `buildRecurrence` converts the inclusive edge with `untilAfterLastRun`; `applyPattern` passes the raw key to `temporaryChange`, and `periodActiveOn` is half-open (sharp edge #11). | `TaskPanel.jsx:100` |
+| **6** | **The editor can display "every week" for a monthly pattern and then act monthly.** `RecurrenceEditor` falls back to `'1'` for DISPLAY when the derived option is missing from `optionsForDate(anchor)`, but never writes it back, so `applyPattern` still reads `mlast`. | `RecurrenceEditor.jsx:47` |
 
-**The live hypothesis.** `getTasksForWeek` never renders a recurring parent, so
-that card is an occurrence whose governing window really is 17:00 — meaning the
-period the editor is showing is **not** the period governing that date.
-`modelFromTask` (and `applyPattern`'s non-split branch) both select
-`periods.find((p) => !p.effectiveUntil)` — the open-ended one — which after a
-`temporaryChange` sandwich or an odd `splitPeriod` need not cover the date you
-opened. If so, the fix is that both must select the period covering **the
-occurrence you clicked**, and the editor should say which period it is editing.
+**⚠️ Correction to an earlier entry in this file:** the "from now on" scope
+default WAS previously written off here as "not the cause". That was wrong for
+the current week — finding 1 is exactly it. It remains true that it cannot
+explain a week in the *future* of today, which is what the user's screenshot
+showed; for that case finding 2 is the leading explanation.
 
-**To settle it, dump the task** (needs the user's own data):
-```js
-const s = JSON.parse(localStorage.getItem('sandy-cay:schedule:v1'));
-console.log(JSON.stringify(s.tasks.filter((t) => t.title === 'Gym')
-  .map((t) => ({ id: t.id, start: t.startTime, end: t.endTime, rec: t.recurrence })), null, 2));
-```
-More than one entry in `rec.periods` confirms the hypothesis.
+**Ruled out by execution — do not re-tread:** `reviveRecurrence`/
+`recurrenceToJSON` round-trip a 4-period sandwiched monthly pattern
+byte-identically *including array order*; `UPDATE_WHITELIST` is not on this path
+at all (`applyPattern` mutates `parent.recurrence` inside `mutate()` directly);
+`occurrenceData` never overrides an occurrence's times (`buildOccurrence` reads
+only `completion`/`satisfaction`/`history`); weekly interval parity survives an
+edit; multi-day weekly patterns edit correctly (Mon+Wed, editing Mon, moves only
+Mon).
 
-**Found while auditing, real, and not the above:**
-- **A `move` exception cannot be cleared from the UI.** Dragging a session
-  writes one (`useCardInteraction`, `App`), and nothing in `src/ui` removes one,
-  so a session dragged once is pinned against later pattern edits with no way
-  back short of editing storage.
-- **"from now on" is the default scope** (`modelFromTask` sets
-  `scope: 'future'`), so days earlier in the *current* week keep the old time
-  after an edit. Correct per 4B, and it is what "it didn't change" looks like.
+**Still needed to say which one hits the user:** their Gym task's
+`rec.periods`. More than one open-ended period ⇒ finding 2.
+
 
 ### Deliberately NOT in this list, so nobody quietly starts one
 
