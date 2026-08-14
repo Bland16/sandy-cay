@@ -7,6 +7,7 @@ import {
   time,
 } from '../core/index.js';
 import { Task } from '../core/Task.js';
+import { periodFor } from '../core/recurrence.js';
 import { expandRecurrence } from '../core/recurrence.js';
 import { DAY_FULL, MONTHS } from './format.js';
 
@@ -357,10 +358,17 @@ export function seedForDate(model, date) {
 }
 
 /** Derive an editor model from an existing task's recurrence (for the edit panel). */
-export function modelFromTask(task) {
+export function modelFromTask(task, onDate = null) {
   if (!task.recurrence) return emptyRecurrence();
   const rec = task.recurrence;
-  const active = rec.periods.find((p) => !p.effectiveUntil) || rec.periods[0] || {};
+  // The period governing the SESSION YOU OPENED, not "the one with no end".
+  // Those are different the moment a pattern has more than one period, and
+  // picking the open-ended one showed the user a time that governed no date
+  // they could see — they then edited it and nothing moved.
+  const active = (onDate && periodFor(rec, onDate))
+    || rec.periods.find((p) => !p.effectiveUntil)
+    || rec.periods[0]
+    || {};
   const freq = active.freq || 'weekly';
   const w0 = (active.windows || [])[0] || {};
   return {

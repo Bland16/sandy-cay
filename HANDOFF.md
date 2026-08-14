@@ -338,7 +338,30 @@ reconstructed, the same argument that made `dayFill` urgent.
   (`ClearDayPanel`, scope choice + a row per anchor), so this is a launcher for
   it, not a second implementation of it.
 
-### ⚠️ RECURRENCE PATTERN EDITING IS BROKEN SIX WAYS (audited 2026-08-14)
+### ✅ RECURRENCE PATTERN EDITING — FIXED 2026-08-14 (audited, then repaired)
+
+All six below are fixed; `tests/recurrence-pattern-edit.test.jsx` locks them.
+**Five of the eight tests were verified to BITE** — each fix was reverted in
+turn and the matching test failed. Two of my first attempts at those checks
+were themselves wrong (a 'revert' that still superseded, and a fixture whose
+parent start happened to agree with its pattern date, so nothing diverged);
+both were corrected, which is the only reason the vacuity was caught.
+
+**⚠️ Finding 6 is fixed but NOT proven by a biting test, and that is honest
+rather than lazy:** anchoring on the opened session makes the situation
+unreachable from the UI, because an `mlast` pattern's occurrence always IS a
+last weekday. The one-line change stands as a defence for a caller that opens
+a parent rather than an occurrence. Do not delete it believing it is covered.
+
+**The shared root of 1 and 2, now fixed:** `applyPattern` split from the clock,
+and it and `modelFromTask` both identified "the current period" as the one with
+no `effectiveUntil`. Both now use `periodFor(recurrence, editDate)` and split at
+the session you opened. `splitPeriod` also SUPERSEDES now — it closes anything
+still running and drops anything that would start later, so a pattern can never
+again hold two open-ended periods.
+
+The original audit follows.
+
 
 Reported by the user, reproduces **on the Pages site**, so all of this is on
 `main` and predates sessions 7 and 8. Every finding below was proven by driving

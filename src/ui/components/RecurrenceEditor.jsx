@@ -13,7 +13,7 @@
 // a live preview of the real dates settles whatever the wording can't.
 import { DAY_NAMES, DAY_KEYS, MONTHS } from '../format.js';
 import {
-  isWeekdayPattern, toWeekdayWindows, toEveryDayWindows, optionsForDate, previewDates, optionOfModel,
+  isWeekdayPattern, toWeekdayWindows, toEveryDayWindows, previewDates, optionOfModel,
   TOP_FREQUENCIES, monthlyModesForDate, uiChoiceOf, choiceToOption, timesOf, withTimes,
 } from '../recurrenceModel.js';
 
@@ -39,12 +39,21 @@ export default function RecurrenceEditor({ model, onChange, anchorDate, allowSco
   const removeWindow = (i) => patch({ windows: model.windows.filter((_, idx) => idx !== i) });
 
   const date = anchorDate instanceof Date ? anchorDate : new Date();
-  const options = optionsForDate(date);
   const monthModes = monthlyModesForDate(date);
-  // Fall back rather than show a blank select: an option can vanish when the
-  // date moves (there is no "last Tuesday" in the middle of a month).
   const derived = optionOfModel(model);
-  const option = options.some((o) => o.value === derived) ? derived : '1';
+  // An option can genuinely be absent for a date (there is no "last Tuesday" in
+  // the middle of a month). The old code fell back to '1' for DISPLAY and never
+  // wrote it back, so a monthly pattern rendered as "every week" with weekly day
+  // rows and a weekly preview — and then `applyPattern` read the untouched
+  // `mlast` and acted monthly. The editor said one thing and the engine did
+  // another.
+  //
+  // So: keep the real option, always. `optionsForDate` was only ever used as a
+  // validator here — the select itself is driven by TOP_FREQUENCIES and the
+  // monthly sub-modes — so "is this option in the list for this date" was
+  // deciding what the whole control looked like, and answering it wrong turned
+  // a monthly pattern into a weekly one on screen.
+  const option = derived;
   const choice = uiChoiceOf({ ...model, option });
   // Day rows belong to "every week" (and to "other → every N weeks"), because
   // "Mon AND Wed" is a real thing to want. Everything else needs only a time:

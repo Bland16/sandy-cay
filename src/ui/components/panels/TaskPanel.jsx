@@ -5,10 +5,11 @@
 import { useState } from 'react';
 import {
   addMinutes, atTime, addDays, dateKey, formatHHMM,
-  addException, splitPeriod, temporaryChange, endRecurrence, dayStart, dateFromKey,
+  addException, splitPeriod, periodFor, temporaryChange, endRecurrence, dayStart, dateFromKey,
+  untilAfterLastRun,
 } from '../../../core/index.js';
 import { DAY_NAMES, fmtRange } from '../../format.js';
-import { modelFromTask, buildRecurrence, windowsForOption } from '../../recurrenceModel.js';
+import { modelFromTask, buildRecurrence, windowsForOption, optionFromPeriod } from '../../recurrenceModel.js';
 import PanelHeader from '../PanelHeader.jsx';
 import DurationControl from '../DurationControl.jsx';
 import TagEditor, { tagsInUse } from '../TagEditor.jsx';
@@ -30,11 +31,18 @@ const cycleFacet = (v) => (!v ? 1 : v === 1 ? -1 : 0);
 export default function TaskPanel({ task, sched, mutate, weekStart, onClose, showToast, onGapFreed }) {
   // Resolve the editable underlying task: an occurrence edits its parent.
   const editable = task.isOccurrence ? sched.tasks.find((t) => t.id === task.parentId) : task;
-  const [recModel, setRecModel] = useState(() => modelFromTask(editable || task));
-  // What "the first Tuesday" is measured against. A task's own start is the
-  // honest anchor; a brand-new pattern on an unplaced task falls back to the
-  // week in view.
-  const patternAnchor = (editable && editable.startTime) || task.startTime || weekStart;
+  // The DATE THE USER OPENED. Everything about editing a pattern hangs off this
+  // and it used to hang off the parent's own `startTime` — a date the pattern
+  // may have left behind months ago.
+  const editDate = task.startTime || (editable && editable.startTime) || weekStart;
+  const [recModel, setRecModel] = useState(() => modelFromTask(editable || task, editDate));
+  // What "the first Tuesday" is measured against. The session in front of you:
+  // for an `mlast` pattern that date genuinely IS a last-weekday, so the option
+  // is offered instead of silently falling back to "every week"; for a monthly
+  // one it is the real day of the month. The parent's stale start answered
+  // neither, and `windowsForOption` MANUFACTURES monthly/yearly windows from
+  // this date, so a wrong anchor moved the pattern to a different day.
+  const patternAnchor = editDate;
   const [slots, setSlots] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [extraDay, setExtraDay] = useState(0);
@@ -90,18 +98,52 @@ export default function TaskPanel({ task, sched, mutate, weekStart, onClose, sho
       // Route through the option, not the raw rows: a monthly pattern's windows
       // are {monthDay} or {day,nth}, and writing the editor's weekly-shaped rows
       // straight through would silently turn it back into a weekly one.
-      const { freq, interval, windows } = windowsForOption(
-        recModel.option || `w${Number(recModel.interval) || 1}`,
+      // The period governing the session you opened — see modelFromTask.
+      const active = periodFor(parent.recurrence, editDate)
+        || parent.recurrence.periods.find((p) => !p.effectiveUntil)
+        || parent.recurrence.periods[0];
+      const prevOption = optionFromPeriod(active);
+      const times = recModel.windows[0] || { start: '09:00', end: '10:00' };
+      const chosen = { freq: 'weekly', interval: 1, windows: [], ...windowsForOption(
+        recModel.option || prevOption,
         patternAnchor,
-        recModel.windows[0] || { start: '09:00', end: '10:00' },
+        times,
         recModel.windows,
-      );
+        // The 5th argument is `intervalOverride`, and omitting it silently reset
+        // "every 3rd month" to every month on any edit.
+        recModel.interval,
+      ) };
+      let { windows } = chosen;
+      const { freq, interval } = chosen;
+
+      // ⚠️ Changing the TIME must not change the DATE. `windowsForOption`
+      // rebuilds a monthly/yearly window from the anchor (`monthDay`, `nth`,
+      // `month`), so an unchanged option would re-derive the date and move the
+      // session to a different day. When the shape is the same as what is
+      // stored, keep the stored date fields and swap only the times.
+      if (freq !== 'weekly' && prevOption === (recModel.option || prevOption) && active && active.windows.length) {
+        windows = active.windows.map((w) => ({ ...w, start: times.start, end: times.end }));
+      }
+
       if (recModel.temporary && recModel.temporary.from && recModel.temporary.until) {
-        temporaryChange(parent, dateFromKey(recModel.temporary.from), dateFromKey(recModel.temporary.until), windows, { interval, freq });
+        // The model's `until` is INCLUSIVE — the last day it runs — and the
+        // engine's bound is exclusive (sharp edge #11). `buildRecurrence`
+        // converts it; this path did not, so the day the user named as the last
+        // one ran at the OLD time.
+        temporaryChange(
+          parent,
+          dateFromKey(recModel.temporary.from),
+          untilAfterLastRun(dateFromKey(recModel.temporary.until)),
+          windows,
+          { interval, freq },
+        );
       } else if (recModel.scope === 'future') {
-        splitPeriod(parent, new Date(), windows, { interval, freq });
+        // Split at the SESSION YOU OPENED, not at the clock. Splitting at `new
+        // Date()` meant the card you were looking at never moved whenever it sat
+        // earlier in the week than today — while the toast said "Pattern
+        // updated". "From now on" means from the one in front of you.
+        splitPeriod(parent, editDate, windows, { interval, freq });
       } else {
-        const active = parent.recurrence.periods.find((p) => !p.effectiveUntil) || parent.recurrence.periods[0];
         active.windows = windows;
         active.interval = interval;
         if (freq === 'weekly') delete active.freq; else active.freq = freq;

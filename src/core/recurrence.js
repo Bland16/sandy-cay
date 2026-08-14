@@ -281,18 +281,57 @@ export function addException(task, dateKeyStr, action, times = {}) {
 
 /** Period split for a permanent change "from now on" (4B). Closes the active
  *  period at `fromDate` and opens a new one with the new windows. */
+export function periodFor(recurrence, date) {
+  if (!recurrence) return null;
+  // LAST match wins. Periods are not stored chronologically (`temporaryChange`
+  // pushes a reopened tail after the middle slice), so "the first one that
+  // matches" is an accident of insertion order, not a decision.
+  let found = null;
+  for (const p of recurrence.periods || []) if (periodActiveOn(p, date)) found = p;
+  return found;
+}
+
+/**
+ * "From now on, the pattern is this" (4B).
+ *
+ * ⚠️ It SUPERSEDES, and that is the fix for a real bug. It used to close only
+ * the period active at `from` and push a new one — so if a `temporaryChange`
+ * sandwich had left a reopened tail further down the array, the schedule ended
+ * up with TWO open-ended periods. `expandRecurrence` iterates periods in array
+ * order and `emit` is first-wins on identity, so the STALE tail beat the new
+ * period for ever: the user edited the pattern, was told "Pattern updated", and
+ * every future session kept its old time. `modelFromTask` picked the same stale
+ * tail, so the editor showed a third time that governed neither.
+ *
+ * Superseding is also what the words mean. If you say "from Tuesday on it is
+ * 06:15", a temporary change you had queued for next month is not still owed to
+ * you — it is part of the future you just overwrote.
+ */
 export function splitPeriod(task, fromDate, newWindows, opts = {}) {
   if (!task.recurrence) return;
   const from = dayStart(fromDate);
   const active = task.recurrence.periods.find((p) => periodActiveOn(p, from));
-  if (active) active.effectiveUntil = from;
   // A new period inherits the old period's frequency unless told otherwise —
   // changing the times of a monthly pattern must not silently make it weekly.
   const freq = opts.freq || (active ? freqOf(active) : 'weekly');
+  const interval = opts.interval ?? (active ? active.interval : 1);
+
+  const kept = [];
+  for (const p of task.recurrence.periods) {
+    // Anything that would START at or after the split is entirely superseded.
+    if (p.effectiveFrom && dayStart(p.effectiveFrom).getTime() >= from.getTime()) continue;
+    // Anything still running at the split is closed there.
+    if (!p.effectiveUntil || dayStart(p.effectiveUntil).getTime() > from.getTime()) {
+      p.effectiveUntil = from;
+    }
+    kept.push(p);
+  }
+  task.recurrence.periods = kept;
+
   task.recurrence.periods.push({
     ...(freq !== 'weekly' ? { freq } : {}),
     windows: newWindows.map((w) => ({ ...w })),
-    interval: opts.interval ?? (active ? active.interval : 1),
+    interval,
     effectiveFrom: from,
     effectiveUntil: opts.effectiveUntil ? dayStart(opts.effectiveUntil) : null,
   });

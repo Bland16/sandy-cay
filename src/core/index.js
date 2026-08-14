@@ -28,7 +28,7 @@ export { isFullDayBlocker, planBlockerConversion, convertBlockersToDayNotes } fr
 export { carryOver, letThemGo } from './carryOver.js';
 export { checkRollover, commitRollover, weekAfter, weekKeyOf } from './rollover.js';
 export { autoSchedule, freeCapacityBefore } from './autoSchedule.js';
-export { expandRecurrence, addException, splitPeriod, temporaryChange, endRecurrence, dateOfOccurrence, occursOn } from './recurrence.js';
+export { expandRecurrence, addException, splitPeriod, periodFor, temporaryChange, endRecurrence, dateOfOccurrence, occursOn } from './recurrence.js';
 export { DayNote } from './DayNote.js';
 export { addProject, shrinkChunk, growChunk, deleteChunk, resizeChunk, finishProject, sliceChunks, redistribute } from './projects.js';
 export {
