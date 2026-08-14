@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sandy Cay — spend and restore, overlaid</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Rye&family=Special+Elite&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --paper:#F1E9D8; --paper-shade:#E7DCC6; --ink:#2A2620; --ink-soft:#6E665A; --film:#141210;
+  --hair:#D2C6A9; --primary:#2E8C99; --fixed:#5FB8B0; --pinned:#C9A96E;
+  --rest:#7FBE8B; --warning:#E2685F; --cta:#E8B94D; --info:#8AA7C2;
+  --cab-bg:#4E3B2A; --cab-surface:#6B5138; --cab-trim:#8B6F52; --cab-text:#F5E9D9; --cab-accent:#FFD166;
+  --font-display:'Rye',Georgia,serif; --font-type:'Special Elite','Courier New',monospace; --font-body:'Nunito',system-ui,sans-serif;
+  /* Spend is sand, restore is the app's own --rest green. Deliberately NOT
+     coral: P-1 keeps coral for scheduling physics, and a busy day is not a
+     fault. */
+  --spend:#C9A96E; --restore:#7FBE8B;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--film);font-family:var(--font-body);color:var(--paper);padding:26px 20px 90px}
+h1{font-family:var(--font-display);font-size:25px;color:var(--cta);margin:0 0 3px}
+.lede{font-family:var(--font-type);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#b8ac96;margin:0 0 20px}
+h2{font-family:var(--font-display);font-size:18px;color:var(--cta);margin:36px 0 6px}
+.note{font-size:12.5px;line-height:1.65;color:#d8cdb8;max-width:960px;margin:0 0 14px}
+.note b{color:var(--cta)} .note code{font-family:var(--font-type);font-size:11.5px;color:#f0dcae}
+.note.tight{margin-bottom:8px}
+hr{border:none;border-top:1px solid #322b22;margin:34px 0 0}
+.row{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start}
+
+/* the cabana card, so these read as the real "Energy today" card */
+.cabcard{background:rgba(20,12,6,.34);border:2px solid var(--cab-trim);border-radius:14px;padding:14px;color:var(--cab-text)}
+.cabsign{font-family:var(--font-display);font-size:15px;color:var(--cab-accent);background:rgba(0,0,0,.28);
+  border:2px solid var(--cab-trim);border-radius:8px;padding:3px 11px;display:inline-block;margin-bottom:9px;
+  box-shadow:0 4px 0 rgba(0,0,0,.3)}
+.cabcard .cap{font-family:var(--font-type);font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+  color:#c9b48f;margin:0 0 8px}
+.legend{display:flex;gap:14px;font-family:var(--font-type);font-size:10px;color:#d8cdb8;margin-top:8px;flex-wrap:wrap}
+.legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.sw-spend{background:var(--spend)} .sw-restore{background:var(--restore)}
+.tot{font-family:var(--font-type);font-size:10.5px;color:#c9b48f;margin-top:7px}
+.tot b{color:var(--cab-accent)}
+
+/* butterfly */
+.bf{display:grid;grid-template-columns:64px 1fr 1fr;gap:3px 6px;align-items:center;margin-top:4px}
+.bf .ax{font-family:var(--font-type);font-size:10px;color:#c9b48f;text-align:right}
+.bf .l,.bf .r{height:15px;position:relative;background:rgba(0,0,0,.22);border-radius:3px}
+.bf .l span{position:absolute;right:0;top:0;bottom:0;background:var(--restore);border-radius:3px}
+.bf .r span{position:absolute;left:0;top:0;bottom:0;background:var(--spend);border-radius:3px}
+.bf .n{font-family:var(--font-type);font-size:9.5px;color:#e9dcc4;position:absolute;top:2px}
+.bf .l .n{left:4px} .bf .r .n{right:4px}
+.bfhead{display:grid;grid-template-columns:64px 1fr 1fr;gap:6px;font-family:var(--font-type);font-size:9px;
+  letter-spacing:.06em;text-transform:uppercase;color:#8f8471;margin-top:6px}
+.bfhead .a{text-align:right;color:var(--restore)} .bfhead .b{color:var(--spend)}
+</style>
+</head>
+<body>
+
+<h1>Spend and restore, overlaid</h1>
+<p class="lede">your idea — two polygons, one card, four axes</p>
+
+<p class="note">
+  <b>This is worth doing, and here is the argument for it.</b> The card in the Cabana today shows
+  each axis as <i>"steady"</i> — a single net number. Net is what the engine acts on, but net
+  <b>throws away the thing you most want to see</b>: a day that spends 6 and restores 6 nets to
+  zero and reads <i>identical</i> to a day where nothing happened at all. Overlaying the two
+  recovers exactly that difference, which is why your instinct is right.
+</p>
+<p class="note">
+  <b>It costs no model change.</b> Every task already carries a four-axis load and a duration, so
+  spend and restore per axis are a few lines over data the app already has:
+  <code>L[a] &gt; 0 → spend[a] += L[a]×hours</code>, <code>L[a] &lt; 0 → restore[a] += −L[a]×hours</code>,
+  and <code>net = spend − restore</code>, which is what <code>energyBudget</code> already reports.
+</p>
+<p class="note">
+  <b>One honest limit, stated up front.</b> <code>loadForTask</code> already merges a task's own
+  positive and negative contributions per axis before returning
+  (<code>posMean + negMean</code>). So this split is <i>"hours that spent you"</i> versus
+  <i>"hours that gave back"</i> — not a full double-entry ledger of a single task doing both. It is
+  the true shape of the day at task granularity, and it should not be described as more than that.
+</p>
+<p class="note">
+  <b>Four axes, not six.</b> Your reference gets a pleasing hexagon; four points give a diamond,
+  which is coarser and distorts more — two axes high and two low reads as a slash. That is the one
+  real cost, and it is why the <b>butterfly</b> below is here as a rival rather than as a
+  consolation. Numbers are printed on every version regardless, exactly as your reference prints
+  <code>169/169</code> — §10 forbids meaning carried by colour alone, and a polygon with no
+  numerals is precisely that.
+</p>
+
+<div id="out"></div>
+
+<hr />
+<h2>Which one</h2>
+<p class="note">
+  <b>The radar is the better card, the butterfly is the better report.</b> The radar wins where you
+  want <i>shape recognition at a glance</i> — the Cabana's "Energy today", where you look at it
+  daily and learn what your own Tuesday looks like. Its weakness is real though: four axes distort,
+  and two overlapping translucent polygons are exactly the kind of thing that dies on a greyscale
+  printer, which the wrap report is designed to survive.
+</p>
+<p class="note">
+  <b>The butterfly wins in the report</b> — it is exact, it reads without decoding, it prints, and
+  it scales to a week without turning into spaghetti. If only one gets built, build the butterfly,
+  because it can live in both places; the radar can only live in one.
+</p>
+<p class="note">
+  <b>A capacity ring is the thing to be careful with.</b> A dashed ring showing what you sustain is
+  the most useful mark on the chart — and it is exactly what P-2 forbids inventing.
+  <code>learnedCapacity</code> returns <code>null</code> until roughly three weeks of ratings, and
+  you are at <b>0 ratings, cold start</b>. So the honest version has <b>no ring at all</b> yet, and
+  says so. The last card below shows both states side by side, because a chart that quietly grows a
+  ceiling later is a chart that lied earlier.
+</p>
+
+<script>
+const AXES = ['mental', 'physical', 'social', 'creative'];
+const MAX = 8; // hours-weighted units; the mock's fixed scale
+
+/* Illustrative days, shaped like their real week (8 courses, chorus, gym, clubs). */
+const DAYS = [
+  { name: 'Term Tuesday', cap: 'classes, chorus, gym at 19:00',
+    spend:   { mental: 6.4, physical: 1.1, social: 3.2, creative: 2.6 },
+    restore: { mental: 0.4, physical: 2.2, social: 1.1, creative: 1.8 } },
+  { name: 'Reading day', cap: 'no classes, long study block',
+    spend:   { mental: 7.2, physical: 0.3, social: 0.4, creative: 0.6 },
+    restore: { mental: 0.2, physical: 0.6, social: 0.2, creative: 0.4 } },
+  { name: 'Saturday', cap: 'gym, friends, making',
+    spend:   { mental: 1.1, physical: 3.4, social: 3.0, creative: 2.2 },
+    restore: { mental: 3.1, physical: 1.6, social: 2.8, creative: 3.4 } },
+];
+
+/* The pair that makes the case: identical net, opposite lives. */
+const PAIR = [
+  { name: 'Busy and balanced', cap: 'net 0 on every axis',
+    spend:   { mental: 5.0, physical: 3.0, social: 4.0, creative: 3.0 },
+    restore: { mental: 5.0, physical: 3.0, social: 4.0, creative: 3.0 } },
+  { name: 'Nothing happened', cap: 'net 0 on every axis',
+    spend:   { mental: 0.2, physical: 0.1, social: 0.1, creative: 0.1 },
+    restore: { mental: 0.2, physical: 0.1, social: 0.1, creative: 0.1 } },
+];
+
+const sum = (o) => AXES.reduce((n, a) => n + o[a], 0);
+const fx = (n) => (Math.round(n * 10) / 10).toFixed(1);
+
+/** Points for a 4-axis radar: mental top, physical right, social bottom, creative left. */
+function pts(vals, r, cx, cy) {
+  return AXES.map((a, i) => {
+    const ang = -Math.PI / 2 + i * (2 * Math.PI / AXES.length);
+    const rr = (Math.min(vals[a], MAX) / MAX) * r;
+    return `${(cx + rr * Math.cos(ang)).toFixed(1)},${(cy + rr * Math.sin(ang)).toFixed(1)}`;
+  }).join(' ');
+}
+function axisPt(i, r, cx, cy) {
+  const ang = -Math.PI / 2 + i * (2 * Math.PI / AXES.length);
+  return [cx + r * Math.cos(ang), cy + r * Math.sin(ang)];
+}
+
+function radar(d, { ring = null, size = 210 } = {}) {
+  const cx = size / 2, cy = size / 2, r = size * 0.34;
+  const grid = [0.25, 0.5, 0.75, 1].map((f) =>
+    `<polygon points="${AXES.map((a, i) => axisPt(i, r * f, cx, cy).map((v) => v.toFixed(1)).join(',')).join(' ')}"
+      fill="none" stroke="rgba(245,233,217,.20)" stroke-width="1"/>`).join('');
+  const spokes = AXES.map((a, i) => {
+    const [x, y] = axisPt(i, r, cx, cy);
+    return `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="rgba(245,233,217,.20)" stroke-width="1"/>`;
+  }).join('');
+  const labels = AXES.map((a, i) => {
+    const [x, y] = axisPt(i, r + 21, cx, cy);
+    return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" dominant-baseline="middle"
+      font-family="'Special Elite',monospace" font-size="9.5" fill="#c9b48f">${a}</text>
+      <text x="${x.toFixed(1)}" y="${(y + 11).toFixed(1)}" text-anchor="middle" dominant-baseline="middle"
+      font-family="'Special Elite',monospace" font-size="9.5" fill="#F5E9D9">${fx(d.spend[a])}<tspan fill="#7FBE8B">/${fx(d.restore[a])}</tspan></text>`;
+  }).join('');
+  const ringEl = ring == null ? '' :
+    `<polygon points="${AXES.map((a, i) => axisPt(i, (ring / MAX) * r, cx, cy).map((v) => v.toFixed(1)).join(',')).join(' ')}"
+      fill="none" stroke="#FFD166" stroke-width="1.6" stroke-dasharray="4 3"/>`;
+  return `<svg viewBox="0 0 ${size} ${size + 26}" width="${size}" height="${size + 26}" role="img"
+      aria-label="${d.name}: ${AXES.map((a) => `${a} spend ${fx(d.spend[a])}, restore ${fx(d.restore[a])}`).join('; ')}">
+    ${grid}${spokes}${ringEl}
+    <polygon points="${pts(d.spend, r, cx, cy)}" fill="rgba(201,169,110,.45)" stroke="#C9A96E" stroke-width="2"/>
+    <polygon points="${pts(d.restore, r, cx, cy)}" fill="rgba(127,190,139,.42)" stroke="#7FBE8B" stroke-width="2" stroke-dasharray="5 3"/>
+    ${labels}
+  </svg>`;
+}
+
+function butterfly(d) {
+  const max = Math.max(...AXES.map((a) => Math.max(d.spend[a], d.restore[a])), 1);
+  const rows = AXES.map((a) => {
+    const lw = (d.restore[a] / max) * 100, rw = (d.spend[a] / max) * 100;
+    return `<div class="ax">${a}</div>
+      <div class="l"><span style="width:${lw.toFixed(1)}%"></span><i class="n">${fx(d.restore[a])}</i></div>
+      <div class="r"><span style="width:${rw.toFixed(1)}%"></span><i class="n">${fx(d.spend[a])}</i></div>`;
+  }).join('');
+  return `<div class="bfhead"><div></div><div class="a">restored ◀</div><div class="b">▶ spent</div></div>
+    <div class="bf">${rows}</div>`;
+}
+
+function card(d, inner, extra = '') {
+  return `<div class="cabcard" style="width:264px">
+    <div class="cabsign">${d.name}</div>
+    <div class="cap">${d.cap}</div>
+    ${inner}
+    <div class="tot">spent <b>${fx(sum(d.spend))}</b> · restored <b>${fx(sum(d.restore))}</b> · net <b>${fx(sum(d.spend) - sum(d.restore))}</b></div>
+    ${extra}
+    <div class="legend"><span><i class="sw-spend"></i>spent</span><span><i class="sw-restore"></i>restored (dashed)</span></div>
+  </div>`;
+}
+
+let html = '';
+
+html += `<h2>R1 · the radar, straight from your reference</h2>
+<p class="note tight">Spend filled and solid, restore overlaid dashed on top. Numbers at every axis
+read <code>spent/restored</code>, so the chart is a picture of something you can also just read.</p>
+<div class="row">${DAYS.map((d) => card(d, radar(d))).join('')}</div>`;
+
+html += `<h2>R2 · the butterfly — the same numbers, no polygon</h2>
+<p class="note tight">Restore left, spend right, one row per axis. Nothing is occluded, nothing
+distorts, it prints in greyscale, and a fifth axis would cost one more row rather than a new shape.</p>
+<div class="row">${DAYS.map((d) => card(d, butterfly(d))).join('')}</div>`;
+
+html += `<h2>Why net alone cannot say this</h2>
+<p class="note tight">Both of these are <b>net zero on every axis</b>. The current card calls them
+both "steady". They are not remotely the same day, and that is the whole case for the overlay.</p>
+<div class="row">${PAIR.map((d) => card(d, radar(d))).join('')}
+${PAIR.map((d) => card(d, butterfly(d))).join('')}</div>`;
+
+html += `<h2>The capacity ring, and the state you are actually in</h2>
+<p class="note tight">Left: what it looks like once ratings have earned a ceiling — the dashed gold
+ring is learned capacity, and crossing it means overdrawn. Right: the honest version <b>today</b>,
+at 0 ratings. No ring, no verdict, and it says why. <code>learnedCapacity</code> returns
+<code>null</code> until calibrated, and P-2 exists precisely so the app never draws a ceiling it
+has not earned.</p>
+<div class="row">
+  ${card(DAYS[0], radar(DAYS[0], { ring: 6.5 }), '<div class="tot">ceiling <b>6.5</b> · learned from 19 rated days</div>')}
+  ${card(DAYS[0], radar(DAYS[0]), '<div class="tot" style="color:#8f8471">no ceiling yet — still learning your rhythm (0 of 3 weeks rated)</div>')}
+</div>`;
+
+document.getElementById('out').innerHTML = html;
+</script>
+</body>
+</html>
