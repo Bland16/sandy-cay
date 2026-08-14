@@ -219,22 +219,40 @@ body {
 .dayhead.today .dn { color: var(--primary); }
 
 /* Day notes (design/DAY-NOTES.md §4) — a fact about the day, in its header.
-   Deliberately NOT coral and deliberately not a tint on the column: a holiday
-   is not a scheduling problem, and P-1 keeps colour for physics. A tint means
-   the day is BLOCKED, which is a different state entirely (D-1/D-6). */
+   Treatment C, chosen by eye from design/day-header-mockups.html: a tinted bar,
+   FULL-BLEED along the header's bottom edge. The bleed is load-bearing, not
+   decoration — the negative margins let neighbouring days' bars touch, so a
+   multi-day note reads as one run across the week (§4's "a band across the week
+   rather than a mark on its first day") with no span machinery, and with
+   nothing for the weekend drawer's edge to cut in half.
+
+   Tinting the BAR is the allowed half of D-1, which refuses a tint on the
+   COLUMN but keeps tags for tinting "its own chip". Never coral: a holiday is
+   a fact, not a scheduling problem (P-1). */
 .dnline {
   display: flex; align-items: center; justify-content: center; gap: 3px;
-  padding: 1px 3px 0; min-width: 0;
-  font-family: var(--font-type); font-size: 8.5px; line-height: 1.35;
-  color: var(--ink-soft);
+  width: calc(100% + 6px); margin: 2px -3px -6px; padding: 1.5px 4px;
+  border: none; cursor: pointer; text-align: center;
+  font-family: var(--font-type); font-size: 8.5px; line-height: 1.4;
+  color: var(--ink); background: rgba(46,140,153,.16);
+  transition: background .12s;
 }
-.dnline svg { flex: 0 0 auto; }
+.dnline.note { background: rgba(201,169,110,.30); }
+.dnline:hover { background: rgba(46,140,153,.30); }
+.dnline.note:hover { background: rgba(201,169,110,.46); }
+/* The open panel's day, marked on the bar itself — not by colour alone (§10):
+   the panel is titled with the same day, and the inset rule is a second cue. */
+.dnline.sel { box-shadow: inset 0 0 0 1.5px var(--ink); }
 /* The label is the only thing allowed to shrink — the "+2" must survive, since
    a truncated count would understate the day. */
 .dnline .dnlabel { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dnline .dnmore { flex: 0 0 auto; opacity: .7; }
-.dnline.holiday { color: var(--primary); }
+.dnline .dnmore { flex: 0 0 auto; font-weight: 700; opacity: .8; }
 .dayhead.compact .dnline { font-size: 8px; }
+
+/* A note's kind, as a colour-independent mark: the day view and the panel have
+   room for a swatch where the header bar does not. */
+.dnswatch { flex: 0 0 auto; width: 4px; align-self: stretch; border-radius: 2px; background: var(--primary); }
+.dnitem.note .dnswatch, .dnrow.note .dnswatch { background: var(--pinned); }
 
 /* The day view's full list — label, range, source. */
 .dnlist {
@@ -242,10 +260,19 @@ body {
   display: flex; flex-direction: column; gap: 5px;
   border-bottom: 1px solid var(--hair); background: var(--paper-shade);
 }
-.dnitem { display: flex; align-items: center; gap: 6px; font-family: var(--font-type); font-size: 11.5px; }
-.dnitem svg { flex: 0 0 auto; color: var(--ink-soft); }
-.dnitem.holiday svg { color: var(--primary); }
+.dnitem { display: flex; align-items: center; gap: 6px; font-family: var(--font-type); font-size: 11.5px; min-height: 15px; }
 .dnitem .dnmeta { color: var(--ink-soft); font-size: 10.5px; }
+
+/* The right panel behind the bar. Facts only — no actions (D-6 is its own work). */
+.dnpanel { list-style: none; margin: 0; padding: 0; }
+.dnrow {
+  display: flex; align-items: stretch; gap: 7px; padding: 8px 9px; margin: 0 0 6px;
+  background: var(--paper); border: 1px solid var(--hair); border-radius: 8px;
+}
+.dnrow .dntxt { min-width: 0; flex: 1; }
+.dnrow .dnlabel { display: block; font-weight: 700; font-size: 12.5px; line-height: 1.3; }
+.dnrow .dnmeta { display: block; font-family: var(--font-type); font-size: 10px; color: var(--ink-soft); margin-top: 2px; }
+.dnempty { font-family: var(--font-type); font-size: 11px; color: var(--ink-soft); }
 
 .dhdots {
   position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; padding: 0;

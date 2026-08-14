@@ -29,6 +29,7 @@ import OverpackNotice from './ui/components/OverpackNotice.jsx';
 import WrapReport from './ui/components/WrapReport.jsx';
 import DayPicker from './ui/components/DayPicker.jsx';
 import WeekendDrawer from './ui/components/WeekendDrawer.jsx';
+import { DAY_NOTES_MODE, dayNotesIndex } from './ui/components/DayNotes.jsx';
 import Icon from './ui/Icon.jsx';
 
 const WEEKDAYS = [0, 1, 2, 3, 4];
@@ -95,6 +96,14 @@ export default function App() {
   useEffect(() => () => { clearTimeout(toastTimer.current); clearTimeout(gapTimer.current); }, []);
 
   const closePanel = useCallback(() => setSelection(null), []);
+
+  // A day's notes are a panel mode like any other, so opening one REPLACES
+  // whatever the panel held (RightPanel: "one mode at a time"). Clicking the
+  // same bar again closes it — the bar is a toggle, not a one-way door, which
+  // is how the ⋯ day menu already behaves.
+  const openNotes = useCallback((i) => {
+    setSelection((s) => (s === `${DAY_NOTES_MODE}${i}` ? null : `${DAY_NOTES_MODE}${i}`));
+  }, []);
 
   // Narrowing to a phone while the week grid is open drops you into a day —
   // seven columns don't survive the width, and §11 says the day is the answer.
@@ -327,6 +336,9 @@ export default function App() {
     ? weekTasks.find((t) => t.id === selection.taskId) || null
     : null;
   const panelSelection = selection && typeof selection === 'object' ? (resolvedTask ? selection : null) : selection;
+  // Which day's bar reads as selected. Derived from the panel mode rather than
+  // held as its own state, so the bar and the panel cannot disagree.
+  const notesDay = dayNotesIndex(panelSelection);
 
   const isPastWeek = weekStart.getTime() < weekStartOf(now).getTime();
   const hasCarryable = isPastWeek && weekTasks.some((t) => t.completion === null && !t.recurrence && !t.chunking && t.endTime.getTime() < now.getTime());
@@ -466,6 +478,8 @@ export default function App() {
                       setClearDay(null);
                       setDayMenu((m) => (m && m.dayIndex === dayIndex ? null : { dayIndex, anchor }));
                     }}
+                    onOpenNotes={openNotes}
+                    notesDay={notesDay}
                     interaction={interaction}
                     truncations={truncations}
                     notice={notice}
@@ -482,6 +496,8 @@ export default function App() {
                       onOpenTask={openTask}
                       onToggleComplete={toggleComplete}
                       onOpenDay={(i) => { setView(i); setSelection(null); }}
+                      onOpenNotes={openNotes}
+                      notesDay={notesDay}
                       interaction={interaction}
                       truncations={truncations}
                     />

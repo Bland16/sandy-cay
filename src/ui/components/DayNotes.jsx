@@ -9,22 +9,54 @@
 // (sharp edge #14), and SPEC §4.3's window-row exists twice and has already
 // diverged. So no surface may filter `sched.dayNotes` itself.
 //
-// A note NEVER tints the day, and is never coral. It is a FACT about the day,
-// not a scheduling problem, and P-1 reserves colour for physics. A tint means
-// BLOCKED, which is a genuinely different state (D-1, D-6) and a different item
-// of work.
+// TREATMENT C, chosen by eye 2026-08-13 from design/day-header-mockups.html: a
+// tinted bar, full-bleed along the bottom edge of the day header. The bleed is
+// the point rather than decoration — adjacent days' bars touch, so a multi-day
+// note reads as ONE RUN across the week without any span machinery, which is
+// what §4 asks for ("a band across the week rather than a mark on its first
+// day"). It also cannot stack: a day with five notes shows one label and "+4"
+// and stays exactly as tall as a quiet day.
 //
-// Multi-day notes come out right for free: `notesForDate` asks each note whether
-// it COVERS the date, so Thanksgiving 25–27 Nov draws on all three days rather
-// than as a mark on the 25th.
+// The bar is a BUTTON, and it opens the day's notes in the right panel
+// (design/day-note-panel-mockups.html). That is what keeps the bar honest: it
+// only ever has to say HOW MANY, because the panel says WHAT.
+//
+// Tinting the BAR is the allowed half of D-1, not a reversal of it. D-1 refuses
+// a tint on the COLUMN — that is reserved for a real scheduling state — but
+// keeps tags available for tinting "its own chip", and the bar is the note's
+// chip. Nothing here is coral: a holiday is a fact, not a scheduling problem.
+//
+// Multi-day notes come out right for free, because `notesForDate` asks each note
+// whether it COVERS the date: Thanksgiving 25–27 Nov draws on all three days.
 
 import { MONTHS } from '../format.js';
 import { dateFromKey } from '../../core/index.js';
-import Icon from '../Icon.jsx';
+import PanelHeader from './PanelHeader.jsx';
 
 /** The one place the UI asks which notes cover a day. Nothing else may ask. */
 function notesFor(sched, date) {
   return sched.notesForDate(date);
+}
+
+/**
+ * The panel-mode string, and its reader. Both live here so `App` (which writes
+ * the mode) and `RightPanel` (which reads it) cannot drift apart — a literal
+ * `'day-notes:'` typed in two files is a silent no-panel bug the moment one of
+ * them is edited.
+ */
+export const DAY_NOTES_MODE = 'day-notes:';
+export function dayNotesIndex(selection) {
+  if (typeof selection !== 'string' || !selection.startsWith(DAY_NOTES_MODE)) return null;
+  const i = Number(selection.slice(DAY_NOTES_MODE.length));
+  return Number.isInteger(i) && i >= 0 && i <= 6 ? i : null;
+}
+
+/**
+ * Which note gives the bar its name and its tint. A holiday wins, because it is
+ * the one a glance most needs to catch; otherwise the first note on the day.
+ */
+function leadNote(notes) {
+  return notes.find((n) => n.kind === 'holiday') || notes[0];
 }
 
 /**
@@ -53,34 +85,40 @@ export function rangeLabel(note) {
 }
 
 /**
- * The header line (§4). Compact by necessity — a day column is ~74px wide on the
- * phone's week overview — so: the first label, truncated by CSS, and a count
- * when there are several ("Thanksgiving +1"). The full set is in the `title` and
- * in the day view's list.
+ * The header bar (§4, treatment C). The first label, truncated by CSS, and a
+ * count when there are several — never a second row.
  *
  * Renders NOTHING on a clear day, so an ordinary day header keeps exactly the
  * shape it has always had.
+ *
+ * ⚠️ It must be a SIBLING of `.dhopen`, never a child: a button nested inside
+ * the open-day button would be invalid HTML and unreachable by keyboard, which
+ * is the same reason `.dhdots` is a sibling rather than a nested control.
  */
-export function DayNoteLine({ sched, date }) {
+export function DayNoteBar({ sched, date, dayIndex, onOpenNotes, selected = false }) {
   const notes = notesFor(sched, date);
   if (notes.length === 0) return null;
-  const [first, ...rest] = notes;
+  const lead = leadNote(notes);
+  const more = notes.length - 1;
+  const all = notes.map((n) => n.label).join(' · ');
   return (
-    <div className={`dnline ${first.kind}`} title={notes.map((n) => n.label).join(' · ')}>
-      <Icon name="pennant" size={9} />
-      <span className="dnlabel">{first.label}</span>
-      {rest.length > 0 && <span className="dnmore">+{rest.length}</span>}
-    </div>
+    <button
+      type="button"
+      className={`dnline ${lead.kind}${selected ? ' sel' : ''}`}
+      title={all}
+      aria-label={`${notes.length} note${notes.length === 1 ? '' : 's'} on this day: ${all}`}
+      onClick={(e) => { e.stopPropagation(); onOpenNotes(dayIndex); }}
+    >
+      <span className="dnlabel">{lead.label}</span>
+      {more > 0 && <span className="dnmore">+{more}</span>}
+    </button>
   );
 }
 
 /**
- * The day view's full list — §4's "click the header to see them all": each note,
- * its range, and where it came from.
- *
- * "Block this day" is deliberately absent. Blocking is a MODEL change (D-6: a
- * `blockedDays` collection subtracted in `computeWindows`), not a rendering one,
- * and it is its own piece of work.
+ * The day view's full list — §4's "click the header to see them all". The day
+ * view has the room, so it states them outright instead of making you open a
+ * panel to read what is already on screen.
  */
 export function DayNoteList({ sched, date }) {
   const notes = notesFor(sched, date);
@@ -89,11 +127,45 @@ export function DayNoteList({ sched, date }) {
     <ul className="dnlist" aria-label="Notes on this day">
       {notes.map((n) => (
         <li key={n.id} className={`dnitem ${n.kind}`}>
-          <Icon name="pennant" size={11} />
+          <span className="dnswatch" aria-hidden="true" />
           <span className="dnlabel">{n.label}</span>
           <span className="dnmeta">{rangeLabel(n)}{n.source ? ` · ${n.source}` : ''}</span>
         </li>
       ))}
     </ul>
+  );
+}
+
+/**
+ * The right panel behind the bar. Facts only — each note, its range and where it
+ * came from. No actions yet: "Block this day" is a MODEL change (D-6, a
+ * `blockedDays` collection subtracted in `computeWindows`) and belongs with that
+ * work, not with a rendering change.
+ */
+export function DayNotesPanel({ sched, date, dayName, onClose }) {
+  const notes = notesFor(sched, date);
+  return (
+    <>
+      <PanelHeader
+        title={`${dayName} ${date.getDate()}`}
+        sub={`${notes.length} note${notes.length === 1 ? '' : 's'}`}
+        onClose={onClose}
+      />
+      {notes.length === 0
+        ? <p className="dnempty">No notes on this day.</p>
+        : (
+          <ul className="dnpanel" aria-label="Notes on this day">
+            {notes.map((n) => (
+              <li key={n.id} className={`dnrow ${n.kind}`}>
+                <span className="dnswatch" aria-hidden="true" />
+                <span className="dntxt">
+                  <span className="dnlabel">{n.label}</span>
+                  <span className="dnmeta">{rangeLabel(n)}{n.source ? ` · ${n.source}` : ''}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+    </>
   );
 }

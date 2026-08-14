@@ -5,7 +5,7 @@ import { addDays, sameDay, hhmmToMinutes } from '../../core/index.js';
 import { DAY_NAMES, DAY_KEYS, hourLabel, gridBounds, windowForDay, gridDayOf } from '../format.js';
 import { layoutDay, layoutRemainders } from '../layout.js';
 import TaskCard from './TaskCard.jsx';
-import { DayNoteLine } from './DayNotes.jsx';
+import { DayNoteBar } from './DayNotes.jsx';
 import Icon from '../Icon.jsx';
 
 const PXH = 34;
@@ -62,8 +62,9 @@ function zoneBands(zones, dayKey, startHour, date) {
  * drags into the weekend would land on the wrong day.
  */
 export default function WeekGrid({
-  sched, weekStart, today, onOpenTask, onToggleComplete, onOpenDay, onDayMenu,
-  interaction, truncations, notice, days = [0, 1, 2, 3, 4, 5, 6], compactHeads = false,
+  sched, weekStart, today, onOpenTask, onToggleComplete, onOpenDay, onDayMenu, onOpenNotes,
+  notesDay = null, interaction, truncations, notice,
+  days = [0, 1, 2, 3, 4, 5, 6], compactHeads = false,
 }) {
   const weekTasks = sched.getTasksForWeek(weekStart);
   const { start, end } = gridBounds();
@@ -100,12 +101,22 @@ export default function WeekGrid({
               <button className="dhopen" onClick={() => onOpenDay(i)}>
                 <div className="dn">{dn}</div>
                 <div className="dd">{date.getDate()}</div>
-                {/* One line under the date (DAY-NOTES §4). Inside the open-day
-                    button on purpose: §4 says clicking the header is how you
-                    see them all, and the day view is where the full list is. */}
-                <DayNoteLine sched={sched} date={date} />
                 <div className="open">open ↓</div>
               </button>
+              {/* A SIBLING of .dhopen, never a child — same reason as the ⋯
+                  above: a button inside a button is invalid HTML and
+                  unreachable by keyboard. Full-bleed along the header's bottom
+                  edge, so neighbouring days' bars touch and a multi-day note
+                  reads as one run (DAY-NOTES §4, treatment C). */}
+              {onOpenNotes && (
+                <DayNoteBar
+                  sched={sched}
+                  date={date}
+                  dayIndex={i}
+                  onOpenNotes={onOpenNotes}
+                  selected={notesDay === i}
+                />
+              )}
               {onDayMenu && (
                 <button
                   className="dhdots"

@@ -143,16 +143,42 @@ edges #14/#17 have nothing to drift. `DayView` renders the list under its header
 
 Multi-day notes come out right without special-casing, because `notesForDate`
 asks each note whether it *covers* the date: Thanksgiving 25–27 Nov draws on all
-three days. **604 tests green** (was 594), eslint and build clean.
+three days.
+
+**The bar is TREATMENT C, chosen by eye** from `design/day-header-mockups.html`
+(six treatments at the three real column widths). It is a tinted bar,
+**full-bleed** along the header's bottom edge — and the bleed is load-bearing,
+not decoration: the negative margins let neighbouring days' bars touch, so a
+multi-day note reads as one run across the week (§4's "a band across the week")
+with **no span machinery**, and with nothing for the weekend drawer's edge to
+cut in half. It also cannot stack — five notes on a day is one bar and "+4",
+exactly as tall as a quiet day.
+
+**The bar is a button, and it opens the day's notes in the right panel**
+(`design/day-note-panel-mockups.html`, the user's design). That is what keeps
+the bar honest: it only ever says HOW MANY, because the panel says WHAT. The
+panel is a normal mode (`DAY_NOTES_MODE`, `dayNotesIndex` — both exported from
+`DayNotes.jsx` so `App` and `RightPanel` cannot drift on a literal), so opening
+one replaces whatever the panel held, and clicking the same bar again closes it.
+
+⚠️ **The bar must stay a SIBLING of `.dhopen`** — a button inside a button is
+invalid HTML and unreachable by keyboard, the same reason `.dhdots` sits outside
+it. A test locks this.
+
+**Tinting the bar is the allowed half of D-1**, which refuses a tint on the
+*column* but keeps tags for tinting "its own chip". Nothing is coral.
+
+**610 tests green** (was 594), eslint and build clean.
 `tests/ui-day-notes.test.jsx` locks all three surfaces, the `+N` count, the
-untouched clear-day header, and the year-less "every year" readback. Verified by
-**rendering and dumping the headers**, not only by going green.
+untouched clear-day header, the year-less "every year" readback, the panel's
+open/replace/toggle behaviour and the sibling rule. Verified by **rendering and
+dumping the headers and the panel**, not only by going green.
 
 **Not built here, on purpose:** "Block this day". That is a model change (D-6,
-`blockedDays` subtracted in `computeWindows`) and it is ITEM 2. The day list
-carries the facts only. Truncation of a long label is CSS
+`blockedDays` subtracted in `computeWindows`) and it is ITEM 2, so the panel
+states facts only and carries no actions. Truncation of a long label is CSS
 (`text-overflow: ellipsis`) and jsdom has no layout — **it wants an eye on a real
-browser**, along with how the line reads in a 74px phone-overview column.
+browser**, along with how the bar reads in a 74px phone-overview column.
 
 The original brief:
 
