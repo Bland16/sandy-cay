@@ -379,6 +379,56 @@ Mon).
 `rec.periods`. More than one open-ended period ⇒ finding 2.
 
 
+### ⚠️ A recurring session loses its `load` — the energy battery under-reads (2026-08-14)
+
+**Confirmed by probe.** `buildOccurrence` (`recurrence.js:236`) rebuilds each
+occurrence field by field and does not copy `load`. `Task.load` survives storage
+perfectly (constructor + `toJSON`), is written by `suggest.js:209`
+(`placeActivity`, when an Activity carries an explicit load override) and is
+read by `loadForTask`'s very first line (`energy.js:32`). So every materialized
+occurrence has `load: null` and silently falls back to the bucket.
+
+```
+recurrence=false  occurrence.load={"physical":2}  physical net=4  low=-4
+recurrence=true   occurrence.load=null            physical net=1  low=-1
+```
+
+A quarter of the true drain, for any recurring task with a per-task load. Same
+function also drops `activityId` (no reader over occurrences) and
+`schedulingInfo`; `deadline: null` is deliberate.
+
+**Also found, all proven, none of them costing a wrong number on screen today:**
+
+- **`LearningModule.observations` is never persisted** (`learning.js:233-269`).
+  It exists to tell "0 because you never tried this" from "0 because it is
+  neutral", and after any reload that distinction is gone. Both readers rank on
+  `|weight|` alone — the exact mistake its own comment warns about — so the
+  guard rail is inert on every session after the first. `gates` IS persisted.
+- **`spanDays` and any unknown PERIOD or TOP-level recurrence field are dropped
+  on the way IN** by `reviveRecurrence` (`recurrenceSerde.js:23-50`). The pair is
+  symmetric, so it is a trap rather than a live bug — but the drop happening on
+  revive means a field set after load lives in memory and vanishes at the first
+  save ("works until you reload"). **Correction to `DAY-NOTES.md:422`:** windows
+  and exceptions are spread wholesale (`{...w}`, `{...e}`) in both directions and
+  already round-trip unknown fields safely, and §8.2 puts `spanDays` on the
+  *window*. The warning points at the wrong level.
+- **`addProject` drops `priority` and `pinned`** on the parent and `details` on
+  children (`projects.js:52-61`, `:85-92`), where every other add path spreads
+  `...data` wholesale. Latent: `AddProjectPanel` does not pass them yet.
+- **`WhatToDoPanel.jsx:33` passes `placedBy: 'user'`, which `UPDATE_WHITELIST`
+  drops.** It gets the value it wanted only by coincidence, because `updateTask`
+  flips `placedBy` to `'user'` whenever `startTime` changes.
+- **The import confirm names five collections and replaces eight** — it computes
+  `bucketCount`/`activityCount` and never shows them, and has no count at all for
+  `retiredTags`/`snapshots`/`dismissed`.
+
+**Proven SAFE, do not redo:** `useEngine#replace` is now complete (real hook,
+live schedule pre-dirtied in every collection, diffed after replace: no diff —
+there is no fourth missing field). All own properties of Schedule, Task, Zone,
+Bucket, Activity and DayNote round-trip clean. `config` preserves unknown keys.
+`exportState` spreads `toJSON()` wholesale and cannot drop a field by
+construction. Recurrence windows and exceptions preserve extra fields.
+
 ### Deliberately NOT in this list, so nobody quietly starts one
 
 - **The energy term in `scoring.js`** — settled by evidence (D-1) and the
