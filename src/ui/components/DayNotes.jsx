@@ -29,9 +29,11 @@
 // Multi-day notes come out right for free, because `notesForDate` asks each note
 // whether it COVERS the date: Thanksgiving 25–27 Nov draws on all three days.
 
+import { useState } from 'react';
 import { MONTHS } from '../format.js';
 import { dateFromKey } from '../../core/index.js';
 import PanelHeader from './PanelHeader.jsx';
+import Icon from '../Icon.jsx';
 
 /** The one place the UI asks which notes cover a day. Nothing else may ask. */
 function notesFor(sched, date) {
@@ -146,18 +148,61 @@ export function DayNoteList({ sched, date }) {
  * choose what it means. It could only be built once `blockedDays` existed
  * (D-6); before that there was nothing honest for the button to do.
  */
-export function DayNotesPanel({ sched, date, dayName, onClose, onToggleBlock }) {
+export function DayNotesPanel({ sched, date, dayName, onClose, onToggleBlock, onClearDay, onAddNote }) {
+  const [adding, setAdding] = useState(false);
+  const [label, setLabel] = useState('');
   const notes = notesFor(sched, date);
   const blocked = sched.isDayBlocked(date);
+  const dayTasks = sched.getTasksForDay(date);
+  const sub = [
+    `${dayTasks.length} thing${dayTasks.length === 1 ? '' : 's'}`,
+    notes.length ? `${notes.length} note${notes.length === 1 ? '' : 's'}` : null,
+    blocked ? 'blocked' : null,
+  ].filter(Boolean).join(' · ');
   return (
     <>
       <PanelHeader
         title={`${dayName} ${date.getDate()}`}
-        sub={`${notes.length} note${notes.length === 1 ? '' : 's'}${blocked ? ' · blocked' : ''}`}
+        sub={sub}
         onClose={onClose}
+        action={onAddNote ? (
+          <button
+            type="button"
+            className="dnadd"
+            aria-label={`Add a note on ${dayName} ${date.getDate()}`}
+            title="Add a note on this day"
+            onClick={() => setAdding((v) => !v)}
+          >
+            <Icon name="plus" />
+          </button>
+        ) : null}
       />
+      {adding && (
+        <form
+          className="dnnew"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const text = label.trim();
+            if (!text) return;          // a blank adds nothing — §8.3's rule
+            onAddNote(text);
+            setLabel('');
+            setAdding(false);
+          }}
+        >
+          <input
+            className="input"
+            autoFocus
+            value={label}
+            aria-label="Note label"
+            placeholder="Reading week, Mum visiting…"
+            onChange={(e) => setLabel(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setAdding(false); } }}
+          />
+          <button type="submit" className="dnblock">Add</button>
+        </form>
+      )}
       {notes.length === 0
-        ? <p className="dnempty">No notes on this day.</p>
+        ? null
         : (
           <ul className="dnpanel" aria-label="Notes on this day">
             {notes.map((n) => (
@@ -171,15 +216,33 @@ export function DayNotesPanel({ sched, date, dayName, onClose, onToggleBlock }) 
             ))}
           </ul>
         )}
-      {onToggleBlock && (
+      {(onToggleBlock || onClearDay) && (
         <div className="dnact">
-          <button type="button" className="dnblock" onClick={() => onToggleBlock(date)}>
-            {blocked ? 'Unblock this day' : 'Block this day'}
-          </button>
+          {/* The day's two actions, together, and deliberately NOT alike:
+              blocking is non-destructive (the scheduler stays off, nothing
+              moves) while clearing evacuates what is already there. Clear is
+              the secondary treatment for that reason, and it opens the Clear
+              Day panel rather than acting on the spot — OD-7 requires a scope
+              choice and a row per anchor, and this is a way in, not a shortcut
+              past it. */}
+          {onToggleBlock && (
+            <button type="button" className="dnblock" onClick={() => onToggleBlock(date)}>
+              {blocked ? 'Unblock this day' : 'Block this day'}
+            </button>
+          )}
+          {onClearDay && (
+            <button
+              type="button"
+              className="dnclear"
+              onClick={(e) => onClearDay(e.currentTarget.getBoundingClientRect())}
+            >
+              Clear this day…
+            </button>
+          )}
           <p className="dnhint">
             {blocked
               ? 'Nothing is scheduled here automatically. You can still put things here yourself.'
-              : 'Keeps the scheduler off this day. You could still put things here yourself.'}
+              : 'Blocking keeps the scheduler off this day; you could still put things here yourself.'}
           </p>
         </div>
       )}

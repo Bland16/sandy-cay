@@ -283,6 +283,30 @@ body {
   border-radius: 9px; padding: 7px 11px; cursor: pointer;
 }
 .dnblock:hover { background: var(--paper-shade); }
+/* Same weight as Block, by request. The two ARE different — blocking is
+   non-destructive, clearing evacuates — and the trailing "…" carries that:
+   it opens the Clear Day panel to ask, rather than acting on the spot. */
+.dnclear {
+  font-family: var(--font-body); font-weight: 700; font-size: 12px;
+  color: var(--ink); background: var(--paper); border: 1.5px solid var(--ink);
+  border-radius: 9px; padding: 7px 11px; cursor: pointer; margin-left: 6px;
+}
+.dnclear:hover { background: var(--paper-shade); }
+
+/* Quick-add a note, in the panel's own title row (DAY-NOTES §7: "the day header
+   keeps a quick-add", because "Mum's visiting that week" occurs to you while
+   looking at that week). It writes a label and a date and nothing else —
+   quick capture handing off to the full editor, the same split AddTaskPanel and
+   TaskPanel already are, not a second editor. */
+.dnadd {
+  width: 26px; height: 26px; flex: 0 0 auto; padding: 0; margin-right: 2px;
+  border: 1.5px solid var(--ink); border-radius: 8px; background: var(--cta);
+  color: var(--ink); cursor: pointer; display: grid; place-items: center;
+}
+.dnadd svg { width: 13px; height: 13px; }
+.dnadd:hover { background: var(--paper-shade); }
+.dnnew { display: flex; gap: 6px; margin: 0 0 8px; }
+.dnnew input { flex: 1; min-width: 0; }
 .dnhint { font-family: var(--font-type); font-size: 10px; color: var(--ink-soft); margin: 6px 0 0; }
 
 .dhdots {

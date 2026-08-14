@@ -105,6 +105,24 @@ export default function App() {
     setSelection((s) => (s === `${DAY_NOTES_MODE}${i}` ? null : `${DAY_NOTES_MODE}${i}`));
   }, []);
 
+  /**
+   * Clicking a day header. On desktop and tablet this opens the day in the
+   * contextual RIGHT PANEL — the week stays visible behind it, which is Layout
+   * B+C's own principle ("a panel that opens on what you pick") applied to a
+   * day. The full-page day view replaced the whole main area to say the same
+   * thing, and the user's verdict on it was that it wasn't good.
+   *
+   * ⚠️ The phone is NOT the same case and must keep the day view: §11 makes the
+   * single day the PRIMARY mobile layout, not a mode you open — there are no
+   * seven columns to stay visible behind a panel, and the panel is a full-width
+   * sheet there anyway. The day view stays reachable everywhere from the day ⋯
+   * menu, so nothing is lost.
+   */
+  const openDay = useCallback((i) => {
+    if (isPhone) { setView(i); setSelection(null); return; }
+    openNotes(i);
+  }, [isPhone, openNotes]);
+
   // Narrowing to a phone while the week grid is open drops you into a day —
   // seven columns don't survive the width, and §11 says the day is the answer.
   // Widening does NOT force the reverse: you asked for that day.
@@ -473,7 +491,7 @@ export default function App() {
                     today={now}
                     onOpenTask={openTask}
                     onToggleComplete={toggleComplete}
-                    onOpenDay={(i) => { setView(i); setSelection(null); }}
+                    onOpenDay={openDay}
                     onDayMenu={(dayIndex, anchor) => {
                       setClearDay(null);
                       setDayMenu((m) => (m && m.dayIndex === dayIndex ? null : { dayIndex, anchor }));
@@ -495,7 +513,7 @@ export default function App() {
                       today={now}
                       onOpenTask={openTask}
                       onToggleComplete={toggleComplete}
-                      onOpenDay={(i) => { setView(i); setSelection(null); }}
+                      onOpenDay={openDay}
                       onOpenNotes={openNotes}
                       notesDay={notesDay}
                       interaction={interaction}
@@ -518,6 +536,10 @@ export default function App() {
                 showToast={showToast}
                 onGapFreed={onGapFreed}
                 onJump={(d) => { setWeekStart(weekStartOf(d)); setView('week'); }}
+                onClearDay={(dayIndex, anchor) => {
+                  setDayMenu(null);
+                  setClearDay({ dayIndex, anchor });
+                }}
               />
             )}
           </div>

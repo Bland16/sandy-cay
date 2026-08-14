@@ -67,6 +67,13 @@ const seedNotes = () => {
   return s;
 };
 
+/** Open the full day VIEW. The day header opens the PANEL on desktop now, so
+ *  the view is reached from the ⋯ menu — where it has always also lived. */
+const openDayView = (dayIndex) => {
+  fireEvent.click(document.querySelectorAll('.dhdots')[dayIndex]);
+  fireEvent.click(screen.getByText(/Open day view/));
+};
+
 /** The day header cell for a given column, by its weekday name. */
 const headFor = (root, dn) =>
   [...root.querySelectorAll('.dayhead')].find((h) => within(h).queryByText(dn));
@@ -129,7 +136,7 @@ describe('the day view lists them in full', () => {
   it('shows each note with its range and its source', () => {
     seedNotes();
     render(<App />);
-    fireEvent.click(within(headFor(document, 'Thu')).getByText('Thu'));
+    openDayView(3);
     const list = document.querySelector('.dnlist');
     expect(list).toBeTruthy();
     expect(within(list).getByText('Thanksgiving')).toBeTruthy();
@@ -142,14 +149,14 @@ describe('the day view lists them in full', () => {
   it('says "every year" for a year-less note rather than inventing a date', () => {
     seedNotes();
     render(<App />);
-    fireEvent.click(within(headFor(document, 'Tue')).getByText('Tue'));
+    openDayView(1);
     expect(within(document.querySelector('.dnlist')).getByText('every year')).toBeTruthy();
   });
 
   it('a clear day gets no list at all', () => {
     seedNotes();
     render(<App />);
-    fireEvent.click(within(headFor(document, 'Mon')).getByText('Mon'));
+    openDayView(0);
     expect(document.querySelector('.dvcol')).toBeTruthy(); // the day did open
     expect(document.querySelector('.dnlist')).toBeNull();
   });
@@ -176,7 +183,8 @@ describe('the bar opens the day\'s notes in the panel', () => {
     fireEvent.click(barIn(document, 'Thu'));
     const panel = document.querySelector('.panel');
     expect(within(panel).getByText(/Thursday 26/)).toBeTruthy();
-    expect(within(panel).getByText('2 notes')).toBeTruthy();
+    // The sub-line now summarises the whole day, not only its notes.
+    expect(panel.querySelector('.psub').textContent).toMatch(/2 notes/);
     expect(within(panel).getByText('Thanksgiving')).toBeTruthy();
     expect(within(panel).getByText('Add/drop deadline')).toBeTruthy();
     // range · source, so you can tell an imported note from one you typed.
@@ -189,6 +197,62 @@ describe('the bar opens the day\'s notes in the panel', () => {
     fireEvent.click(barIn(document, 'Thu'));
     expect(document.querySelector('.dayview')).toBeNull();
     expect(document.querySelectorAll('.day').length).toBe(7); // still the week
+  });
+
+  it('the day HEADER opens the same panel, so a day with no notes is reachable', () => {
+    seedNotes();
+    render(<App />);
+    // The panel used to have exactly one way in — a note bar — so on a week
+    // with no notes it could not be opened at all, which read as "the panel is
+    // gone". The header is the general entrance; the bar is the shortcut.
+    fireEvent.click(within(headFor(document, 'Mon')).getByText('Mon')); // Mon is clear
+    const panel = document.querySelector('.panel');
+    expect(panel).toBeTruthy();
+    expect(within(panel).getByText(/Monday 23/)).toBeTruthy();
+    // ...and it does NOT replace the week with the day view.
+    expect(document.querySelector('.dayview')).toBeNull();
+  });
+
+  it('quick-adds a note from the title row — the day you are looking at', () => {
+    seedNotes();
+    render(<App />);
+    fireEvent.click(within(headFor(document, 'Mon')).getByText('Mon')); // a clear day
+    let panel = document.querySelector('.panel');
+    expect(panel.querySelector('.dnline')).toBeNull();
+
+    fireEvent.click(within(panel).getByLabelText(/Add a note on Monday 23/));
+    fireEvent.change(within(panel).getByLabelText('Note label'), { target: { value: 'Mum visiting' } });
+    fireEvent.submit(panel.querySelector('.dnnew'));
+
+    // It lands on THIS day, and shows up on the grid immediately.
+    expect(within(headFor(document, 'Mon')).getByText('Mum visiting')).toBeTruthy();
+    panel = document.querySelector('.panel');
+    expect(within(panel).getByText('Mum visiting')).toBeTruthy();
+  });
+
+  it('a blank quick-add adds nothing — no error, no placeholder note', () => {
+    seedNotes();
+    render(<App />);
+    fireEvent.click(within(headFor(document, 'Mon')).getByText('Mon'));
+    const panel = document.querySelector('.panel');
+    fireEvent.click(within(panel).getByLabelText(/Add a note on Monday 23/));
+    fireEvent.change(within(panel).getByLabelText('Note label'), { target: { value: '   ' } });
+    fireEvent.submit(panel.querySelector('.dnnew'));
+    // §8.3's rule, applied here too: declining is just leaving it alone.
+    expect(headFor(document, 'Mon').querySelector('.dnline')).toBeNull();
+  });
+
+  it('carries both day actions: block (safe) and clear (destructive)', () => {
+    seedNotes();
+    render(<App />);
+    fireEvent.click(within(headFor(document, 'Thu')).getByText('Thu'));
+    const panel = document.querySelector('.panel');
+    expect(within(panel).getByText('Block this day')).toBeTruthy();
+    // "Clear this day…" opens the Clear Day panel rather than acting on the
+    // spot: OD-7 wants a scope choice and a row per anchor, and this is a way
+    // in, not a shortcut past it.
+    fireEvent.click(within(panel).getByText(/Clear this day/));
+    expect(document.querySelector('.claripanel')).toBeTruthy();
   });
 
   it('marks the open day, and clicking the same bar again closes it', () => {

@@ -6,10 +6,10 @@ import AddProjectPanel from './panels/AddProjectPanel.jsx';
 import FindPanel from './panels/FindPanel.jsx';
 import WhatToDoPanel from './panels/WhatToDoPanel.jsx';
 import { DayNotesPanel, dayNotesIndex } from './DayNotes.jsx';
-import { addDays } from '../../core/index.js';
+import { addDays, dateKey } from '../../core/index.js';
 import { DAY_FULL } from '../format.js';
 
-export default function RightPanel({ selection, resolvedTask, sched, mutate, weekStart, now, onClose, onOpenTask, showToast, onGapFreed, onJump }) {
+export default function RightPanel({ selection, resolvedTask, sched, mutate, weekStart, now, onClose, onOpenTask, showToast, onGapFreed, onJump, onClearDay }) {
   let body = null;
   const notesDay = dayNotesIndex(selection);
   if (notesDay !== null) {
@@ -24,6 +24,12 @@ export default function RightPanel({ selection, resolvedTask, sched, mutate, wee
           showToast(nowBlocked
             ? 'Blocked — the scheduler stays off this day.'
             : 'Unblocked — this day is back in play.');
+        }}
+        onClearDay={onClearDay ? (rect) => onClearDay(notesDay, rect) : undefined}
+        onAddNote={(text) => {
+          const key = dateKey(addDays(weekStart, notesDay));
+          mutate((s) => s.addDayNote({ label: text, from: key, to: key, kind: 'note' }));
+          showToast(`Noted on ${DAY_FULL[notesDay]}`);
         }}
       />
     );

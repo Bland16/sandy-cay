@@ -167,7 +167,10 @@ describe('A — drag to move', () => {
 
   it('works in the day view too (same geometry contract, PXH 42)', () => {
     render(<App />);
-    fireEvent.click(screen.getAllByText('Wed')[0]); // day view is a main-area mode
+    // The day HEADER now opens the day PANEL; the full day view lives on the
+    // day ⋯ menu, where it has always also been.
+    fireEvent.click(document.querySelectorAll('.dhdots')[2]);
+    fireEvent.click(screen.getByText(/Open day view/));
     expect(screen.getByText(/Wednesday/)).toBeTruthy();
 
     const col = document.querySelector('.dvcol[data-dropzone]');

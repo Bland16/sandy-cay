@@ -69,7 +69,9 @@ describe('App smoke render', () => {
     expect(screen.getByText(/free-slot search/i)).toBeTruthy();
 
     // Day view (main-area mode with its own ✕).
-    fireEvent.click(screen.getAllByText('Wed')[0]);
+    // The header opens the day panel now; the view is on the ⋯ menu.
+    fireEvent.click(document.querySelectorAll('.dhdots')[2]);
+    fireEvent.click(screen.getByText(/Open day view/));
     expect(screen.getByText(/Wednesday/)).toBeTruthy();
     fireEvent.click(screen.getByLabelText('Back to week'));
 
