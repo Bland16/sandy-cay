@@ -226,11 +226,6 @@ export function previewDates(model, anchorDate, want = 4) {
   const dates = [];
   let ws = weekStart(anchorDate);
   for (let i = 0; i < maxWeeks && dates.length < want; i++) {
-    // Deliberately NOT passing `blockedDays`: this previews the PATTERN you are
-    // authoring, not the week it will land in. "The first Tuesday of each month"
-    // is true whether or not one of those Tuesdays happens to be blocked, and
-    // hiding a date here would make the editor look like it had misunderstood
-    // the rule. Every call site that renders a real week does pass them.
     for (const o of expandRecurrence(task, ws)) {
       if (dates.length < want) dates.push(o.startTime);
     }

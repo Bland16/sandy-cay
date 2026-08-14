@@ -56,7 +56,7 @@ export function findBlockers(sched, task, start, end) {
     if (t.chunking) continue; // bookkeeping parent, not a grid object
     if (t.id === task.id) continue;
     if (t.recurrence) {
-      for (const occ of expandRecurrence(t, ws, { blockedDays: sched.blockedDays })) if (hits(occ)) out.push(occ);
+      for (const occ of expandRecurrence(t, ws)) if (hits(occ)) out.push(occ);
     } else if (hits(t)) {
       out.push(t);
     }
@@ -118,7 +118,7 @@ export function estimateDisplaceMoveMin(sched, pivot, blockers) {
   if (!movable.length) return 0;
   const ws = weekStartOf(pivot.startTime);
   const occurrences = intervalsOf(
-    sched.tasks.filter((t) => t.recurrence).flatMap((t) => expandRecurrence(t, ws, { blockedDays: sched.blockedDays })),
+    sched.tasks.filter((t) => t.recurrence).flatMap((t) => expandRecurrence(t, ws)),
   );
   let total = 0;
   for (const target of movable) {
@@ -229,7 +229,7 @@ export function proposeOccurrenceSlot(sched, occ) {
   for (let ws = weekStartOf(from); ws.getTime() <= to.getTime(); ws = addDays(ws, 7)) {
     for (const t of sched.tasks) {
       if (!t.recurrence) continue;
-      for (const o of expandRecurrence(t, ws, { blockedDays: sched.blockedDays })) {
+      for (const o of expandRecurrence(t, ws)) {
         if (o.id === occ.id || seen.has(o.id)) continue;
         seen.add(o.id);
         occs.push({ start: o.startTime, end: o.endTime, task: o });

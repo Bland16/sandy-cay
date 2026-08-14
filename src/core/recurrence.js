@@ -133,7 +133,7 @@ function parseDateKey(key) {
  * lived data and ML history follow it (§4.4: one task = one identity).
  * @returns Task[]
  */
-export function expandRecurrence(task, weekStartDate, opts = {}) {
+export function expandRecurrence(task, weekStartDate) {
   if (!task.recurrence) return [];
   const rec = task.recurrence;
   const exceptions = rec.exceptions || [];
@@ -143,29 +143,10 @@ export function expandRecurrence(task, weekStartDate, opts = {}) {
   const weekTo = addDays(dayStart(weekStartDate), 7).getTime();
   const inWeek = (d) => d.getTime() >= weekFrom && d.getTime() < weekTo;
 
-  // Blocked days suppress the pattern (design/DAY-NOTES.md D-6). A recurring
-  // session is GENERATED, never placed, so it never passes through
-  // `computeWindows` and blocking a day did nothing to it — Thanksgiving break
-  // was blocked, tinted, and still had five classes drawn on it.
-  //
-  // The filter lives HERE, in the one function that turns a pattern into
-  // sessions, because there are a dozen call sites and sharp edge #3 is the
-  // record of what happens when this kind of rule is applied at each of them
-  // instead: four functions filtered `!t.recurrence` separately and the app
-  // scheduled straight through a pinned gym.
-  //
-  // Suppression, not deletion: the pattern is untouched, so unblocking the day
-  // brings the session back. That matters — a block is a statement about a day,
-  // and it should not quietly edit a rule that outlives it.
-  const blockedDays = opts.blockedDays || [];
-
   const emit = (key, start, end) => {
     const identity = `${task.id}@${key}`;
     if (seen.has(identity)) return;
     if (!inWeek(start)) return;
-    // By the occurrence's real date, not the key — a key carries `#2`/`#add`
-    // suffixes for a day's later sessions (§4.4) and would not compare.
-    if (blockedDays.length && blockedDays.includes(dateKey(start))) return;
     seen.add(identity);
 
     const od = (task.occurrenceData && task.occurrenceData[key]) || {};
