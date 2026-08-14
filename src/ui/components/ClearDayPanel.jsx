@@ -11,13 +11,22 @@
 //
 // Nothing here schedules. It builds a plan; App commits it through the engine.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { formatHHMM } from '../../core/index.js';
+import { formatHHMM, addException } from '../../core/index.js';
 import { DAY_FULL, DAY_NAMES, MONTHS, fmtDur } from '../format.js';
 import { needsReviewFor, movableFor, occurrencesFor, nextSameWeekday, nextFreeSlot } from '../gapActions.js';
 import Icon from '../Icon.jsx';
 
 const W = 306;
 const PAD = 8;
+
+// A repeating session is not a task in `schedule.tasks` — it is generated from a
+// pattern — so it cannot be "moved" or "skipped" the way a one-off can. Skipping
+// writes a `skip` EXCEPTION on the parent for that date, which is exactly what
+// the occurrence menu's own "skip this session" does. The pattern is untouched.
+const OCC_RESOLUTIONS = [
+  { value: 'skip-occurrence', label: 'Skip this session' },
+  { value: 'leave', label: 'Leave it in place' },
+];
 
 const RESOLUTIONS = [
   { value: 'next-weekday', label: 'Move to next same weekday' },
@@ -74,7 +83,12 @@ export default function ClearDayPanel({ sched, date, dayIndex, anchor, onCommit,
     if (firstRef.current) firstRef.current.focus();
   }, []);
 
-  const unresolved = scope === 'full' ? review.filter((t) => !resolutions[t.id]) : [];
+  // A full clear that silently left every class on the day is what "Clear day
+  // did nothing" looked like: the day was mostly repeating sessions and they
+  // were never even offered. They are rows now, like any other anchor.
+  const unresolved = scope === 'full'
+    ? [...review, ...occurrences].filter((t) => !resolutions[t.id])
+    : [];
   const canCommit = unresolved.length === 0;
 
   const commit = () => {
@@ -85,6 +99,12 @@ export default function ClearDayPanel({ sched, date, dayIndex, anchor, onCommit,
       // Only a full clear acts on the anchored rows; flexibles-only leaves them
       // exactly as they are, which is the whole point of the narrower scope.
       resolutions: scope === 'full' ? { ...resolutions } : {},
+      // The occurrence rows carry their own identity: `applyClearDay` cannot
+      // look them up in `schedule.tasks`, because an occurrence has never
+      // existed there. It needs the parent and the date.
+      occurrences: scope === 'full'
+        ? occurrences.map((o) => ({ id: o.id, parentId: o.parentId, occurrenceDate: o.occurrenceDate, title: o.title }))
+        : [],
     });
   };
 
@@ -138,10 +158,12 @@ export default function ClearDayPanel({ sched, date, dayIndex, anchor, onCommit,
       {scope === 'full' && (
         <div className="cdrows">
           <div className="flabel">
-            {review.length === 0 ? 'Nothing needs your call' : `${review.length} need${review.length === 1 ? 's' : ''} your call`}
+            {review.length + occurrences.length === 0
+              ? 'Nothing needs your call'
+              : `${review.length + occurrences.length} need${review.length + occurrences.length === 1 ? 's' : ''} your call`}
           </div>
-          {review.length === 0 && (
-            <p className="cdnote">No pinned or fixed tasks today — the day clears cleanly.</p>
+          {review.length + occurrences.length === 0 && (
+            <p className="cdnote">No pinned, fixed or repeating sessions today — the day clears cleanly.</p>
           )}
           {review.map((t) => (
             <div className="cdrow" key={t.id}>
@@ -164,14 +186,36 @@ export default function ClearDayPanel({ sched, date, dayIndex, anchor, onCommit,
               )}
             </div>
           ))}
+
+          {occurrences.map((o) => (
+            <div className="cdrow" key={o.id}>
+              <div className="cdrowhead">
+                <span className="cdname">{o.title}</span>
+                <span className="cdkind repeating">repeating</span>
+              </div>
+              <div className="cdwhen">{formatHHMM(o.startTime)}–{formatHHMM(o.endTime)} · {fmtDur(o.getDuration())}</div>
+              <select
+                className="input"
+                aria-label={`Reschedule ${o.title}`}
+                value={resolutions[o.id] || ''}
+                onChange={(e) => setResolutions((r) => ({ ...r, [o.id]: e.target.value || undefined }))}
+              >
+                <option value="">Choose…</option>
+                {OCC_RESOLUTIONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+              </select>
+              {resolutions[o.id] === 'skip-occurrence' && (
+                <div className="cdpreview">This session only — the pattern keeps running.</div>
+              )}
+            </div>
+          ))}
         </div>
       )}
 
-      {occurrences.length > 0 && (
+      {scope === 'flexibles' && occurrences.length > 0 && (
         <p className="cdnote">
           {occurrences.length} repeating session{occurrences.length === 1 ? '' : 's'} today stay
-          {occurrences.length === 1 ? 's' : ''} put — skip {occurrences.length === 1 ? 'it' : 'them'} from
-          {occurrences.length === 1 ? ' its' : ' their'} own card.
+          {occurrences.length === 1 ? 's' : ''} put. A full clear can skip
+          {occurrences.length === 1 ? ' it' : ' them'}.
         </p>
       )}
 
@@ -243,6 +287,20 @@ export function applyClearDay(sched, date, plan) {
       resolved.left += 1;
     }
   }
+  // Repeating sessions, after the one-off rows. `evacuateDay` cannot see these
+  // at all — it filters `!t.recurrence`, and an occurrence has never lived in
+  // `schedule.tasks` — so before this they survived a "full clear" untouched
+  // and unmentioned, which on a term calendar meant the day did not clear.
+  for (const o of plan.occurrences || []) {
+    if ((plan.resolutions || {})[o.id] !== 'skip-occurrence') { resolved.left += 1; continue; }
+    const parent = sched.tasks.find((t) => t.id === o.parentId);
+    if (!parent) continue;
+    // Keyed by the occurrence's own key, so a twice-a-day pattern skips only the
+    // session you meant (§4.4), and the pattern itself is untouched.
+    addException(parent, o.occurrenceDate, 'skip');
+    resolved.skipped += 1;
+  }
+
   const res = sched.evacuateDay(date, { blockDay: !!plan.blockDay });
   return { ...res, resolved };
 }

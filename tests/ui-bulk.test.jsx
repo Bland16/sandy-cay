@@ -157,18 +157,25 @@ describe('D — Clear Day panel (§3.4 / OD-7)', () => {
 
   it('full clear: every pinned/fixed task gets its own row, and Clear day stays disabled until each is resolved', () => {
     render(<App />);
-    const panel = openClearDay(0); // Monday — Team standup (fixed) needs a call
+    // Monday — Team standup (fixed) AND the Morning gym occurrence both need a
+    // call. The repeating session used to be excluded, which is what made a
+    // full clear leave a term day untouched.
+    const panel = openClearDay(0);
     fireEvent.click(within(panel).getByText(/Full clear/).closest('.cdopt'));
 
-    const rows = panel.querySelectorAll('.cdrow');
-    expect(rows.length).toBe(1);
-    expect(rows[0].textContent).toMatch(/Team standup/);
+    const rows = [...panel.querySelectorAll('.cdrow')];
+    expect(rows.map((r) => r.querySelector('.cdname').textContent).sort())
+      .toEqual(['Morning gym', 'Team standup']);
 
     const commit = within(panel).getByText('Clear day').closest('button');
     expect(commit.disabled).toBe(true);
 
-    // Its own control, resolved individually — nothing pinned moves in a batch.
-    fireEvent.change(within(rows[0]).getByLabelText(/Reschedule Team standup/), {
+    // Each resolved individually — nothing anchored moves in a batch.
+    fireEvent.change(within(panel).getByLabelText(/Reschedule Team standup/), {
+      target: { value: 'leave' },
+    });
+    expect(commit.disabled).toBe(true); // the repeating one still owes an answer
+    fireEvent.change(within(panel).getByLabelText(/Reschedule Morning gym/), {
       target: { value: 'leave' },
     });
     expect(commit.disabled).toBe(false);
@@ -176,16 +183,24 @@ describe('D — Clear Day panel (§3.4 / OD-7)', () => {
 
   it('full clear with several anchors needs EVERY row resolved, not just one', () => {
     render(<App />);
-    const panel = openClearDay(4); // Friday — Weekly review (pinned) + Movie night (rest)
+    // Friday — Weekly review (pinned) + Movie night (rest) + the Morning gym
+    // occurrence.
+    const panel = openClearDay(4);
     fireEvent.click(within(panel).getByText(/Full clear/).closest('.cdopt'));
 
     const rows = [...panel.querySelectorAll('.cdrow')];
-    expect(rows.length).toBe(2);
+    expect(rows.length).toBe(3);
     const commit = within(panel).getByText('Clear day').closest('button');
 
-    fireEvent.change(within(rows[0]).getByRole('combobox'), { target: { value: 'leave' } });
-    expect(commit.disabled).toBe(true); // one down, one to go
-    fireEvent.change(within(rows[1]).getByRole('combobox'), { target: { value: 'skip' } });
+    // Every row, one at a time — the button only frees on the last one.
+    rows.forEach((row, i) => {
+      expect(commit.disabled).toBe(true);
+      const sel = within(row).getByRole('combobox');
+      // The repeating row offers its own verbs; a one-off offers the move ones.
+      const value = [...sel.options].some((o) => o.value === 'skip-occurrence') ? 'skip-occurrence' : 'leave';
+      fireEvent.change(sel, { target: { value } });
+      if (i < rows.length - 1) expect(commit.disabled).toBe(true);
+    });
     expect(commit.disabled).toBe(false);
   });
 
@@ -213,6 +228,11 @@ describe('D — Clear Day panel (§3.4 / OD-7)', () => {
     fireEvent.click(within(panel).getByText(/Full clear/).closest('.cdopt'));
     fireEvent.change(within(panel).getByLabelText(/Reschedule Team standup/), {
       target: { value: 'next-weekday' },
+    });
+    // The repeating session owes an answer too now; leaving it keeps this test
+    // about the one thing it is testing.
+    fireEvent.change(within(panel).getByLabelText(/Reschedule Morning gym/), {
+      target: { value: 'leave' },
     });
     fireEvent.click(within(panel).getByText('Clear day'));
 
