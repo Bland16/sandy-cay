@@ -327,6 +327,44 @@ reconstructed, the same argument that made `dayFill` urgent.
 
 **STOP. Report.**
 
+### ⚠️ Sharp edge #5 has a SECOND half — fixed 2026-08-14
+
+A task starting between 00:00 and 05:00 used to render **nowhere at all**.
+Reported as "I changed it to 4:15am–6:15am and it disappeared, can't be found in
+Sunday or Monday". It was on neither, and on no other day either.
+
+The grid draws a **5am-anchored** day, so Monday 04:15 belongs to the PREVIOUS
+Sunday's column. `WeekGrid` filtered by `gridDayOf`, but `getTasksForWeek`
+selects by **calendar** week — so that Sunday was not one of this week's
+columns, and the previous week's own selection never contained the task. It fell
+through the gap between two different meanings of "week".
+
+Only MONDAY early-hours vanished; a Wednesday 04:15 landed in Tuesday's column,
+visible but shifted. That asymmetry is why it survived so long.
+
+**Fixed in two parts:**
+
+1. `WeekGrid` takes this week AND the next, and the grid-day filter places them
+   — the week-shaped version of what `DayView` already did by pulling `date` and
+   `date + 1`. Nothing double-counts: a task belongs to one calendar week.
+2. **A session crossing the anchor is CUT, not clipped** (the user's call, and
+   the right one — clipping hides real time). `layout.js#columnItems` returns
+   the head at the foot of one column and the tail at the top of the next, as
+   **one task**: same id, same object, `aria-label` stating the real span on
+   both halves. Flat dashed edges on the cut side say "carries on".
+   ⚠️ **The tail is deliberately NOT draggable** — drag geometry reads a card's
+   top as the task's start, which is false for a tail, so dragging it would
+   rewrite the session to whatever the tail pointed at. The head keeps its
+   handles.
+
+A 23:00–01:00 session is **not** split: 01:00 is before the anchor, so both ends
+belong to the same grid day and it stays one box, exactly as before.
+
+**The general trap:** any surface that SELECTS by calendar week but PLACES by
+grid day has this bug. `gridDayOf` and `getTasksForWeek` do not agree and never
+did. `layoutDay` now takes SEGMENTS rather than tasks, because the span a task
+occupies in a column is not derivable from the task alone.
+
 ### Queued by the user — asked for, not started (2026-08-14)
 
 - **"Clear this day" belongs in the day-notes panel, as a button.** The user

@@ -237,3 +237,95 @@ describe('6 — the editor names the pattern it is holding', () => {
     expect(within(panel).getByLabelText('Repeat frequency').value).toBe('month');
   });
 });
+
+describe('a session before 05:00 is not lost by the 5am-anchored grid', () => {
+  // Reported: "I changed it to 4:15am–6:15am, it disappeared off the UI, can't
+  // be found in Sunday or Monday." It was on neither, and on no other day: the
+  // grid draws a 5am-anchored day (sharp edge #5), so a Monday 04:15 belongs to
+  // the PREVIOUS Sunday's column — which is not one of the week's own columns —
+  // while `getTasksForWeek` selects by CALENDAR week, so the previous week
+  // never contained it either. It fell through the gap between the two.
+  const earlyMonday = () => {
+    const s = new Schedule({ config: defaultConfig });
+    s.addFixed({
+      title: 'Gym', tags: ['gym'],
+      startTime: on(thisWeek(), 0, 4, 15), endTime: on(thisWeek(), 0, 6, 15),
+      recurrence: {
+        periods: [{ windows: [{ day: 'mon', start: '04:15', end: '06:15' }], interval: 1, effectiveFrom: new Date(2026, 5, 1), effectiveUntil: null }],
+        anchorDate: new Date(2026, 5, 1), exceptions: [],
+      },
+    });
+    s.markWeekSeen(NOW);
+    persist(s);
+  };
+
+  it('renders it somewhere — it used to render nowhere at all', () => {
+    earlyMonday();
+    render(<App />);
+    expect(document.querySelectorAll('.day .card').length).toBeGreaterThan(0);
+  });
+
+  it('is CUT across the two columns it really spans, as one task', () => {
+    earlyMonday();
+    render(<App />);
+    const all = [...document.querySelectorAll('.day .card')];
+    expect(all).toHaveLength(2);
+
+    const col = (c) => ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][Number(c.closest('[data-dropzone]').dataset.dayIndex)];
+    const head = all.find((c) => c.classList.contains('cont-out'));
+    const tail = all.find((c) => c.classList.contains('cont-in'));
+
+    // 04:15 is before the 5am anchor, so the session opens at the foot of
+    // Sunday's column and finishes at the head of Monday's.
+    expect(col(head)).toBe('Sun');
+    expect(col(tail)).toBe('Mon');
+    // Both boxes state the session's REAL span — they are one thing.
+    expect(head.getAttribute('aria-label')).toBe(tail.getAttribute('aria-label'));
+    expect(head.getAttribute('aria-label')).toMatch(/04:15–06:15/);
+  });
+
+  it('the tail starts at the top of its column and the head ends at the foot', () => {
+    earlyMonday();
+    render(<App />);
+    const head = document.querySelector('.day .card.cont-out');
+    const tail = document.querySelector('.day .card.cont-in');
+    const colHeight = parseFloat(head.closest('[data-dropzone]').style.height);
+
+    // No gap and no overlap: the cut is exactly where the grid drew its line.
+    // Within a pixel, because a card has a 26px minimum height so it stays
+    // clickable, and this head is only 45 minutes (25.5px) tall.
+    const headBottom = parseFloat(head.style.top) + parseFloat(head.style.height);
+    expect(Math.abs(headBottom - colHeight)).toBeLessThanOrEqual(1);
+    expect(parseFloat(tail.style.top)).toBe(0);
+  });
+
+  it('the tail is not draggable, because its top is not the start', () => {
+    earlyMonday();
+    render(<App />);
+    const tail = document.querySelector('.day .card.cont-in');
+    const head = document.querySelector('.day .card.cont-out');
+    // Drag geometry reads a card's top as the start time. On a tail that is
+    // false, so dragging it would rewrite the session to whatever the tail
+    // pointed at. The head keeps its handles.
+    expect(tail.querySelector('.wave')).toBeNull();
+    expect(head.querySelector('.wave')).toBeTruthy();
+  });
+
+  it('appears in every week, exactly once (as its two halves)', () => {
+    earlyMonday();
+    render(<App />);
+    for (let i = 0; i < 3; i += 1) {
+      expect(document.querySelectorAll('.day .card.cont-out')).toHaveLength(1);
+      gotoWeeks(1);
+    }
+  });
+
+  it('neither half hangs out of its column', () => {
+    earlyMonday();
+    render(<App />);
+    for (const card of document.querySelectorAll('.day .card')) {
+      const colHeight = parseFloat(card.closest('[data-dropzone]').style.height);
+      expect(parseFloat(card.style.top) + parseFloat(card.style.height)).toBeLessThanOrEqual(colHeight + 1);
+    }
+  });
+});

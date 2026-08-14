@@ -2,8 +2,8 @@
 // positioned by time; zones drawn as bands; day headers click into a day view.
 import { useRef, useEffect } from 'react';
 import { addDays, sameDay, hhmmToMinutes } from '../../core/index.js';
-import { DAY_NAMES, DAY_KEYS, hourLabel, gridBounds, windowForDay, gridDayOf } from '../format.js';
-import { layoutDay, layoutRemainders } from '../layout.js';
+import { DAY_NAMES, DAY_KEYS, hourLabel, gridBounds, windowForDay } from '../format.js';
+import { columnItems, layoutDay, layoutRemainders } from '../layout.js';
 import TaskCard from './TaskCard.jsx';
 import { DayNoteBar } from './DayNotes.jsx';
 import Icon from '../Icon.jsx';
@@ -66,7 +66,21 @@ export default function WeekGrid({
   notesDay = null, interaction, truncations, notice,
   days = [0, 1, 2, 3, 4, 5, 6], compactHeads = false,
 }) {
-  const weekTasks = sched.getTasksForWeek(weekStart);
+  // ⚠️ The grid day is 5am-anchored (sharp edge #5), so the WEEK it draws runs
+  // Mon 05:00 → next Mon 05:00 — which is NOT the calendar week
+  // `getTasksForWeek` selects. The two disagree for the 00:00–05:00 band, and a
+  // session in it fell straight through the crack: a Monday 04:15 belongs to the
+  // PREVIOUS Sunday's column, which is not among this week's days, while the
+  // previous week's own calendar-based selection never contained it either. It
+  // rendered nowhere at all — not on Sunday, not on Monday, nowhere.
+  //
+  // So take the next week too and let the grid-day filter below place them. The
+  // day view already works exactly this way (it pulls `date` and `date + 1` and
+  // keeps what the grid-day owns); this is the week-shaped version of the same
+  // correction. Nothing double-counts: a task belongs to one calendar week, and
+  // `gridDayOf` then puts it in exactly one column.
+  const weekTasks = sched.getTasksForWeek(weekStart)
+    .concat(sched.getTasksForWeek(addDays(weekStart, 7)));
   const { start, end } = gridBounds();
   const colHeight = (end - start) * PXH;
   const hours = [];
@@ -140,10 +154,10 @@ export default function WeekGrid({
         {days.map((i) => {
           const dn = DAY_NAMES[i];
           const date = addDays(weekStart, i);
-          // Grid-day, not calendar-day: a 02:00 task belongs to the night before.
-          const dayTasks = weekTasks.filter((t) => sameDay(gridDayOf(t.startTime), date));
+          // Grid-day, not calendar-day: a 02:00 task belongs to the night
+          // before, and a 04:15–06:15 one is CUT across two columns.
           const bands = zoneBands(sched.zones, DAY_KEYS[i], start, date);
-          const laid = layoutDay(dayTasks, start, PXH);
+          const laid = layoutDay(columnItems(weekTasks, date, start), start, PXH);
           return (
             <div
               /* The tint IS the statement that the scheduler stays out (D-6) —
@@ -178,19 +192,25 @@ export default function WeekGrid({
                   title={`${r.title} — finished early, this time is free`}
                 />
               ))}
-              {laid.map(({ task, style, compact }) => (
+              {laid.map(({ task, style, compact, key, continued, continues }) => (
                 <TaskCard
-                  key={task.id}
+                  key={key}
                   task={task}
                   tint={sched.tintForTask(task)}
                   style={style}
                   compact={compact}
+                  continued={continued}
+                  continues={continues}
                   onOpen={onOpenTask}
                   onToggleComplete={onToggleComplete}
                   dragging={interaction ? interaction.hiddenId === task.id : false}
                   pressing={interaction ? interaction.pressingId === task.id : false}
-                  onMoveStart={interaction ? interaction.onMoveStart : undefined}
-                  onResizeStart={interaction ? interaction.onResizeStart : undefined}
+                  /* ⚠️ The TAIL is not draggable. Drag geometry reads a card's
+                     top as the task's start, which is false for a continuation
+                     — dragging it would rewrite the time to whatever the tail
+                     was pointing at. Open it and edit, or drag the head. */
+                  onMoveStart={interaction && !continued ? interaction.onMoveStart : undefined}
+                  onResizeStart={interaction && !continued ? interaction.onResizeStart : undefined}
                 />
               ))}
             </div>

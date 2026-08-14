@@ -44,6 +44,11 @@ export default function TaskCard({
   task, style, compact, onOpen, onToggleComplete,
   ghost = false, dragging = false, pressing = false, phase, onMoveStart, onResizeStart,
   tint = null,
+  // A session that crosses the 5am anchor is drawn as two boxes of ONE task:
+  // `continues` is the head (cut at the bottom), `continued` the tail (cut at
+  // the top). Flat edges on the cut side say "this carries on" without
+  // pretending to be a second task.
+  continued = false, continues = false,
 }) {
   const kind = cardKind(task);
   // Recurrence occurrences are virtual (§4.4): moving one writes an exception,
@@ -63,6 +68,8 @@ export default function TaskCard({
     task.schedulingWarning ? 'warn' : '',
     task.completion === 'done' ? 'done' : '',
     task.completion === 'skipped' ? 'skipped' : '',
+    continued ? 'cont-in' : '',
+    continues ? 'cont-out' : '',
     compact ? 'compact' : '',
     ghost ? 'ghost' : '',
     ghost && phase ? `ghost-${phase}` : '',

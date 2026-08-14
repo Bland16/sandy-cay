@@ -326,6 +326,17 @@ body {
 }
 .day.wknd { background-color: rgba(42,38,32,.045); }
 
+/* A session that crosses the 5am anchor is ONE task drawn as two boxes — the
+   head cut at the bottom of its column, the tail at the top of the next. Flat
+   edges on the cut side, and a hairline dash, so it reads as "carries on"
+   rather than as two separate things. Never a gap: the cut is where the grid
+   drew a line, not where the session stopped. */
+.card.cont-out { border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom-style: dashed; }
+.card.cont-in { border-top-left-radius: 0; border-top-right-radius: 0; border-top-style: dashed; }
+/* The tail is not draggable (its top is not the task's start), so it must not
+   advertise a grab. */
+.card.cont-in { cursor: pointer; }
+
 /* A BLOCKED day (design/DAY-NOTES.md D-6). This tint replaced a full-day
    protected card, and it is allowed to be a tint precisely because blocking is
    a real scheduling state rather than an annotation — P-1 reserves colour for

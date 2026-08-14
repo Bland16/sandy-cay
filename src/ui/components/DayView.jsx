@@ -1,8 +1,8 @@
 // DayView — single day, replaces the main area with its own ✕ back control
 // (per the B+C layout: day view is a main-area mode, not the panel).
-import { addDays, sameDay, hhmmToMinutes } from '../../core/index.js';
-import { DAY_FULL, DAY_KEYS, MONTHS, hourLabel, gridBounds, gridDayOf } from '../format.js';
-import { layoutDay, layoutRemainders } from '../layout.js';
+import { addDays, hhmmToMinutes } from '../../core/index.js';
+import { DAY_FULL, DAY_KEYS, MONTHS, hourLabel, gridBounds } from '../format.js';
+import { columnItems, layoutDay, layoutRemainders } from '../layout.js';
 import TaskCard from './TaskCard.jsx';
 import { DayNoteList } from './DayNotes.jsx';
 import Icon from '../Icon.jsx';
@@ -14,14 +14,15 @@ export default function DayView({
 }) {
   const date = addDays(weekStart, dayIndex);
   // The grid day runs 05:00 → 05:00, so this column owns the small hours of the
-  // NEXT calendar day. Pull both and keep what this grid-day actually holds.
-  const tasks = [...sched.getTasksForDay(date), ...sched.getTasksForDay(addDays(date, 1))]
-    .filter((t) => sameDay(gridDayOf(t.startTime), date));
+  // next calendar day — and the TAIL of a session that began before the anchor
+  // on the previous one. Pull all three days and let `columnItems` decide what
+  // this column actually draws.
+  const tasks = [...sched.getTasksForDay(addDays(date, -1)), ...sched.getTasksForDay(date), ...sched.getTasksForDay(addDays(date, 1))];
   const { start, end } = gridBounds();
   const colHeight = (end - start) * PXH;
   const hours = [];
   for (let h = start; h < end; h += 1) hours.push(h);
-  const laid = layoutDay(tasks, start, PXH);
+  const laid = layoutDay(columnItems(tasks, date, start), start, PXH);
 
   const bands = [];
   for (const z of sched.zones) {
@@ -69,7 +70,7 @@ export default function DayView({
           {bands.map((b) => (
             <div className="zone" key={b.key} style={{ top: b.top, height: b.height }}><span className="tag">{b.label}</span></div>
           ))}
-          {tasks.length === 0 && <div className="empty">Nothing scheduled. A clear shore.</div>}
+          {laid.length === 0 && <div className="empty">Nothing scheduled. A clear shore.</div>}
           {layoutRemainders(laid, truncations, start, PXH).map((r) => (
             <div
               className="remainder"
@@ -79,19 +80,22 @@ export default function DayView({
               title={`${r.title} — finished early, this time is free`}
             />
           ))}
-          {laid.map(({ task, style, compact }) => (
+          {laid.map(({ task, style, compact, key, continued, continues }) => (
             <TaskCard
-              key={task.id}
+              key={key}
               task={task}
               tint={sched.tintForTask(task)}
               style={style}
               compact={compact}
+              continued={continued}
+              continues={continues}
               onOpen={onOpenTask}
               onToggleComplete={onToggleComplete}
               dragging={interaction ? interaction.hiddenId === task.id : false}
               pressing={interaction ? interaction.pressingId === task.id : false}
-              onMoveStart={interaction ? interaction.onMoveStart : undefined}
-              onResizeStart={interaction ? interaction.onResizeStart : undefined}
+              /* The tail is not draggable — see WeekGrid. */
+              onMoveStart={interaction && !continued ? interaction.onMoveStart : undefined}
+              onResizeStart={interaction && !continued ? interaction.onResizeStart : undefined}
             />
           ))}
         </div>
