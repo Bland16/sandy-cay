@@ -54,7 +54,7 @@ function occupiedExcluding(sched, exclude, from, to) {
   for (let ws = weekStartOf(from), guard = 0; ws.getTime() <= endMs && guard < 8; guard += 1) {
     for (const t of sched.tasks) {
       if (!t.recurrence) continue;
-      for (const occ of expandRecurrence(t, ws)) {
+      for (const occ of expandRecurrence(t, ws, { blockedDays: sched.blockedDays })) {
         if (seen.has(occ.id)) continue;
         seen.add(occ.id);
         occs.push({ start: occ.startTime, end: occ.endTime, task: occ });

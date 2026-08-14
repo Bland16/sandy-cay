@@ -28,7 +28,7 @@ export function resolveDropConflicts(schedule, droppedTask, opts = {}) {
     if (t === droppedTask || t.id === droppedTask.id) continue;
     if (t.chunking) continue;
     if (t.recurrence) {
-      for (const occ of expandRecurrence(t, ws)) {
+      for (const occ of expandRecurrence(t, ws, { blockedDays: schedule.blockedDays })) {
         if (occ.overlaps(droppedTask)) blockers.push(occ);
       }
     } else if (t.overlaps(droppedTask)) {
@@ -62,7 +62,7 @@ export function resolveDropConflicts(schedule, droppedTask, opts = {}) {
     const others = intervalsOf(
       schedule.tasks.filter((t) => t !== droppedTask && !t.chunking && !t.recurrence),
     ).concat(
-      schedule.tasks.filter((t) => t.recurrence).flatMap((t) => intervalsOf(expandRecurrence(t, ws))),
+      schedule.tasks.filter((t) => t.recurrence).flatMap((t) => intervalsOf(expandRecurrence(t, ws, { blockedDays: schedule.blockedDays }))),
     );
     // occupied = everyone except the evicted target, including the dropped task.
     const occupied = others

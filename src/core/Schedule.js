@@ -112,7 +112,7 @@ export class Schedule {
   }
 
   _expand(task, ws) {
-    return expandRecurrence(task, ws);
+    return expandRecurrence(task, ws, { blockedDays: this.blockedDays });
   }
 
   /** Occupied intervals for placement, excluding a given task. */
@@ -122,7 +122,7 @@ export class Schedule {
     );
     const occs = this.tasks
       .filter((t) => t.recurrence)
-      .flatMap((t) => intervalsOf(expandRecurrence(t, ws)));
+      .flatMap((t) => intervalsOf(expandRecurrence(t, ws, { blockedDays: this.blockedDays })));
     return reals.concat(occs);
   }
 
@@ -543,7 +543,7 @@ export class Schedule {
     for (const t of this.tasks) {
       if (t.chunking) continue; // bookkeeping parent, not a grid object
       if (t.recurrence) {
-        out.push(...expandRecurrence(t, ws));
+        out.push(...expandRecurrence(t, ws, { blockedDays: this.blockedDays }));
       } else {
         const idx = t.getDayIndex(ws);
         if (idx >= 0 && idx <= 6) out.push(t);

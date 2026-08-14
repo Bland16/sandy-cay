@@ -237,7 +237,7 @@ export function recurrenceIntervals(schedule, from, to) {
   for (let guard = 0; ws.getTime() <= endMs && guard < 60; guard += 1) {
     for (const t of schedule.tasks) {
       if (!t.recurrence) continue;
-      for (const occ of expandRecurrence(t, ws)) {
+      for (const occ of expandRecurrence(t, ws, { blockedDays: schedule.blockedDays })) {
         if (seen.has(occ.id)) continue;
         seen.add(occ.id);
         out.push({ start: occ.startTime, end: occ.endTime, task: occ });

@@ -102,7 +102,7 @@ export function autoSchedule(schedule, opts = {}) {
     else anchors.push(t);
   }
   for (const t of schedule.tasks) {
-    if (t.recurrence) anchors.push(...expandRecurrence(t, ws));
+    if (t.recurrence) anchors.push(...expandRecurrence(t, ws, { blockedDays: schedule.blockedDays }));
   }
 
   const occupied = intervalsOf(anchors);
