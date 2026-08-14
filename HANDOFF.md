@@ -216,7 +216,15 @@ The three behaviours D-6 asked for, each locked by a test: **automatic placement
 stays out · your own hand still lands · What-To-Do still answers.** The last two
 came free — a manual drop was only ever rejected because it collided with the
 blocker *task*, and `whatToDo` never calls `computeWindows` at all.
-Block/unblock is on the day ⋯ menu. **644 tests green**, eslint and build clean.
+Block/unblock is on the day ⋯ menu, on the **day-notes panel** ("Block this
+day", §3's fact-and-decision-one-click-apart, buildable only once `blockedDays`
+existed), and it is **preserved by the blocker conversion** — a full-window
+blocker task was keeping placement off its day, so converting it to a note now
+blocks every day it covers rather than trading a correct behaviour for a tidier
+picture. **648 tests green**, eslint and build clean.
+
+*(Commit `6a3d1a9`'s message says 655; the measured number is 648. Left
+uncorrected because amending a pushed commit means a force-push.)*
 
 **`createBlocker` is GONE, not kept.** D-6 preserved it on paper for §3.9's
 "protect this gap", but that case never used it — `gapActions#protectGap` builds
