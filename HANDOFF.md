@@ -327,6 +327,59 @@ reconstructed, the same argument that made `dayFill` urgent.
 
 **STOP. Report.**
 
+### Queued by the user — asked for, not started (2026-08-14)
+
+- **"Clear this day" belongs in the day-notes panel, as a button.** The user
+  likes that panel and wants the day's actions together in it, beside "Block
+  this day". Today `Clear this day…` exists only on the day ⋯ menu. Note the two
+  are genuinely different and the panel should keep them distinct: **blocking is
+  non-destructive** (the scheduler stays off, nothing moves), **clearing
+  evacuates** what is already there. Clear Day is also a whole panel of its own
+  (`ClearDayPanel`, scope choice + a row per anchor), so this is a launcher for
+  it, not a second implementation of it.
+
+### ⚠️ OPEN BUG — a pattern edit that does not move the card (unresolved)
+
+**Reported 2026-08-14 with a screenshot, and it reproduces on the Pages site,
+so it is on `main` and predates sessions 7 and 8.** Not the occurrence-identity
+work, not the blocked-days work.
+
+Symptom: open a recurring Gym, set the pattern to 06:15–07:15, and the card
+stays at 17:00–19:00. The panel header reads `17:00–19:00 · DURATION` (the
+parent's own start/end) while the recurrence row reads `06:15`.
+
+**Ruled OUT by probe, so do not re-tread these:**
+- A plain pattern edit works in a clean fixture (17:00 → 06:15 moved).
+- A hand-dragged `move` exception on that date does **not** block the update.
+- The "from now on" scope default is not it — the week in the screenshot is in
+  the *future* of today, so the split boundary cannot be suppressing it.
+
+**The live hypothesis.** `getTasksForWeek` never renders a recurring parent, so
+that card is an occurrence whose governing window really is 17:00 — meaning the
+period the editor is showing is **not** the period governing that date.
+`modelFromTask` (and `applyPattern`'s non-split branch) both select
+`periods.find((p) => !p.effectiveUntil)` — the open-ended one — which after a
+`temporaryChange` sandwich or an odd `splitPeriod` need not cover the date you
+opened. If so, the fix is that both must select the period covering **the
+occurrence you clicked**, and the editor should say which period it is editing.
+
+**To settle it, dump the task** (needs the user's own data):
+```js
+const s = JSON.parse(localStorage.getItem('sandy-cay:schedule:v1'));
+console.log(JSON.stringify(s.tasks.filter((t) => t.title === 'Gym')
+  .map((t) => ({ id: t.id, start: t.startTime, end: t.endTime, rec: t.recurrence })), null, 2));
+```
+More than one entry in `rec.periods` confirms the hypothesis.
+
+**Found while auditing, real, and not the above:**
+- **A `move` exception cannot be cleared from the UI.** Dragging a session
+  writes one (`useCardInteraction`, `App`), and nothing in `src/ui` removes one,
+  so a session dragged once is pinned against later pattern edits with no way
+  back short of editing storage.
+- **"from now on" is the default scope** (`modelFromTask` sets
+  `scope: 'future'`), so days earlier in the *current* week keep the old time
+  after an edit. Correct per 4B, and it is what "it didn't change" looks like.
+
 ### Deliberately NOT in this list, so nobody quietly starts one
 
 - **The energy term in `scoring.js`** — settled by evidence (D-1) and the
