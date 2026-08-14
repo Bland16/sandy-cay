@@ -109,6 +109,16 @@ export function useEngine() {
         // being dropped here — a restored footlocker re-raised detector cards the
         // user had already answered. Copy it with the rest.
         s._dismissed = next._dismissed;
+        // ⚠️ THIRD time this trap has been sprung (snapshots, then _dismissed,
+        // now these). Day notes and blocked days are written by toJSON and read
+        // by fromJSON, so they survive a SAVE perfectly — and were dropped here,
+        // which meant importing a footlocker silently erased every holiday and
+        // every day you had taken off, with no error and no empty state to
+        // notice. Anything added to the Schedule constructor must be added HERE
+        // in the same commit; a field that only round-trips through storage is
+        // half-wired, and this function is the half that gets forgotten.
+        s.dayNotes = next.dayNotes;
+        s.blockedDays = next.blockedDays;
       });
     }, [mutate]),
   };

@@ -130,6 +130,11 @@ export function summarizeImport(blob) {
     zoneCount: (blob.zones || []).length,
     bucketCount: (blob.buckets || []).length,
     activityCount: (blob.activities || []).length,
+    // Counted so the confirm can name them. They were being dropped on import
+    // entirely; a summary that stays silent about a collection is how nobody
+    // notices it never arrived.
+    dayNoteCount: (blob.dayNotes || []).length,
+    blockedDayCount: (blob.blockedDays || []).length,
     ratings: blob.model ? blob.model.sampleCount || 0 : 0,
   };
 }

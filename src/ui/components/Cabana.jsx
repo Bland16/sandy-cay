@@ -42,7 +42,11 @@ export default function Cabana({ sched, mutate, weekStart, onBack, onReplace, on
         const blob = JSON.parse(reader.result);
         const sum = summarizeImport(blob);
         if (!sum.valid) { showToast(sum.reason); return; }
-        if (window.confirm(`Import ${sum.taskCount} tasks, ${sum.zoneCount} zones, ${sum.ratings} ratings? This replaces your current week.`)) {
+        const extra = [
+          sum.dayNoteCount ? `${sum.dayNoteCount} day note${sum.dayNoteCount === 1 ? '' : 's'}` : null,
+          sum.blockedDayCount ? `${sum.blockedDayCount} blocked day${sum.blockedDayCount === 1 ? '' : 's'}` : null,
+        ].filter(Boolean).join(', ');
+        if (window.confirm(`Import ${sum.taskCount} tasks, ${sum.zoneCount} zones, ${sum.ratings} ratings${extra ? `, ${extra}` : ''}? This replaces your current week.`)) {
           onReplace(blob);
           showToast('Footlocker restored');
         }

@@ -1109,9 +1109,19 @@ a block is honest there.
     scheduler correctly saw as free. `WeekGrid` and `DayView` each have their own
     band walk; both now check `activeOn`. **A third copy will drift.**
 15. **New `Schedule` state is additive, `schemaVersion` stays 1.** `snapshots`,
-    `lastSeenWeek`, `dismissed` all persist; absent keys load clean, so old saves
-    are fine. `useEngine#replace` (footlocker import) must copy them too — it
-    silently dropped them once already.
+    `lastSeenWeek`, `dismissed`, `dayNotes`, `blockedDays` all persist; absent
+    keys load clean, so old saves are fine. **`useEngine#replace` (footlocker
+    import) must copy them too — it has now silently dropped a collection
+    THREE times**: `snapshots`/`lastSeenWeek`, then `dismissed`, then
+    `dayNotes`/`blockedDays` (found 2026-08-14 by the user asking why blocked
+    days weren't in their file).
+    **Why this keeps happening, and the rule that stops it:** `toJSON` and the
+    constructor are edited together, so *saving* round-trips perfectly and every
+    storage test passes. `replace` copies field by field somewhere else
+    entirely, and the field it forgets is erased with no error and no empty
+    state to notice. **Anything added to the `Schedule` constructor must be
+    added to `replace` in the SAME commit.** `tests/footlocker-roundtrip.test.jsx`
+    drives the real hook and fails if either is dropped.
 16. **Cards are `touch-action: manipulation`, drag arms on a long-press.** It was
     `none`, which made a card swallow every touch gesture — so on a phone (where
     the grid is mostly cards) scrolling the day was impossible and any swipe flung
