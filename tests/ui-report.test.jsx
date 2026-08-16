@@ -163,15 +163,22 @@ describe('§7.1 — the report view model', () => {
   });
 
   it('reports planned-vs-actual once a baseline exists', () => {
+    // ⚠️ A FIXED week, not `thisWeek()`. This test nudges a task one day
+    // forward, and with the week derived from the real clock it went red every
+    // SUNDAY: the task was placed on the week's last day, so +1 pushed it out
+    // of the week being reported on and it stopped being counted. Same class as
+    // the date-flaky tests session 3 fixed in ui-drag and ui-bulk — this one was
+    // missed, so "green any day of the week" was not quite true.
+    const WEEK = weekStartOf(new Date(2026, 6, 13)); // Mon 13 Jul 2026
     const s = new Schedule({ config: defaultConfig });
-    const t = s.addFlexible({ title: 'Drifter', durationMin: 60, from: thisWeek(), to: addDays(thisWeek(), 6) });
-    s.autoSchedule({ weekStart: thisWeek(), now: thisWeek() });
+    const t = s.addFlexible({ title: 'Drifter', durationMin: 60, from: WEEK, to: addDays(WEEK, 6) });
+    s.autoSchedule({ weekStart: WEEK, now: WEEK });
 
-    const r0 = buildWrapReport(s, thisWeek());
+    const r0 = buildWrapReport(s, WEEK);
     expect(r0.stats.plan.movedCount).toBe(0);
 
     t.moveTo(addDays(t.startTime, 1));
-    const r1 = buildWrapReport(s, thisWeek());
+    const r1 = buildWrapReport(s, WEEK);
     expect(r1.stats.plan.movedCount).toBe(1);
     expect(r1.stats.plan.biggest.title).toBe('Drifter');
   });

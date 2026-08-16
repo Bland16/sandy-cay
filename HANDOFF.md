@@ -393,6 +393,21 @@ occupies in a column is not derivable from the task alone.
   layout depended on the time of day it was built at. It now passes `now: ws`,
   which is what sharp edge #8 requires of a fixture.
 
+### One more date-flaky test, found on a Sunday (2026-08-16)
+
+`ui-report.test.jsx` → "reports planned-vs-actual once a baseline exists" built
+its week from the real clock and went **red every Sunday**: it nudges a task one
+day forward, and on the week's last day that pushes it OUT of the week being
+reported on, so it stops being counted. Now uses a fixed week (Mon 13 Jul 2026).
+
+Same class session 3 fixed in `ui-drag` and `ui-bulk`; this file was missed, so
+**"green any day of the week" was not quite true** — it is now. Proven not to be
+caused by that day's work by reverting `src/core/` to the previous commit and
+watching it fail identically.
+
+Pinning the WHOLE file with `vi.setSystemTime` was tried first and broke three
+other tests in it, so the fix is scoped to the one test that needed it.
+
 ### Queued by the user — asked for, not started (2026-08-14)
 
 - **"Clear this day" belongs in the day-notes panel, as a button.** The user
