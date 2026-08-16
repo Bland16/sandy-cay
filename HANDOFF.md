@@ -365,6 +365,34 @@ grid day has this bug. `gridDayOf` and `getTasksForWeek` do not agree and never
 did. `layoutDay` now takes SEGMENTS rather than tasks, because the span a task
 occupies in a column is not derivable from the task alone.
 
+### Fixed 2026-08-15 — three more, all probe-proven
+
+- **A recurring session lost its `load`.** `buildOccurrence` rebuilds a session
+  field by field and did not carry it, so every recurring task with a per-task
+  override fell back to its bucket: 2h at +2 read as 2h at +0.5, a quarter of
+  the real drain, with nothing on screen to say so. `activityId` is carried now
+  too (a session that forgets where it came from cannot be learned from — the
+  parked time-of-day preference needs it). `deadline` and `schedulingInfo` stay
+  deliberately absent, and the function now says why.
+- **✅ ITEM 3 DECIDED: `resizeChunk` does NOT clamp to `chunking.maxChunk`.**
+  It sets `placedBy = 'user'` — it IS the hand, and R-1 gives a manual action
+  its autonomy. `maxChunk` is what you told the SLICER; it is not a cage around
+  your own mouse, and conservation still holds because the siblings shrink to
+  pay for it. **I clamped it first and was wrong:** `tests/projects.test.js`
+  ("grow chunk → siblings shrink/dissolve") asserts a 120-max chunk growing to
+  180, so the behaviour was already intended and already written down. The
+  decision is now in the code and locked by a test.
+- **Projects laid chunks into time that had gone.** `placeTask`'s
+  past-placement guard is relative to the `from` it is handed, and
+  `redistribute` handed it `range.from` — so a project whose range began on
+  Monday placed work on Monday and Tuesday when it was already Wednesday.
+  Floored at `now` using the same shape `autoSchedule` uses (`opts.now ||
+  new Date()`, floor only when now falls INSIDE the range), so a project that
+  has not started yet still lays out from its own start.
+  ⚠️ This also revealed that **`seed()` was reading the wall clock**: its
+  layout depended on the time of day it was built at. It now passes `now: ws`,
+  which is what sharp edge #8 requires of a fixture.
+
 ### Queued by the user — asked for, not started (2026-08-14)
 
 - **"Clear this day" belongs in the day-notes panel, as a button.** The user

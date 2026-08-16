@@ -59,13 +59,13 @@ export function addProject(schedule, data) {
     chunking,
   });
   schedule.tasks.push(parent);
-  const children = materialize(schedule, parent);
+  const children = materialize(schedule, parent, { now: data.now });
   return { parent, children };
 }
 
 /** (Re)build the auto-placed children so the total is conserved. Completed and
  *  user-placed children are preserved; only auto children flex. */
-export function redistribute(schedule, parent) {
+export function redistribute(schedule, parent, opts = {}) {
   const children = schedule.tasks.filter((t) => t.parentId === parent.id);
   const preserved = children.filter((t) => t.completion !== null || t.placedBy === 'user');
   const auto = children.filter((t) => t.completion === null && t.placedBy !== 'user');
@@ -77,21 +77,34 @@ export function redistribute(schedule, parent) {
   if (remaining <= 0) return [];
 
   const { minChunk, maxChunk, range } = parent.chunking;
+  // ⚠️ Floor the search at NOW, not at the project's start date. `placeTask`'s
+  // past-placement guard is relative to the `from` it is given, and this passed
+  // `range.from` — so a project whose range began on Monday laid chunks on
+  // Monday and Tuesday when it was already Wednesday. Work scheduled into time
+  // that has gone is worse than unscheduled: it reads as done-and-missed.
+  //
+  // Same shape as `autoSchedule` (`opts.now || new Date()`, floor only when now
+  // falls INSIDE the range) so the two agree — a project starting next month
+  // still lays out from its own start, and one already underway starts here.
+  const now = opts.now || new Date();
+  const from = (now.getTime() > range.from.getTime() && now.getTime() < range.until.getTime())
+    ? now
+    : range.from;
   const sizes = sliceChunks(remaining, minChunk, maxChunk);
   const created = [];
   let occupied = intervalsOf(schedule.tasks.filter((t) => !t.chunking && !t.recurrence))
-    .concat(recurrenceIntervals(schedule, range.from, range.until)); // occurrences are anchors (§4.4)
+    .concat(recurrenceIntervals(schedule, from, range.until)); // occurrences are anchors (§4.4)
   for (const size of sizes) {
     const child = new Task({
       title: parent.title,
       tags: [...parent.tags],
       type: 'flexible',
       parentId: parent.id,
-      startTime: range.from,
-      endTime: addMinutes(range.from, size),
+      startTime: from,
+      endTime: addMinutes(from, size),
       deadline: range.until,
     });
-    const res = placeTask(schedule, child, { from: range.from, to: range.until, occupied });
+    const res = placeTask(schedule, child, { from, to: range.until, occupied });
     child.placedBy = 'auto';
     schedule.tasks.push(child);
     occupied.push({ start: child.startTime, end: child.endTime, task: child });
@@ -101,8 +114,8 @@ export function redistribute(schedule, parent) {
   return created;
 }
 
-function materialize(schedule, parent) {
-  return redistribute(schedule, parent);
+function materialize(schedule, parent, opts) {
+  return redistribute(schedule, parent, opts);
 }
 
 /** Resize a chunk to `newDurationMin` (a user action → placedBy 'user'), then
@@ -111,6 +124,21 @@ export function resizeChunk(schedule, childId, newDurationMin) {
   const child = schedule.tasks.find((t) => t.id === childId);
   if (!child) return null;
   const parent = schedule.tasks.find((t) => t.id === child.parentId);
+  // ⚠️ DELIBERATELY NOT clamped to `chunking.maxChunk` (HANDOFF item 3, decided
+  // 2026-08-15). `resizeChunk` sets `placedBy = 'user'` two lines down — it IS
+  // the hand, and R-1 says a manual action keeps its autonomy: automatic
+  // re-optimizing carries the guarantees, a drag does not have to.
+  //
+  // `maxChunk` is what you told the SLICER, so it binds `sliceChunks` and
+  // `redistribute`; it is not a cage around your own mouse. Deciding you will
+  // sit for three hours this once is a thing a person is allowed to do, and the
+  // conservation rule still holds — the siblings shrink to pay for it.
+  //
+  // This was clamped for about ten minutes, and `tests/projects.test.js`
+  // ("grow chunk → siblings shrink/dissolve") caught it: that test asserts a
+  // 120-max chunk growing to 180, so the behaviour was already intended and
+  // written down. Only the 15-minute floor applies here (OD-1's, the same one
+  // the resize borders enforce).
   child.resizeTo(addMinutes(child.startTime, Math.max(15, newDurationMin)));
   child.placedBy = 'user';
   if (parent) redistribute(schedule, parent);

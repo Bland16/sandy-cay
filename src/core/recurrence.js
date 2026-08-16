@@ -232,6 +232,17 @@ export function expandRecurrence(task, weekStartDate) {
   return out;
 }
 
+/**
+ * One materialized session.
+ *
+ * Rebuilt field by field, which is a trap: anything on `Task` that matters to a
+ * session must be listed HERE as well as in `toJSON`/the constructor, or it is
+ * dropped in silence for recurring tasks only. `load` was lost exactly that way.
+ *
+ * Deliberately NOT carried: `deadline` (a pattern has no per-session due date)
+ * and `schedulingInfo` (an engine verdict about a PLACEMENT — an occurrence is
+ * generated, never placed, so the parent's verdict would be a lie about it).
+ */
 function buildOccurrence(task, identity, key, start, end, od) {
   return new Task({
     id: identity,
@@ -248,6 +259,17 @@ function buildOccurrence(task, identity, key, start, end, od) {
     completion: od.completion ?? null,
     satisfaction: od.satisfaction ?? null,
     history: od.history ?? undefined,
+    // ⚠️ Carried, and it was not. `loadForTask`'s very first line prefers a
+    // task's own `load` over its buckets, and this function rebuilds an
+    // occurrence field by field — so every recurring session silently fell back
+    // to the bucket and the battery read a fraction of the real drain. Probed:
+    // the same task with an explicit override reported physical net=4 as a
+    // one-off and net=1 as a recurrence.
+    load: task.load ?? undefined,
+    // The activity a session came from. Nothing reads it over occurrences today,
+    // but a session that forgets where it came from cannot be learned from —
+    // which is exactly the parked time-of-day preference (§7.1).
+    activityId: task.activityId ?? null,
     isOccurrence: true,
     occurrenceDate: key,
     parentId: task.id,

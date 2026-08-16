@@ -194,7 +194,14 @@ export function seed(refDate = new Date()) {
   sched.addFlexible({ title: 'Read novel', tags: ['leisure'], from: ws });
 
   // Project: thesis, 6h across the week in 1–2h chunks.
+  //
+  // `now: ws` is load-bearing, not decoration. `redistribute` floors its search
+  // at "now" so a project already underway does not lay chunks into hours that
+  // have gone — which means that without this, the seed's layout depended on the
+  // WALL CLOCK, and the fixture drifted with the time of day it was built at.
+  // Sharp edge #8: the engine must never read the clock in a test.
   sched.addProject({
+    now: ws,
     title: 'Thesis',
     tags: ['thesis'],
     chunking: { totalMinutes: 360, minChunk: 60, maxChunk: 120, range: { from: ws, until: addDays(ws, 5) } },
