@@ -408,6 +408,50 @@ watching it fail identically.
 Pinning the WHOLE file with `vi.setSystemTime` was tried first and broke three
 other tests in it, so the fix is scoped to the one test that needed it.
 
+### ✅ ITEM 4 — the generation engine is BUILT (engine only, 2026-08-16)
+
+`src/core/generate.js`, exported as `generateSittings` (one commitment) and
+`generateAll` (several, in ρ order). No UI yet, exactly as the brief said —
+"build the engine ALONE first and prove it by printing placements".
+
+**Proven by printing placements**, on a term week (classes Mon/Wed/Fri, seminars
+Tue/Thu, gym Monday evening):
+
+```
+8h over two weeks, max 3h, 1/day
+   Mon 09-07 19:30 180m · Sat 09-12 08:00 180m · Thu 09-17 08:00 120m
+   480/480 placed, shortfall 0, longest streak 1
+   sizes 180/180/120 — GAP-SHAPED, unequal on purpose
+
+45m errand              -> one 45m sitting, not a booked 3h block
+three commitments       -> rho 0.069 > 0.047 > 0.028, no day used twice
+20h over a fortnight    -> 5 days, longest consecutive streak = 1
+```
+
+**What the tests lock, and why each one exists** (every losing candidate failed
+one of these, so a "simplification" would reintroduce it):
+
+- Sittings are **gap-shaped and unequal**. §4.1.1 step 4 once read "EQUALISE, do
+  not skip this line" and that was corrected out — equalising re-imports the
+  disease candidate 5 does not have. The test asserts sizes are NOT all equal.
+- A 45-minute amount is one 45-minute sitting.
+- Never below `s_min`, never above `s_max`, never more than `maxPerDay`.
+- **Spread**: 20h does not land on consecutive evenings. Burnout is clustering.
+- Nothing before now, nothing on a **blocked day**, nothing overlapping.
+- ρ ordering, sequential (no two commitments claim a day), and idempotent.
+- A shortfall is **stated**: `placed + shortfall === amount`, never crammed.
+
+**⚠️ One real correction made while building:** `walkGaps` is a slot GENERATOR,
+not a gap enumerator — it returns candidate slots of exactly `durationMin`, so
+asking it for "1 minute" yields one-minute slots and the first version placed
+nothing at all. Step 2 uses `subtractIntervals` on `computeWindows` and pads only
+where a run abuts a task.
+
+**Still to do:** the Cabana card (steps 2–3), the commitment as a stored object,
+and §4.6's planned-vs-actual (ITEM 5). The engine takes a plain
+`{title, tags, amountMin, from, until, minSitting, maxSitting, maxPerDay,
+priority, load}` — no model change was needed to prove it.
+
 ### Queued by the user — asked for, not started (2026-08-14)
 
 - **"Clear this day" belongs in the day-notes panel, as a button.** The user
