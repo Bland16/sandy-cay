@@ -89,11 +89,22 @@ describe('the zoom model', () => {
 
   it('saturates at both ends and never goes below 1× (D-3)', () => {
     expect(ZOOM_LEVELS[0]).toBe(1);
-    let z = 1;
-    for (let i = 0; i < 9; i += 1) z = zoomIn(z);
-    expect(z).toBe(4);
-    for (let i = 0; i < 9; i += 1) z = zoomOut(z);
-    expect(z).toBe(1);
+
+    // ⚠️ Assert the STEP, not just where a loop ends up. An earlier version of
+    // this test pressed + nine times and expected 4 — which a wrapping zoomIn
+    // also satisfies, because nine steps through five rungs happens to land back
+    // on the top one. It passed against a broken implementation. Caught by
+    // mutation, which is the only reason it is written this way.
+    expect(zoomIn(4)).toBe(4);
+    expect(zoomOut(1)).toBe(1);
+
+    // And the whole ladder, in order, both ways.
+    const up = [1];
+    for (let i = 0; i < ZOOM_LEVELS.length; i += 1) up.push(zoomIn(up[up.length - 1]));
+    expect(up).toEqual([...ZOOM_LEVELS, 4]);
+    const down = [4];
+    for (let i = 0; i < ZOOM_LEVELS.length; i += 1) down.push(zoomOut(down[down.length - 1]));
+    expect(down).toEqual([...[...ZOOM_LEVELS].reverse(), 1]);
   });
 
   it('falls back to 1× for a stored value that is not a rung', () => {
