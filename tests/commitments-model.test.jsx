@@ -78,6 +78,19 @@ describe('Commitment — the fields, and what they refuse', () => {
     expect([c.from, c.until]).toEqual(['2026-09-07', '2026-10-04']);
   });
 
+  it('never lets the sitting MINIMUM exceed the weekly amount', () => {
+    // ⚠️ Found by probe-commitment-cases.mjs C3. A 60-minute minimum against a
+    // 30-minute weekly amount is incoherent, and the engine resolves it by
+    // rounding the AMOUNT up: `chooseSittings`' single-sitting branch takes
+    // `max(amountMin, sMin)`, so it booked a 60m block for a 30m job and
+    // reported no shortfall — breaking `placed + shortfall === amount`, which
+    // §4.3 states and the engine's own tests lock. Clamped in the model so the
+    // state cannot be stored, rather than patching the engine.
+    const c = new Commitment({ ...ENGR, amountMinPerWeek: 30, minSitting: 60 });
+    expect(c.minSitting).toBe(30);
+    expect(c.maxSitting).toBeGreaterThanOrEqual(30);
+  });
+
   it('never lets the sitting maximum fall below the minimum', () => {
     const c = new Commitment({ ...ENGR, minSitting: 120, maxSitting: 30 });
     expect(c.maxSitting).toBe(120);

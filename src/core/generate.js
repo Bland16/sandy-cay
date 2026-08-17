@@ -41,10 +41,13 @@ export function runwayEnd(from, until) {
 }
 
 /** A commitment's own admissible minutes inside R* — the Ω of §4.1.2's ρ. */
-export function openMinutesFor(schedule, probe, from, to, occupied) {
+export function openMinutesFor(schedule, probe, from, to, occupied, after = null) {
   let total = 0;
   for (const day of eachDay(from, to)) {
-    for (const g of gapsOnDay(schedule, probe, day, occupied)) total += g.minutes;
+    // `after` matters here too: rho is A / Ω, and counting hours that have
+    // already gone as "open" understates how constrained a commitment is —
+    // exactly backwards, since a half-spent week is MORE constrained.
+    for (const g of gapsOnDay(schedule, probe, day, occupied, after)) total += g.minutes;
   }
   return total;
 }
@@ -69,7 +72,7 @@ function eachDay(from, to) {
  * tags IN and carves itself out for everyone else. Two commitments' numbers are
  * not comparable as percentages of one week.
  */
-export function gapsOnDay(schedule, probe, date, occupied = []) {
+export function gapsOnDay(schedule, probe, date, occupied = [], after = null) {
   const windows = computeWindows(schedule, probe, date);
   if (!windows.length) return [];
   const capacity = dayCapacityMin(schedule.config, date) || 1;
@@ -93,8 +96,16 @@ export function gapsOnDay(schedule, probe, date, occupied = []) {
       if (dayOcc.some((iv) => Math.abs(iv.end.getTime() - start.getTime()) < 60000)) start = addMinutes(start, breakMin);
       if (dayOcc.some((iv) => Math.abs(iv.start.getTime() - end.getTime()) < 60000)) end = addMinutes(end, -breakMin);
     }
+    // ⚠️ HOURS THAT HAVE GONE ARE NOT OPEN TIME. `after` floors today's runs at
+    // the clock. Without it this function reported today's window from its
+    // 08:00 opening however late it already was, and a plan built at noon on
+    // Wednesday booked a three-hour sitting at 10:30 THAT MORNING — 90 minutes
+    // into the past. Same defect `redistribute` was fixed for (it floors at
+    // `now`, not `dayStart(now)`), and the same one the use-case run found in
+    // `placeTask`'s parking branch. Found by probe-commitment-cases.mjs A3/A4.
+    if (after && start.getTime() < after.getTime()) start = new Date(after.getTime());
     const minutes = minutesBetween(start, end);
-    if (minutes > 0) out.push({ date, start, end, minutes });
+    if (minutes > 0 && start.getTime() < end.getTime()) out.push({ date, start, end, minutes });
   }
   return out;
 }
@@ -227,7 +238,7 @@ export function generateSittings(schedule, commitment, opts = {}) {
   const probe = probeTask(commitment, from);
 
   const days = eachDay(from, rEnd);
-  const gaps = days.flatMap((d) => gapsOnDay(schedule, probe, d, occupied));
+  const gaps = days.flatMap((d) => gapsOnDay(schedule, probe, d, occupied, now));
   const sMin = commitment.minSitting;
   const sMax = commitment.maxSitting;
   const plan = chooseSittings(gaps, commitment.amountMin, { sMin, sMax, maxPerDay: commitment.maxPerDay });
@@ -257,7 +268,14 @@ export function generateSittings(schedule, commitment, opts = {}) {
     });
     // Step 6: `from === to` bounds the scored search to that one day, so the
     // placer chooses WHERE in the day and the generator keeps WHICH day.
-    const res = placeTask(schedule, child, { from: day, to: day, occupied });
+    //
+    // `from` is floored at `now` for TODAY. Step 2 already refuses to offer a
+    // gap that has gone, but `placeTask` searches from the `from` it is handed
+    // and would otherwise be free to pick 08:00 this morning — the past-placement
+    // floor is only ever as good as the `from` given to it, which is the exact
+    // wording of the bug already fixed in `redistribute`.
+    const searchFrom = day.getTime() < now.getTime() ? now : day;
+    const res = placeTask(schedule, child, { from: searchFrom, to: day, occupied });
     if (res && res.warning) child.schedulingWarning = true;
     schedule.tasks.push(child);
     occupied.push({ start: child.startTime, end: child.endTime, task: child });
@@ -286,7 +304,7 @@ export function generateAll(schedule, commitments, opts = {}) {
   const scored = commitments.map((c) => {
     const from = new Date(Math.max(dayStart(c.from).getTime(), dayStart(now).getTime()));
     const probe = probeTask(c, from);
-    const omega = openMinutesFor(schedule, probe, from, runwayEnd(from, c.until), baseOccupied(schedule, c));
+    const omega = openMinutesFor(schedule, probe, from, runwayEnd(from, c.until), baseOccupied(schedule, c), now);
     return { c, rho: omega > 0 ? c.amountMin / omega : Infinity };
   });
   scored.sort((a, b) => b.rho - a.rho

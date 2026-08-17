@@ -92,6 +92,15 @@ export class Commitment {
     // length (§4.1). This is the whole reason the generator asks the calendar
     // what it has instead of booking a number it invented.
     this.minSitting = posInt(data.minSitting, 30);
+    // ⚠️ A minimum ABOVE the weekly amount is incoherent, and the engine
+    // resolves it by rounding the amount UP: `chooseSittings`' single-sitting
+    // branch takes `max(amountMin, sMin)`, so 30m owed with a 60m minimum books
+    // 60m and reports no shortfall — breaking `placed + shortfall === amount`,
+    // which is §4.3's stated property and one the engine's own tests lock.
+    // Found by probe-commitment-cases.mjs C3. Clamped HERE rather than in the
+    // engine so the unreachable state simply cannot be stored, the same shape
+    // as the max/min clamp below.
+    if (this.minSitting > this.amountMinPerWeek) this.minSitting = this.amountMinPerWeek;
     this.maxSitting = posInt(data.maxSitting, 180);
     if (this.maxSitting < this.minSitting) this.maxSitting = this.minSitting;
     this.maxPerDay = posInt(data.maxPerDay, 1);

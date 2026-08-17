@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   Schedule, defaultConfig, resetIds, weekStart as weekStartOf, addDays, dateKey,
-  generateSittings, generateAll, runwayEnd,
+  generateSittings, generateAll, runwayEnd, gapsOnDay, addMinutes, Task,
 } from '../src/core/index.js';
 
 const MON = weekStartOf(new Date(2026, 8, 7)); // Mon 7 Sep 2026
@@ -43,6 +43,72 @@ const longestStreak = (sittings) => {
   }
   return best;
 };
+
+describe('nothing is placed in hours that have already gone', () => {
+  // ⚠️ Found by design/probes/probe-commitment-cases.mjs (A3/A4), and it is the
+  // THIRD time this class of defect has appeared: `redistribute` laid chunks
+  // into a Monday that had gone, and `placeTask`'s parking branch put overdue
+  // work at 08:00 that same morning. Both were floored at `now`; this one was
+  // not, because `generateSittings` floored at `dayStart(now)` — midnight
+  // TODAY — so today's gaps were reported from the 08:00 window opening however
+  // late it already was.
+  //
+  // Measured: with the clock at noon on Wednesday, a 3h sitting was placed at
+  // Wednesday 10:30 — ninety minutes into the past.
+  it('does not place earlier TODAY than the clock', () => {
+    const s = termWeek();
+    const WED_NOON = new Date(2026, 8, 9, 12, 0, 0);
+    const r = generateSittings(s, commitment(), { now: WED_NOON });
+    expect(r.sittings.length).toBeGreaterThan(0);
+    for (const t of r.sittings) {
+      expect(t.startTime.getTime()).toBeGreaterThanOrEqual(WED_NOON.getTime());
+    }
+  });
+
+  it('reports the OPEN MINUTES left today from the clock, not the window opening', () => {
+    // ⚠️ This one nearly shipped unproven. Reverting the `gapsOnDay` floor left
+    // both tests above still GREEN, because `searchFrom` alone stops the bad
+    // placement — so the floor was an unproven change, which is the exact shape
+    // this project has twice caught as a vacuous fix. It earns its place for a
+    // different reason and needs its own test:
+    //
+    // step 3 picks the LONGEST gaps first, and without the floor today's run
+    // reads 08:00–23:00 however late it is. A half-spent Wednesday advertises
+    // fifteen hours and gets chosen over a genuinely empty Saturday. The same
+    // over-count reaches rho through `openMinutesFor`, understating exactly the
+    // commitment that is most constrained.
+    const s = termWeek();
+    const WED = addDays(MON, 2);
+    const NOON = new Date(2026, 8, 9, 12, 0, 0);
+    const probe = new Task({
+      title: 'p', tags: ['study'], type: 'flexible',
+      startTime: WED, endTime: addMinutes(WED, 60),
+    });
+    const open = gapsOnDay(s, probe, WED, [], null).reduce((n, g) => n + g.minutes, 0);
+    const left = gapsOnDay(s, probe, WED, [], NOON).reduce((n, g) => n + g.minutes, 0);
+    expect(left).toBeLessThan(open);
+    for (const g of gapsOnDay(s, probe, WED, [], NOON)) {
+      expect(g.start.getTime()).toBeGreaterThanOrEqual(NOON.getTime());
+    }
+  });
+
+  it('still uses the REST of today — the floor must not become an exclusion', () => {
+    // An afternoon is still time. Scoped to a window where TODAY is the only
+    // day there is, because over a fortnight the spread may legitimately pick
+    // another day and the test would be asserting the spread, not the floor.
+    // (My first version did exactly that and failed for the wrong reason.)
+    const s = termWeek();
+    const WED_NOON = new Date(2026, 8, 9, 12, 0, 0);
+    const r = generateSittings(
+      s,
+      commitment({ amountMin: 120, minSitting: 60, maxSitting: 120, from: addDays(MON, 2), until: addDays(MON, 3) }),
+      { now: WED_NOON },
+    );
+    expect(r.sittings.length).toBe(1);
+    expect(dateKey(r.sittings[0].startTime)).toBe('2026-09-09');
+    expect(r.sittings[0].startTime.getHours()).toBeGreaterThanOrEqual(12);
+  });
+});
 
 describe('step 1 — R* ends a fifth of the runway early', () => {
   it('reserves a fifth of the RUNWAY, not a fifth of the task', () => {
