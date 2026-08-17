@@ -30,6 +30,7 @@ export { checkRollover, commitRollover, weekAfter, weekKeyOf } from './rollover.
 export { autoSchedule, freeCapacityBefore } from './autoSchedule.js';
 export { expandRecurrence, addException, splitPeriod, periodFor, temporaryChange, endRecurrence, dateOfOccurrence, occursOn } from './recurrence.js';
 export { DayNote } from './DayNote.js';
+export { Commitment } from './Commitment.js';
 export { generateSittings, generateAll, chooseSittings, spreadDays, runwayEnd, gapsOnDay, openMinutesFor } from './generate.js';
 export { addProject, shrinkChunk, growChunk, deleteChunk, resizeChunk, finishProject, sliceChunks, redistribute } from './projects.js';
 export {

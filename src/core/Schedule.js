@@ -6,6 +6,7 @@ import { Zone } from './Zone.js';
 import { Bucket } from './Bucket.js';
 import { Activity } from './Activity.js';
 import { DayNote } from './DayNote.js';
+import { Commitment } from './Commitment.js';
 import { makeId } from './ids.js';
 import { blendColors } from './color.js';
 import { makeConfig } from './config.js';
@@ -83,6 +84,17 @@ export class Schedule {
     // opening the picker IS asking. That is R-1 applied honestly: a rule you
     // set yourself is the clearest case of one you are entitled to overrule.
     this.blockedDays = [...new Set((init.blockedDays || []).map(String))].sort();
+    // Standing commitments — "8h of ENGR project by 3 October"
+    // (design/WEEKLY-PLANNING.md §2/§4). Additive, so old saves load empty and
+    // schemaVersion stays 1 (sharp edge #15). ⚠️ That edge has now been sprung
+    // THREE times, so: this is written by `toJSON`, read by `fromJSON`, AND
+    // copied by `useEngine#replace` — all in this commit, not a later one.
+    //
+    // They hold no placement of their own. The sittings a commitment generates
+    // are ordinary tasks carrying `parentId`, which is what keeps this a
+    // GENERATOR rather than a new kind of thing on the week.
+    this.commitments = (init.commitments || []).map((c) => (c instanceof Commitment ? c : Commitment.fromJSON(c)));
+    this._dedupeIds(this.commitments);
     this.learning = init.model instanceof LearningModule
       ? init.model
       : LearningModule.fromJSON(init.model, this.config);
@@ -371,6 +383,49 @@ export class Schedule {
   /** Every note covering a date — the day header's whole question. */
   notesForDate(date) {
     return this.dayNotes.filter((n) => n.coversDate(date));
+  }
+
+  // ---- standing commitments (design/WEEKLY-PLANNING.md §2/§4) -------------
+  addCommitment(data) {
+    const c = new Commitment(data);
+    this._uniqueInColl(c, this.commitments);
+    this.commitments.push(c);
+    this._touch();
+    return c;
+  }
+
+  updateCommitment(id, changes) {
+    const c = this.commitments.find((x) => x.id === id);
+    if (!c) return null;
+    // Rebuilt through the constructor rather than `Object.assign`ed, so every
+    // clamp (min ≤ max, a swapped date range, hours that are not a number)
+    // applies to an EDIT and not only to a creation. `updateDayNote` does the
+    // same, and the reason is the field-by-field rebuild trap in reverse: a
+    // partial patch that skips validation is how a maxSitting below its
+    // minSitting gets stored and then generates nothing, silently.
+    Object.assign(c, new Commitment({ ...c.toJSON(), ...changes, id: c.id }));
+    this._touch();
+    return c;
+  }
+
+  removeCommitment(id) {
+    const i = this.commitments.findIndex((c) => c.id === id);
+    if (i < 0) return null;
+    const [gone] = this.commitments.splice(i, 1);
+    this._touch();
+    return gone;
+  }
+
+  /**
+   * The sittings already laid out for a commitment — derived, never stored.
+   *
+   * "Has this been laid out?" is answered by looking, the same call the
+   * "every weekday" dropdown makes rather than keeping a flag: a stored
+   * `lastFilled` would be free to disagree with the tasks actually on the grid
+   * the moment one is deleted by hand.
+   */
+  sittingsFor(commitmentId) {
+    return this.tasks.filter((t) => t.parentId === commitmentId && !t.chunking);
   }
 
   /**
@@ -742,6 +797,7 @@ export class Schedule {
       retiredTags: [...this.retiredTags],
       dayNotes: this.dayNotes.map((n) => n.toJSON()),
       blockedDays: [...this.blockedDays],
+      commitments: this.commitments.map((c) => c.toJSON()),
       config: this.config,
       model: this.learning.toJSON(),
       // The planned baseline has to survive a reload or the Wrap report can
@@ -764,6 +820,7 @@ export class Schedule {
       retiredTags: json.retiredTags,
       dayNotes: json.dayNotes,
       blockedDays: json.blockedDays,
+      commitments: json.commitments,
       model: json.model,
       // Absent on every save written before this shipped — an old file loads as
       // a schedule with no baselines, which is exactly right. schemaVersion

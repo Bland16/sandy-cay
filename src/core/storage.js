@@ -135,6 +135,7 @@ export function summarizeImport(blob) {
     // notices it never arrived.
     dayNoteCount: (blob.dayNotes || []).length,
     blockedDayCount: (blob.blockedDays || []).length,
+    commitmentCount: (blob.commitments || []).length,
     ratings: blob.model ? blob.model.sampleCount || 0 : 0,
   };
 }

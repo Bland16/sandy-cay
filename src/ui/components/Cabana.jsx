@@ -45,6 +45,7 @@ export default function Cabana({ sched, mutate, weekStart, onBack, onReplace, on
         const extra = [
           sum.dayNoteCount ? `${sum.dayNoteCount} day note${sum.dayNoteCount === 1 ? '' : 's'}` : null,
           sum.blockedDayCount ? `${sum.blockedDayCount} blocked day${sum.blockedDayCount === 1 ? '' : 's'}` : null,
+          sum.commitmentCount ? `${sum.commitmentCount} standing commitment${sum.commitmentCount === 1 ? '' : 's'}` : null,
         ].filter(Boolean).join(', ');
         if (window.confirm(`Import ${sum.taskCount} tasks, ${sum.zoneCount} zones, ${sum.ratings} ratings${extra ? `, ${extra}` : ''}? This replaces your current week.`)) {
           onReplace(blob);

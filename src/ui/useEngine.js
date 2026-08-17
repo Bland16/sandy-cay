@@ -119,6 +119,12 @@ export function useEngine() {
         // half-wired, and this function is the half that gets forgotten.
         s.dayNotes = next.dayNotes;
         s.blockedDays = next.blockedDays;
+        // Standing commitments, added in the SAME commit as the constructor and
+        // toJSON halves — which is the whole rule sharp edge #15 exists to
+        // state. Dropping them here would restore a footlocker with the
+        // generated sittings still on the grid and nothing left that owes them,
+        // so the week would look planned and be unre-plannable.
+        s.commitments = next.commitments;
       });
     }, [mutate]),
   };
