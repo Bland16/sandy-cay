@@ -959,9 +959,19 @@ body.sc-dragging { user-select: none; }
   font-family: var(--font-body); font-size: 12.5px;
 }
 .editrow:hover, .editrow:focus-visible { border-color: var(--cab-accent); outline: none; }
-.editrow .ername { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.editrow .ermeta { flex: none; font-family: var(--font-type); font-size: 9.5px; opacity: .6; }
-.editrow .erchev { flex: none; opacity: .5; }
+/* ⚠️ The shrink priority was BACKWARDS, and a long meta proved it: the NAME was
+   the only item allowed to shrink (`flex:1; min-width:0`) while the meta was
+   `flex:none` and never yielded. A commitment's meta is 42 characters — where a
+   zone's is "study · 3 windows" — so the name shrank to nothing, vanished
+   entirely, and the "edit ›" chevron was pushed clean outside the card.
+   The NAME IS THE ROW'S IDENTITY and must survive; the meta is the detail and
+   yields first. Wrapping lets a rich meta drop to its own line on a narrow card
+   instead of being truncated — short metas still sit inline exactly as before. */
+.editrow { flex-wrap: wrap; }
+.editrow .ername { flex: 1 1 auto; min-width: 6em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.editrow .ermeta { flex: 0 1 auto; min-width: 0; font-family: var(--font-type); font-size: 9.5px; opacity: .6; }
+/* Right-aligned on whichever line it lands on, and never shrinks. */
+.editrow .erchev { flex: none; opacity: .5; margin-left: auto; }
 .editrow .erswatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; flex: none; }
 .editrow .ername { color: var(--cab-accent); }
 .drillactions { margin-top: 4px; }

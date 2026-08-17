@@ -294,6 +294,21 @@ describe('the layout rules the DOM cannot show you', () => {
     expect(css).toMatch(/\.field \.control\[type="date"\]\s*\{[^}]*flex:\s*1 1 130px/);
   });
 
+  it('never lets a row NAME shrink away — it is the row identity', () => {
+    // Reported from a screenshot: the commitment's name vanished completely and
+    // "edit ›" was pushed outside the card, because `.ername` was the only item
+    // allowed to shrink while `.ermeta` was `flex:none`. A commitment's meta is
+    // 42 characters where a zone's is "study · 3 windows".
+    expect(css).toMatch(/\.editrow \.ername \{[^}]*min-width:\s*6em/);
+    expect(css).not.toMatch(/\.editrow \.ername \{[^}]*min-width:\s*0/);
+  });
+
+  it('lets the META yield instead, and the chevron never shrink', () => {
+    expect(css).toMatch(/\.editrow \.ermeta \{[^}]*flex:\s*0 1 auto/);
+    expect(css).toMatch(/\.editrow \.erchev \{[^}]*flex:\s*none/);
+    expect(css).toMatch(/\.editrow \{\s*flex-wrap:\s*wrap/);
+  });
+
   it('stacks every field that carries help — the shape all four callers use', () => {
     // The CSS above makes a non-stacked help SAFE; this keeps them CONSISTENT.
     // A long explanation reads better under a left-aligned label than squeezed
