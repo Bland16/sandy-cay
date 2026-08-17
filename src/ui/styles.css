@@ -979,6 +979,11 @@ body.sc-dragging { user-select: none; }
 .editrow .erchev { flex: none; opacity: .5; margin-left: auto; }
 .editrow .erswatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; flex: none; }
 .editrow .ername { color: var(--cab-accent); }
+/* "ENGR: 2h of 4h laid out." — one per commitment already laid out this week,
+   each on its own line. Never a bare "done": the week can hold less than it
+   owes if you deleted a sitting by hand, and the app must not say otherwise
+   (design/COMMITMENT-USE-CASES.md, case E3). */
+.cwdone { display: block; margin-top: 3px; opacity: .8; }
 .drillactions { margin-top: 4px; }
 .drillactions .btn2 { padding: 5px 9px; }
 /* destructive action: bottom, ghost, and set apart from the rest */

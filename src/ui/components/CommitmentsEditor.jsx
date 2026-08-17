@@ -22,8 +22,8 @@
 // worlds, and a typo severs the link with no symptom at all. `TagEditor`'s
 // suggestions are what stop that, so they are not a convenience here.
 import { useState } from 'react';
-import { dateKey, dateFromKey } from '../../core/index.js';
-import { fmtDur, MONTHS, DAY_KEYS, DAY_FULL } from '../format.js';
+import { dateKey, dateFromKey, previewWeek, planWeek, layOutWeek } from '../../core/index.js';
+import { fmtDur, MONTHS, DAY_KEYS, DAY_FULL, DAY_NAMES, weekSign } from '../format.js';
 import TagEditor, { tagsInUse } from './TagEditor.jsx';
 import { DrillList, DrillEditor, DrillRow, Field } from './Drill.jsx';
 
@@ -64,10 +64,21 @@ export function commitmentMeta(c) {
     + ` · sittings ${fmtDur(c.minSitting)}–${fmtDur(c.maxSitting)} · max ${c.maxPerDay}/day`;
 }
 
-export default function CommitmentsEditor({ sched, mutate }) {
+/** "Mon 7 Sep 19:30 · 3h" — one line per block, for the confirm (§3). */
+function blockLine(t) {
+  const d = t.startTime;
+  return `${DAY_NAMES[(d.getDay() + 6) % 7]} ${d.getDate()} ${MONTHS[d.getMonth()]}`
+    + ` ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+    + `  ${fmtDur(t.getDuration())}`;
+}
+
+export default function CommitmentsEditor({ sched, mutate, weekStart, now, showToast }) {
   const [editingId, setEditingId] = useState(null);
   const commitments = sched.commitments;
   const suggestions = tagsInUse(sched).filter((t) => !sched.isTagRetired(t));
+  // Injected so a surface that depends on the date is testable at a fixed one
+  // (sharp edge #8). The component may read the clock; the engine may not.
+  const clock = now || new Date();
 
   const addCommitment = () => {
     const c = mutate((s) => s.addCommitment({
@@ -88,6 +99,43 @@ export default function CommitmentsEditor({ sched, mutate }) {
   };
   const patch = (id, changes) => mutate((s) => s.updateCommitment(id, changes));
   const remove = (id) => mutate((s) => s.removeCommitment(id));
+
+  /**
+   * D-3's manual path: the week is EMPTY until asked, and this is the asking.
+   *
+   * PREVIEWS FIRST (§3: "Accepting shows where everything would go before
+   * anything is written, naming each block"). `planWeek` runs the real
+   * generator against a throwaway copy, so the confirm names the actual blocks
+   * rather than a second guess at them — the same plan-then-apply pair the
+   * blocker conversion on this page already uses.
+   */
+  const layOut = () => {
+    const plan = planWeek(sched, weekStart, clock);
+    if (!plan.length) { showToast('Nothing owed this week'); return; }
+
+    const lines = plan.map((r) => {
+      const head = `  ${r.commitment.title} — ${fmtDur(r.commitment.amountMin)}`;
+      const blocks = r.sittings.map((t) => `      ${blockLine(t)}`);
+      // §4.3: state the shortfall as a fact, here, once, and then stop. It is
+      // said BEFORE you accept, which is the only place it can change your mind.
+      const short = r.shortfall ? [`      ${fmtDur(r.shortfall)} could not be fitted`] : [];
+      return [head, ...blocks, ...short].join('\n');
+    });
+
+    const ok = window.confirm(
+      `Lay out ${weekSign(weekStart).range}?\n\n${lines.join('\n\n')}\n\n`
+      + 'These become ordinary tasks — move or delete any of them afterwards.',
+    );
+    if (!ok) return;
+
+    const done = mutate((s) => layOutWeek(s, weekStart, clock));
+    const placed = done.reduce((n, r) => n + r.sittings.length, 0);
+    const short = done.reduce((n, r) => n + r.shortfall, 0);
+    showToast(
+      `Laid out ${placed} sitting${placed === 1 ? '' : 's'}`
+      + (short ? ` · ${fmtDur(short)} did not fit` : ''),
+    );
+  };
 
   const editing = commitments.find((c) => c.id === editingId) || null;
 
@@ -243,13 +291,57 @@ export default function CommitmentsEditor({ sched, mutate }) {
   }
 
   // ---- commitment list --------------------------------------------------
+  //
+  // The week's position, computed for the preview and the button alike. ONE
+  // call — `previewWeek` is the single implementation the week's own owed-line
+  // and the offer-on-open will share (sharp edge #14: a third copy drifts).
+  const preview = previewWeek(sched, weekStart, clock);
+  const owes = preview.filter((p) => p.state === 'owes');
+  const owedMin = owes.reduce((n, p) => n + p.owedMin, 0);
+
   return (
     <DrillList
       title="Standing commitments"
       blurb="How much each week owes — the week decides when."
       isEmpty={commitments.length === 0}
       empty="No commitments yet."
-      actions={<button className="btn2" onClick={addCommitment} aria-label="Add commitment">＋ Add commitment</button>}
+      actions={(
+        <>
+          <button className="btn2" onClick={addCommitment} aria-label="Add commitment">＋ Add commitment</button>
+          {commitments.length > 0 && (
+            <button
+              className="btn2 ghost"
+              onClick={layOut}
+              disabled={owes.length === 0}
+              aria-label="Lay out this week"
+              title={owes.length ? `${fmtDur(owedMin)} across ${owes.length} commitment${owes.length === 1 ? '' : 's'}` : 'Nothing owed this week'}
+            >
+              Lay out this week
+            </button>
+          )}
+        </>
+      )}
+      footer={commitments.length > 0 && (
+        // D-3: a week is EMPTY until asked, so this states what it owes and
+        // stops. It is a fact, not a prompt — no coral, no count of what you
+        // have missed (§5: no streaks, no percentage, no "you missed").
+        <p className="insight" style={{ marginTop: 10 }}>
+          {weekSign(weekStart).range}
+          {' — '}
+          {owes.length === 0
+            ? 'nothing owed.'
+            : <><b>{fmtDur(owedMin)}</b> owed across {owes.length} commitment{owes.length === 1 ? '' : 's'}.</>}
+          {preview.filter((p) => p.state === 'done').map((p) => (
+            // ⚠️ Never a bare "done". "Already laid out" is a per-week boolean,
+            // so a sitting you deleted by hand leaves the week holding less than
+            // it owes — and the app saying "done" would be stating something
+            // untrue (COMMITMENT-USE-CASES E3).
+            <span key={p.commitment.id} className="cwdone">
+              {p.commitment.title}: {fmtDur(p.placedMin)} of {fmtDur(p.owedMin)} laid out.
+            </span>
+          ))}
+        </p>
+      )}
     >
       {commitments.map((c) => (
         <DrillRow

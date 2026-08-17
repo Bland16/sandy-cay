@@ -114,7 +114,7 @@ export default function Cabana({ sched, mutate, weekStart, onBack, onReplace, on
         {/* Standing commitments — how much a period owes, on the same drill-in
             idiom (design/WEEKLY-PLANNING.md §4). Above zones because it is the
             thing the user comes here to author this term. */}
-        <CommitmentsEditor sched={sched} mutate={mutate} />
+        <CommitmentsEditor sched={sched} mutate={mutate} weekStart={weekStart} showToast={showToast} />
 
         {/* Zones — the shared drill-in editor (design/EDITOR-REDESIGN.md). */}
         <ZonesEditor sched={sched} mutate={mutate} />

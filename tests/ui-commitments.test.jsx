@@ -16,10 +16,24 @@ import Cabana from '../src/ui/components/Cabana.jsx';
 
 afterEach(cleanup);
 
+// `weekStart` and `now` are REQUIRED, and injected rather than defaulted: the
+// card states what the week owes, so a component left to guess its own week
+// would be untestable and would read the wall clock (sharp edge #8).
+const WS = weekStartOf(new Date(2026, 8, 7));
+const NOW = new Date(2026, 8, 7, 6, 0, 0);
+
 function Harness({ sched }) {
   const [, setV] = useState(0);
   const mutate = (fn) => { const r = fn(sched); setV((v) => v + 1); return r; };
-  return <CommitmentsEditor sched={sched} mutate={mutate} />;
+  return (
+    <CommitmentsEditor
+      sched={sched}
+      mutate={mutate}
+      weekStart={WS}
+      now={NOW}
+      showToast={() => {}}
+    />
+  );
 }
 
 const fresh = () => {
