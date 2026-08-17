@@ -78,6 +78,21 @@ describe('Commitment — the fields, and what they refuse', () => {
     expect([c.from, c.until]).toEqual(['2026-09-07', '2026-10-04']);
   });
 
+  it('KEEPS the minimum you typed when the amount dips through it', () => {
+    // ⚠️ Found by a probe agent, in code I wrote. The editor patches per
+    // keystroke, so typing "0.5" into hours/week on the way to something bigger
+    // rebuilt the commitment at 30m — and the clamp rewrote minSitting 45 → 30
+    // permanently. Correcting the hours back did not bring it back:
+    //     stored              amt=120 min=45
+    //     typed 0.5 hours     amt=30  min=30
+    //     corrected to 2h     amt=120 min=30   ← 45 is gone
+    const s = new Schedule({ config: defaultConfig });
+    const c = s.addCommitment({ ...ENGR, amountMinPerWeek: 120, minSitting: 45 });
+    s.updateCommitment(c.id, { amountMinPerWeek: 30 });
+    s.updateCommitment(c.id, { amountMinPerWeek: 120 });
+    expect(s.commitments[0].minSitting).toBe(45);
+  });
+
   it('never lets the sitting MINIMUM exceed the weekly amount', () => {
     // ⚠️ Found by probe-commitment-cases.mjs C3. A 60-minute minimum against a
     // 30-minute weekly amount is incoherent, and the engine resolves it by
@@ -86,9 +101,12 @@ describe('Commitment — the fields, and what they refuse', () => {
     // reported no shortfall — breaking `placed + shortfall === amount`, which
     // §4.3 states and the engine's own tests lock. Clamped in the model so the
     // state cannot be stored, rather than patching the engine.
+    // Capped as a VIEW, not by rewriting the stored field.
     const c = new Commitment({ ...ENGR, amountMinPerWeek: 30, minSitting: 60 });
-    expect(c.minSitting).toBe(30);
-    expect(c.maxSitting).toBeGreaterThanOrEqual(30);
+    expect(c.minSitting).toBe(60); // what you typed survives
+    expect(c.effectiveMinSitting()).toBe(30); // what the engine is handed
+    expect(c.engineInputForWeek(MON).minSitting).toBe(30);
+    expect(c.engineInputForWeek(MON).maxSitting).toBeGreaterThanOrEqual(30);
   });
 
   it('never lets the sitting maximum fall below the minimum', () => {

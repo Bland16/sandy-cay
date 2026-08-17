@@ -232,7 +232,7 @@ export function spreadDays(candidates, n, { taken = new Set(), rank = () => 0 } 
  */
 export function generateSittings(schedule, commitment, opts = {}) {
   const now = opts.now || new Date();
-  const occupied = opts.occupied || baseOccupied(schedule, commitment);
+  const occupied = opts.occupied || baseOccupied(schedule, dayStart(commitment.from), commitment.until);
   const from = new Date(Math.max(dayStart(commitment.from).getTime(), dayStart(now).getTime()));
   const rEnd = runwayEnd(from, commitment.until);
   const probe = probeTask(commitment, from);
@@ -304,14 +304,22 @@ export function generateAll(schedule, commitments, opts = {}) {
   const scored = commitments.map((c) => {
     const from = new Date(Math.max(dayStart(c.from).getTime(), dayStart(now).getTime()));
     const probe = probeTask(c, from);
-    const omega = openMinutesFor(schedule, probe, from, runwayEnd(from, c.until), baseOccupied(schedule, c), now);
+    const omega = openMinutesFor(schedule, probe, from, runwayEnd(from, c.until), baseOccupied(schedule, dayStart(c.from), c.until), now);
     return { c, rho: omega > 0 ? c.amountMin / omega : Infinity };
   });
   scored.sort((a, b) => b.rho - a.rho
     || (b.c.priority ?? 3) - (a.c.priority ?? 3)
     || String(a.c.title).localeCompare(String(b.c.title)));
 
-  const occupied = baseOccupied(schedule, null);
+  // ⚠️ The SHARED occupied set must span every commitment being planned, and
+  // this line is the one that was broken: it passed `null`, which fell back to
+  // the UNIX epoch, so `recurrenceIntervals` expanded 1970 and came back empty.
+  // Every commitment then planned against a week with no gym and no classes in
+  // it. Derive the real span instead — earliest start (floored at today, since
+  // nothing is placed before now anyway) to latest end.
+  const spanFrom = new Date(Math.min(...commitments.map((c) => dayStart(c.from).getTime())));
+  const spanTo = new Date(Math.max(...commitments.map((c) => c.until.getTime())));
+  const occupied = baseOccupied(schedule, spanFrom, spanTo);
   const taken = new Set();
   const out = [];
   for (const { c, rho } of scored) {
@@ -335,11 +343,28 @@ function probeTask(commitment, from) {
   });
 }
 
-/** Everything already in the day: real tasks plus recurrence occurrences, which
- *  are anchors (§4.4) — filtering `!t.recurrence` alone drops them (sharp #3). */
-function baseOccupied(schedule, commitment) {
-  const from = commitment ? dayStart(commitment.from) : new Date(0);
-  const to = commitment ? commitment.until : addDays(new Date(), 90);
+/**
+ * Everything already in the day: real tasks plus recurrence occurrences, which
+ * are anchors (§4.4) — filtering `!t.recurrence` alone drops them (sharp #3).
+ *
+ * ⚠️ TAKES AN EXPLICIT RANGE, and that is the whole fix for a severe defect.
+ * It used to accept a nullable commitment and fall back to
+ * `from = new Date(0)`, `to = addDays(new Date(), 90)` when given none — which
+ * is exactly what `generateAll` did. `recurrenceIntervals` walks weeks forward
+ * from `weekStart(from)` under a 60-week guard, so starting at the UNIX EPOCH
+ * it expanded 1970 and returned NOTHING for the week being planned.
+ *
+ * `generateAll` then handed that empty set to every commitment, so the button
+ * scheduled straight through pinned recurring gyms and classes. Measured: a
+ * recurring Mon/Wed/Sat 08:00–17:00 block, and 3 of 4 sittings laid on top of
+ * it. `generateSittings` called alone was fine, because it passed a real
+ * commitment — so the only broken path was the one the UI actually uses.
+ *
+ * Sharp edge #3, reintroduced. The fallback also read the wall clock inside the
+ * engine (sharp edge #8). A nullable argument with a silent default was the
+ * mechanism for both; there is no default now.
+ */
+function baseOccupied(schedule, from, to) {
   return intervalsOf(schedule.tasks.filter((t) => !t.chunking && !t.recurrence))
     .concat(recurrenceIntervals(schedule, from, to));
 }

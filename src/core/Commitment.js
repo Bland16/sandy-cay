@@ -91,16 +91,25 @@ export class Commitment {
     // BOUNDS on a single sitting, not a size — the week decides the actual
     // length (§4.1). This is the whole reason the generator asks the calendar
     // what it has instead of booking a number it invented.
+    // ⚠️ `minSitting` is stored EXACTLY AS TYPED and never clamped here.
+    //
+    // A minimum above the weekly amount is incoherent — the engine resolves it
+    // by rounding the AMOUNT up (`chooseSittings`' single-sitting branch takes
+    // `max(amountMin, sMin)`), booking a 60m block for a 30m job and breaking
+    // §4.3's `placed + shortfall === amount`. The first fix clamped the stored
+    // field, and that DESTROYED the setting permanently: the editor patches per
+    // keystroke, so typing "0.5" into hours/week on the way to "5" rebuilt the
+    // commitment at 30m and rewrote minSitting 45 → 30, and correcting the
+    // hours back left it at 30 for ever.
+    //
+    //     stored              amt=120 min=45
+    //     typed 0.5 hours     amt=30  min=30
+    //     corrected to 2h     amt=120 min=30   ← 45 is gone
+    //
+    // So the cap is a VIEW (`effectiveMinSitting()`), applied where the engine
+    // reads it. Same lesson as the date swap on an edit: never silently
+    // overwrite a field the user set.
     this.minSitting = posInt(data.minSitting, 30);
-    // ⚠️ A minimum ABOVE the weekly amount is incoherent, and the engine
-    // resolves it by rounding the amount UP: `chooseSittings`' single-sitting
-    // branch takes `max(amountMin, sMin)`, so 30m owed with a 60m minimum books
-    // 60m and reports no shortfall — breaking `placed + shortfall === amount`,
-    // which is §4.3's stated property and one the engine's own tests lock.
-    // Found by probe-commitment-cases.mjs C3. Clamped HERE rather than in the
-    // engine so the unreachable state simply cannot be stored, the same shape
-    // as the max/min clamp below.
-    if (this.minSitting > this.amountMinPerWeek) this.minSitting = this.amountMinPerWeek;
     this.maxSitting = posInt(data.maxSitting, 180);
     if (this.maxSitting < this.minSitting) this.maxSitting = this.minSitting;
     this.maxPerDay = posInt(data.maxPerDay, 1);
@@ -122,6 +131,21 @@ export class Commitment {
    */
   get label() {
     return this.title;
+  }
+
+  /**
+   * The minimum sitting the ENGINE should use — the stored value, capped at the
+   * weekly amount.
+   *
+   * A minimum above the amount is incoherent, and the engine resolves it by
+   * rounding the AMOUNT up (`chooseSittings`' single-sitting branch takes
+   * `max(amountMin, sMin)`), which books a 60m block for a 30m job and breaks
+   * §4.3's `placed + shortfall === amount`. So it is capped here — as a VIEW.
+   * Clamping the stored field instead destroyed it permanently, because the
+   * editor patches per keystroke and every intermediate value rewrote it.
+   */
+  effectiveMinSitting() {
+    return Math.min(this.minSitting, this.amountMinPerWeek);
   }
 
   /** Does the term cover any part of the week beginning `ws` (a Monday)? */
@@ -187,8 +211,8 @@ export class Commitment {
       amountMin: this.amountMinPerWeek,
       from,
       until: untilAfterLastRun(last),
-      minSitting: this.minSitting,
-      maxSitting: this.maxSitting,
+      minSitting: this.effectiveMinSitting(),
+      maxSitting: Math.max(this.maxSitting, this.effectiveMinSitting()),
       maxPerDay: this.maxPerDay,
       priority: this.priority,
     };

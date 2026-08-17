@@ -12,8 +12,9 @@ import { useState } from 'react';
 import { render, cleanup, screen, fireEvent } from '@testing-library/react';
 import {
   Schedule, defaultConfig, resetIds, weekStart as weekStartOf, addDays, dateKey,
-  previewWeek, planWeek, layOutWeek, owedThisWeek,
+  previewWeek, planWeek, layOutWeek, owedThisWeek, Task,
 } from '../src/core/index.js';
+import { recurrenceIntervals } from '../src/core/placement.js';
 import CommitmentsEditor from '../src/ui/components/CommitmentsEditor.jsx';
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
@@ -146,6 +147,53 @@ describe('layOutWeek — the writing half', () => {
     const w2 = layOutWeek(s, addDays(MON, 7), MON_6AM);
     expect(w2.length).toBe(1);
     expect(s.sittingsFor(c.id, addDays(MON, 7)).length).toBeGreaterThan(0);
+  });
+
+  it('routes around RECURRING anchors — sharp edge #3, reintroduced', () => {
+    // ⚠️ Found by a probe agent, verified independently, and severe: the button
+    // scheduled straight through a pinned recurring gym.
+    //
+    // `generateAll` built its shared occupied set with `baseOccupied(schedule,
+    // null)`, whose fallback was `from = new Date(0)`. `recurrenceIntervals`
+    // walks weeks forward from `weekStart(from)` under a 60-week guard, so from
+    // the UNIX EPOCH it expanded 1970 and returned NOTHING for the week being
+    // planned. Measured before the fix: 3 of 4 sittings on top of the block.
+    //
+    // ⚠️ `generateSittings` called DIRECTLY was always fine — it passes a real
+    // commitment — so every existing test passed. The only broken path was the
+    // one the UI uses. That is why this test goes through `layOutWeek`.
+    const s = termWeek();
+    s.tasks.push(new Task({
+      title: 'Lab', tags: ['classes'], type: 'fixed', pinned: true,
+      startTime: at(0, 8), endTime: at(0, 17),
+      recurrence: {
+        periods: [{
+          windows: [
+            { day: 'mon', start: '08:00', end: '17:00' },
+            { day: 'wed', start: '08:00', end: '17:00' },
+            { day: 'sat', start: '08:00', end: '17:00' },
+          ],
+          interval: 1,
+          effectiveFrom: null,
+          effectiveUntil: null,
+        }],
+        anchorDate: MON,
+        exceptions: [],
+      },
+    }));
+    s.addCommitment({ ...COMMIT, amountMinPerWeek: 600 });
+
+    const occ = recurrenceIntervals(s, MON, addDays(MON, 7));
+    expect(occ.length).toBeGreaterThan(0); // the fixture really does recur
+
+    const rs = layOutWeek(s, MON, MON_6AM);
+    const sittings = rs.flatMap((r) => r.sittings);
+    expect(sittings.length).toBeGreaterThan(0);
+    for (const t of sittings) {
+      for (const o of occ) {
+        expect(t.startTime < o.end && o.start < t.endTime).toBe(false);
+      }
+    }
   });
 
   it('generates ONE call for the whole week, so no two claim a day (§4.1.2)', () => {
