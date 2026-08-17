@@ -904,9 +904,14 @@ body.sc-dragging { user-select: none; }
   display: flex; gap: 8px; align-items: center; margin: 7px 0;
   font-family: var(--font-type); font-size: 11px; color: #e9dcc4;
 }
-/* the label column — one width everywhere, so controls form a true column */
+/* the label column — one width everywhere, so controls form a true column.
+   68px, widened from 54px: a TWO-WORD label wraps at its space, and 54px was
+   just under "how much", which drew as "HOW / MUCH" over two lines and pulled
+   its row out of the column. Single words never wrapped, so every label in the
+   app happened to fit until this one. Sized to the longest two-word label
+   rather than to a guess. */
 .field > .flabel {
-  flex: none; width: 54px; text-align: right;
+  flex: none; width: 68px; text-align: right;
   font-size: 10.5px; color: #d8c6a5; opacity: .85;
 }
 /* the control area: flexes, wraps predictably, never overflows its card */
@@ -927,8 +932,8 @@ body.sc-dragging { user-select: none; }
    It went unseen because all three earlier `help` callers happen to be `stack`
    (column direction), where a third child genuinely does land underneath. */
 .field { flex-wrap: wrap; }
-/* Full row of its own, indented to the control column (54px label + 8px gap). */
-.field:not(.stack) > .field-help { flex: 0 0 100%; margin-left: 62px; }
+/* Full row of its own, indented to the control column (68px label + 8px gap). */
+.field:not(.stack) > .field-help { flex: 0 0 100%; margin-left: 76px; }
 /* A date pair shares one line and wraps as a UNIT. Left to its intrinsic width a
    date input is ~200px, so two of them overflowed a narrow card and wrapped
    BETWEEN the arrow and the second date, stranding the "→" in mid-air. Both

@@ -309,17 +309,36 @@ describe('the layout rules the DOM cannot show you', () => {
     expect(css).toMatch(/\.editrow \{\s*flex-wrap:\s*wrap/);
   });
 
-  it('stacks every field that carries help — the shape all four callers use', () => {
-    // The CSS above makes a non-stacked help SAFE; this keeps them CONSISTENT.
-    // A long explanation reads better under a left-aligned label than squeezed
-    // beside a 54px right-aligned one.
+  it('gives the label column room for a TWO-WORD label', () => {
+    // 54px was just under "how much", which drew as "HOW / MUCH" over two lines
+    // and pulled its row out of the column. Single-word labels never wrapped, so
+    // every other label in the app happened to fit.
+    expect(css).toMatch(/\.field > \.flabel \{[^}]*width:\s*68px/);
+  });
+
+  it('puts every field in ONE label column — no stacked stragglers', () => {
+    // Mixing stack and non-stack made the labels ragged: NAME and AT MOST
+    // right-aligned in the column while TAGS, BETWEEN and SITTINGS started at
+    // the card's left edge.
     const s = fresh();
     s.addCommitment({ title: 'ENGR project', amountMin: 480, from: '2026-09-07', until: '2026-10-03' });
     render(<Harness sched={s} />);
     fireEvent.click(screen.getByLabelText('Edit commitment ENGR project'));
-    const withHelp = [...document.querySelectorAll('.field')].filter((f) => f.querySelector('.field-help'));
-    expect(withHelp.length).toBe(2);
-    for (const f of withHelp) expect(f.classList.contains('stack')).toBe(true);
+    const fields = [...document.querySelectorAll('.field')];
+    expect(fields.length).toBe(6);
+    for (const f of fields) expect(f.classList.contains('stack')).toBe(false);
+  });
+
+  it('carries no explanatory paragraphs — removed by request', () => {
+    const s = fresh();
+    s.addCommitment({ title: 'ENGR project', amountMin: 480, from: '2026-09-07', until: '2026-10-03' });
+    render(<Harness sched={s} />);
+    fireEvent.click(screen.getByLabelText('Edit commitment ENGR project'));
+    expect(document.querySelectorAll('.field-help').length).toBe(0);
+    // ⚠️ The inclusive-date BEHAVIOUR the removed paragraph described is
+    // unchanged and still proven by execution in commitments-model.test.jsx,
+    // which places a sitting ON the last day. Deleting the sentence must not be
+    // mistaken for deleting the rule.
   });
 });
 

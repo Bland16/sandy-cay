@@ -96,7 +96,13 @@ export default function CommitmentsEditor({ sched, mutate }) {
           />
         </Field>
 
-        <Field label="tags" stack>
+        {/* Every field here shares ONE label column — none is `stack`. That is
+            what EDITOR-REDESIGN §4 built the vocabulary for ("a fixed label
+            column + a control area, so editors stop hand-styling"), and mixing
+            the two modes was making the labels ragged: NAME and AT MOST
+            right-aligned in the column while TAGS, BETWEEN and SITTINGS started
+            at the card's left edge. */}
+        <Field label="tags">
           <TagEditor tags={c.tags} onChange={(tags) => patch(c.id, { tags })} suggestions={suggestions} />
         </Field>
 
@@ -114,14 +120,14 @@ export default function CommitmentsEditor({ sched, mutate }) {
           <span className="runit">hours</span>
         </Field>
 
-        {/* THE PERIOD. Both dates are days you can work on — the same inclusive
-            reading the zone editor gives "runs", and `engineInput()` converts
-            the far edge to the half-open bound the placer wants (sharp #11). */}
-        <Field
-          label="between"
-          stack
-          help="Both dates are days you can work on — “by 3 October” includes the 3rd."
-        >
+        {/* THE PERIOD. Both dates are INCLUSIVE — days you can work on — the
+            same reading the zone editor gives "runs", and `engineInput()`
+            converts the far edge to the half-open bound the placer wants
+            (sharp #11). That used to be spelled out in a help paragraph; the
+            paragraph is gone by request, and the behaviour is unchanged and
+            still locked by `tests/commitments-model.test.jsx`, which proves the
+            last day is usable by PLACING on it. */}
+        <Field label="between">
           <input
             className="control"
             type="date"
@@ -157,12 +163,7 @@ export default function CommitmentsEditor({ sched, mutate }) {
             every writer reaches it (`isDayBlocked`'s lesson). The 15-minute
             floor stays here, because it is a GRID fact the model has no opinion
             about — the same split `ActivityEditor` makes. */}
-        <Field
-          label="sittings"
-          stack
-          ctlClass="rangefield"
-          help="Takes the longest run your week has room for, and splits only when it has to. 15 min is the shortest block the grid holds."
-        >
+        <Field label="sittings" ctlClass="rangefield">
           <input
             className="control num"
             type="number"
