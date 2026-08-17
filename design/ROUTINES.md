@@ -149,6 +149,41 @@ one contiguous anchor — no gap, no linkage needed for the simple case.
 the two passive waits overlap with no special handling — only the tiny active
 touchpoints are anchors, and they simply mustn't collide.
 
+## ⚠️ OPEN — R-1: a passive wait may need a CEILING too (raised 2026-08-16)
+
+**Decision 1 above says passive waits are min-only, and the user's own test case
+breaks it.** Their morning:
+
+```
+put waffles in the air fryer   ~2m active
+air fryer                       5m passive      <- five, not fifteen
+eat waffles                   ~10m active
+quick shower                   30m              <- a SEPARATE activity
+```
+
+Min-only handles "the wait can run long", which is right for the machines the
+decision was argued from — the dishwasher's 4 °C hold, the oven's keep-warm.
+**Food is not one of those.** A five-minute wait cannot host a thirty-minute
+shower, so the interleave the user described does not fit, and under min-only the
+app would place it anyway and produce cold waffles in silence.
+
+Two things fall out, and they are separate:
+
+1. **A ceiling.** An optional `maxWaitMin` on a passive step — "and get back to
+   it within this". Absent ⇒ today's min-only behaviour exactly, so it is
+   additive and does not reopen Decision 1 for appliances. When the chain cannot
+   honour it, **warn, do not refuse** (visible beats invisible, §2.2's last
+   resort). This is the one that makes waffles expressible.
+2. **Ordering is a real answer the app could give.** With a 5-minute cook and a
+   30-minute shower, the feasible routine is *shower first, then waffles* — not
+   "waffles, shower during". A routine that cannot interleave as written is worth
+   SAYING so, because the fix is usually a reorder rather than a compromise.
+   Out of scope for R-A/R-B; note it and move on.
+
+**Do not silently pick one.** Building the ceiling is small and additive;
+building the reorder suggestion is a feature. The user raised the case, so the
+call is theirs.
+
 ## Build phases (later, after the opens close)
 
 - **R-A — model.** `travelMin` + `steps` on `Activity`; a `RoutineInstance`
