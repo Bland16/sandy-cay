@@ -1,10 +1,9 @@
 # Grid zoom — the hours get more pixels
 
-**Session 9, 2026-08-17. STATUS: spec. Nothing built.**
-Four questions were put to the user before writing this and are answered below.
-Everything marked **PROPOSED** is mine and has not been agreed — say no to any of
-it. Nothing here is claimed to come from an existing spec, because none of it
-does: this feature has never been specced.
+**Session 9, 2026-08-17. STATUS: spec — every decision now ANSWERED (§8).**
+Four questions were put to the user before writing this, and the four PROPOSED
+decisions were answered on 2026-08-17. Nothing here is claimed to come from an
+existing spec, because none of it does: this feature has never been specced.
 
 The ask, in the user's words:
 
@@ -26,7 +25,7 @@ give the hour more pixels and the short block can stop pretending.
 
 | # | Question | Answer |
 |---|---|---|
-| **A** | Which interaction? | **Dealer's choice between pinch and keyboard.** *"Pinch to touch does seem best but keyboard would probably be cheapest."* Resolved in §5 — **keyboard**, with pinch sequenced after. |
+| **A** | Which interaction? | **Both, split by device.** First answer was dealer's choice; then, on seeing §5: *"Phone should get pinch to zoom."* So: **keyboard where there is a keyboard, pinch on the phone.** §5. |
 | **B** | Week and day view share a zoom level? | **Moot as asked** — *"There is no day view anymore, it was replaced by daynotes, no way to get to it."* See the correction below. Resolved in §3 as one multiplier over each surface's own base. |
 | **C** | What happens to the 26px floor? | **Drop the floor as you zoom in.** Formula is **ZOOM D-1**, §4. |
 | **D** | How far, in what steps? | **Discrete steps, up to ~4×.** Rungs in §3. |
@@ -78,7 +77,7 @@ that one number to every consumer *including* `data-pxh`. Never recompute
 `base * z` at a second site — a rounding difference of 1px between the render
 and the drop geometry is precisely the silent failure §6 is about.
 
-## 4. The floor — ZOOM D-1 (**PROPOSED**, needs a yes or a different number)
+## 4. The floor — ZOOM D-1, **ANSWERED YES 2026-08-17**
 
 The user said *drop the floor as you zoom in*. There is a subtlety worth stating
 before picking a formula, because the naive reading makes things **worse**:
@@ -92,7 +91,7 @@ The floor's lie is not measured in pixels, it is measured in **apparent
 minutes**: `floor / pxh × 60`. So the floor should shrink with zoom, but stop
 at a size that can still be clicked.
 
-**Proposed:** `floorPx(pxh) = Math.max(12, Math.round(26 * 34 / pxh))`
+**Decided:** `floorPx(pxh) = Math.max(12, Math.round(26 * 34 / pxh))`
 
 | z | week px/hr | floor | a 2m block renders | it *looks* like |
 |---|---|---|---|---|
@@ -102,11 +101,11 @@ at a size that can still be clicked.
 | 2.8 | 95 | 12px | 12px | 8 min |
 | 4 | 136 | 12px | 12px | **5 min** |
 
-The lie falls ninefold and nothing ever becomes unhittable. **12px is the number
-to argue with** — it is a hit-target floor, not a derived quantity. If you would
-rather never lose a block and accept the lie, say so and the constant stays 26
-at every rung; zoom alone still drops the apparent length from 46 to 11 minutes,
-because `pxh` is in the denominator.
+The lie falls ninefold and nothing ever becomes unhittable. **12px was put to the
+user as the number to argue with — it is a hit-target floor, not a derived
+quantity — and it was accepted as it stands.** If a 12px card turns out to be
+uncomfortable to hit on a real screen, this constant is the one to change and
+nothing else moves with it.
 
 **Anything ≥ 46 minutes is unaffected at every rung** — the floor is a `Math.max`
 and a true height above it already wins today. This decision only ever touches
@@ -116,34 +115,61 @@ short blocks.
 zooming in un-compacts cards. That is correct and wanted — a 30-minute block at
 4× has room for its full label.
 
-## 5. The control — keyboard first, pinch after (my call, per "dealer's choice")
+## 5. The controls — keyboard and pinch, built in that order
 
-**Keyboard.** `+` / `=` zooms in, `-` zooms out, `0` returns to 1×.
+**Both are wanted. They are BUILT in two steps, and the order is not a
+preference — it is what can be proven.**
 
-Three reasons, in the order that decided it:
+### 5.1 Keyboard (step 1)
 
-1. **It is what was asked for** — *"if I zoom in on like a key pad"*.
-2. **It can be proven by execution here; pinch cannot.** jsdom has no touch and
-   no layout, so a pinch implementation could only be handed over untested, and
-   this project's standing rule is to print what the thing actually does.
-3. **Pinch collides with a gesture that has already bitten once.** Sharp edge
-   #16: cards are `touch-action: manipulation` and a drag arms on a 450ms
-   long-press, after an earlier version made scrolling the day impossible. A
-   two-finger handler over the same surface is exactly that class of change.
-
-**Pinch is not refused, it is sequenced.** The whole risk of this feature is the
-zoom state and the `data-pxh` plumbing (§6), and both controls share it — so
-pinch becomes a small addition on top of a proven base, verified on a real
-device with a checklist, rather than a rewrite.
+`+` / `=` zooms in, `-` zooms out, `0` returns to 1×. It is what was originally
+asked for (*"if I zoom in on like a key pad"*) and it is the only control that
+can be proven by execution in this repo.
 
 ⚠️ **The key handler must not fire while focus is in a text field.** Typing a `-`
 in a task title, or `0` in a duration, must not zoom the grid. Guard on
 `input` / `textarea` / `select` / `contenteditable`, and test it — this is the
 kind of thing that goes unnoticed until it corrupts a title.
 
-**Discoverability is a real gap and is deliberately left open.** A keyboard-only
-control is invisible, and on phone it does not exist at all. Raise it once the
-mechanism works; a `−/+` pair in the topbar is the obvious answer if wanted.
+### 5.2 Pinch, on the phone (step 2)
+
+**Decided 2026-08-17: the phone gets pinch to zoom.** On phone the surface is
+`DayView` (SPEC §11), so pinch is a `DayView` gesture.
+
+⚠️ **Pinch collides with a gesture that has already bitten this project.** Sharp
+edge #16: cards are `touch-action: manipulation` and a drag arms on a 450ms
+long-press, after an earlier version made scrolling the day impossible. The
+rules that fall out of that:
+
+- **A second finger CANCELS any armed or live drag.** Two fingers can only ever
+  mean zoom. If a long-press has armed a drag and a second pointer arrives, the
+  drag must abandon exactly as `pointercancel` already makes it (the path
+  exists — reuse it, do not write a second one).
+- **A pinch must never leave a task moved.** This is the one outcome that
+  silently corrupts data rather than merely looking wrong.
+- The gesture is two-pointer tracking on the scroll wrapper, not on a card.
+
+**Why it is step 2, not step 1:** jsdom has no touch and no layout engine, so a
+pinch implementation can only ever be handed over untested — it goes to the user
+with a device checklist (§9). The zoom state and the `data-pxh` plumbing (§6)
+are the whole risk of this feature and both controls share them, so pinch lands
+on a base that has already been proven rather than being entangled with it.
+
+### 5.3 Two questions pinch raises that are NOT yet answered
+
+Neither blocks step 1. Both are asked before step 2 is written:
+
+- **Does pinch snap to the five rungs, or move continuously?** D-4 chose discrete
+  steps, which argues for snapping — likely tracking continuously *during* the
+  gesture for feel and settling on the nearest rung at release. Not decided.
+- **Does the tablet get pinch too?** The answer said "phone". Tablet (768–1279)
+  is also a touch device, and it renders `WeekGrid`, not `DayView`. Not decided.
+
+### 5.4 Discoverability, still open
+
+A keyboard-only control is invisible on desktop. Pinch covers the phone. Raise
+it once the mechanism works; a `−/+` pair in the topbar is the obvious answer if
+wanted, and it is deliberately not built now.
 
 ## 6. ⚠️ The traps — three of them, all silent
 
@@ -187,26 +213,30 @@ zooming at 20:00 dumps you somewhere near dawn.
 | `layout.js` | `110` the floor (§4). `layoutDay`/`layoutRemainders` already take `pxh` as a parameter — no signature change |
 | `styles.css` | `325`, `354`, `358`, `711` — trap 2 |
 
-## 7. Persistence — ZOOM D-2 (**PROPOSED**)
+## 7. Persistence — ZOOM D-2, **ANSWERED `localStorage` 2026-08-17**
 
-**Recommend a `localStorage` key, not `config`.** `config` is engine data: it
-round-trips through `Schedule#toJSON` and `exportState` spreads it wholesale, so
-a zoom level stored there would ride the footlocker export into another machine
-and change a screen it knows nothing about. Zoom is a property of *this screen*.
+A `localStorage` key, **not** `config`. `config` is engine data: it round-trips
+through `Schedule#toJSON` and `exportState` spreads it wholesale, so a zoom level
+stored there would ride the footlocker export into another machine and change a
+screen it knows nothing about. Zoom is a property of *this screen*.
 `CalendarCard.jsx:25` is the existing precedent for a UI-only key.
 
-The counter-argument, stated fairly: `config` is described as "all values
-Cabana-tunable" and gives persistence for free with no new storage path. If you
-want it there, it is one line either way.
+⚠️ **Read it through the same guard `CalendarCard` uses** (`try`/`catch` around
+both get and set). Storage can be unavailable, and a zoom preference is the
+least important thing in the app — it must never be able to stop the grid
+rendering. An unreadable or nonsense value falls back to 1×.
 
-## 8. Open decisions
+## 8. The decisions, all ANSWERED 2026-08-17
 
-| # | Question | My proposal |
+| # | Question | Answer |
 |---|---|---|
-| **ZOOM D-1** | The floor formula, and the 12px hit-target minimum | `max(12, round(26 × 34 / pxh))` — §4 |
-| **ZOOM D-2** | Persist in `localStorage` or in `config` | `localStorage` — §7 |
-| **ZOOM D-3** | Is there a rung **below** 1× (zoom out, to see the whole day)? | **No, not yet.** The ask was legibility. Adding it later is one array entry |
-| **ZOOM D-4** | Does the phone day view get zoom too? | **Yes** — the mechanism is shared, so excluding it would cost more code than including it |
+| **ZOOM D-1** | The floor formula, and the 12px hit-target minimum | **YES**, `max(12, round(26 × 34 / pxh))` — §4 |
+| **ZOOM D-2** | Persist in `localStorage` or in `config` | **`localStorage`** — §7 |
+| **ZOOM D-3** | Is there a rung **below** 1× (zoom out, to see the whole day)? | **No zoom out.** Rungs start at 1×. Adding one later is one array entry |
+| **ZOOM D-4** | Does the phone day view get zoom too? | **Yes** — and it gets **pinch** as its control (§5.2) |
+
+**Still open, and asked before step 2 only:** the two pinch questions in §5.3
+(snap-to-rung vs continuous; tablet or phone only). Neither blocks step 1.
 
 ## 9. Done when — proven by execution, not by going green
 
@@ -227,11 +257,17 @@ settled here): whether 4× is far enough for a 2-minute step; whether 5 rungs is
 the right number of presses; whether a 12px card is comfortably clickable; and
 whether the gridlines still line up at every rung.
 
+**For the user, on a phone — step 2 only, and none of it is verifiable here:**
+whether pinch feels right against the 450ms long-press; that a two-finger pinch
+**never** leaves a task moved; that one-finger scrolling still works untouched;
+and whether the zoom holds where you left it after a reload.
+
 ## 10. Explicitly not in this
 
 - **No change to placement, scoring, or any engine file.** This is presentation
   only. `src/core` is not touched.
-- **No pinch, no wheel, no slider, no topbar control** — §5.
+- **No wheel zoom, no slider, no topbar control** — §5.4.
+- **No zoom OUT** — D-3. The rungs start at 1×.
 - **No horizontal zoom.** Columns are unchanged; only the hour gets taller.
 - **The wait band stays.** It carries the real duration of a wait visually and
   is still doing that job at every zoom level (`styles.css:375`).
