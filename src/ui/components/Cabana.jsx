@@ -10,6 +10,7 @@ import CalendarCard from './CalendarCard.jsx';
 import TagManager from './TagManager.jsx';
 import EnergyCard from './EnergyCard.jsx';
 import ZonesEditor from './ZonesEditor.jsx';
+import CommitmentsEditor from './CommitmentsEditor.jsx';
 
 const WEIGHT_KEYS = [['proximity', 'Proximity'], ['balance', 'Balance'], ['stability', 'Stability'], ['preference', 'Preference (learned)'], ['buffer', 'Finish early']];
 
@@ -109,6 +110,11 @@ export default function Cabana({ sched, mutate, weekStart, onBack, onReplace, on
           </div>
           <button className="btn2" style={{ marginTop: 8 }} onClick={reoptimize}><Icon name="refresh" /> Re-optimize week</button>
         </div>
+
+        {/* Standing commitments — how much a period owes, on the same drill-in
+            idiom (design/WEEKLY-PLANNING.md §4). Above zones because it is the
+            thing the user comes here to author this term. */}
+        <CommitmentsEditor sched={sched} mutate={mutate} />
 
         {/* Zones — the shared drill-in editor (design/EDITOR-REDESIGN.md). */}
         <ZonesEditor sched={sched} mutate={mutate} />

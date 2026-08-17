@@ -62,12 +62,20 @@ export function DrillEditor({ title, backLabel, onBack, children, onRemove, remo
   );
 }
 
-/** A labelled field row (§4). `stack` puts the label above a full-width control. */
-export function Field({ label, stack = false, help, children }) {
+/**
+ * A labelled field row (§4). `stack` puts the label above a full-width control.
+ *
+ * `ctlClass` adds a class to the control area — `rangefield` is the one that
+ * exists, for an elastic min–max pair. It is a prop rather than a nested div
+ * because `.field > .fctl` and `.rangefield` carry the SAME flex rules, so a
+ * `.fctl` wrapping a `.fctl.rangefield` is two boxes doing one box's job.
+ * Optional and empty by default, so every existing call site is untouched.
+ */
+export function Field({ label, stack = false, help, ctlClass = '', children }) {
   return (
     <div className={stack ? 'field stack' : 'field'}>
       <span className="flabel">{label}</span>
-      <div className="fctl">{children}</div>
+      <div className={ctlClass ? `fctl ${ctlClass}` : 'fctl'}>{children}</div>
       {help && <div className="field-help">{help}</div>}
     </div>
   );
