@@ -398,12 +398,36 @@ export class Schedule {
     const c = this.commitments.find((x) => x.id === id);
     if (!c) return null;
     // Rebuilt through the constructor rather than `Object.assign`ed, so every
-    // clamp (min ≤ max, a swapped date range, hours that are not a number)
-    // applies to an EDIT and not only to a creation. `updateDayNote` does the
-    // same, and the reason is the field-by-field rebuild trap in reverse: a
-    // partial patch that skips validation is how a maxSitting below its
-    // minSitting gets stored and then generates nothing, silently.
-    Object.assign(c, new Commitment({ ...c.toJSON(), ...changes, id: c.id }));
+    // clamp (min ≤ max, hours that are not a number) applies to an EDIT and not
+    // only to a creation. `updateDayNote` does the same, and the reason is the
+    // field-by-field rebuild trap in reverse: a partial patch that skips
+    // validation is how a maxSitting below its minSitting gets stored and then
+    // generates nothing, silently.
+    //
+    // ⚠️ EXCEPT THE DATE SWAP, which must NOT apply to an edit. The constructor
+    // swaps a backwards range, which is right for data ARRIVING backwards — but
+    // on an edit it silently rewrites the field you just typed into. Reported
+    // 2026-08-16, reproduced by design/probes/probe-date-edit-bug.mjs:
+    //
+    //     stored          from 2026-08-16  until 2026-08-29
+    //     typed START =        2026-08-31
+    //     stored          from 2026-08-29  until 2026-08-31   ← your date, in
+    //                                                           the other field
+    //
+    // The user's real consequence: the term never started on the 31st, `from`
+    // stayed near today, so the CURRENT week still overlapped the term and
+    // "Lay out this week" scheduled a sitting at 22:21 that evening. The engine
+    // was right; the model had thrown the typed value away.
+    //
+    // So an edit MOVES THE OTHER END instead. The field you touched is the one
+    // you meant; the one you did not touch is free to give way.
+    const next = { ...c.toJSON(), ...changes };
+    if (changes.from !== undefined && changes.until === undefined && next.from > next.until) {
+      next.until = next.from;
+    } else if (changes.until !== undefined && changes.from === undefined && next.until < next.from) {
+      next.from = next.until;
+    }
+    Object.assign(c, new Commitment({ ...next, id: c.id }));
     this._touch();
     return c;
   }

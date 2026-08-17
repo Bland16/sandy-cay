@@ -245,6 +245,45 @@ describe('Schedule — the collection', () => {
     expect(s.commitments.length).toBe(0);
   });
 
+  it('an EDIT never rewrites the date field you just typed into', () => {
+    // ⚠️ Reported by the user 2026-08-16 and reproduced by
+    // design/probes/probe-date-edit-bug.mjs. The constructor swaps a backwards
+    // range — right for data ARRIVING backwards, wrong for an edit:
+    //
+    //     stored     from 2026-08-16  until 2026-08-29
+    //     typed START     2026-08-31
+    //     stored     from 2026-08-29  until 2026-08-31   ← the typed date, in
+    //                                                      the other field
+    //
+    // Their real consequence: the term never started on the 31st, `from` stayed
+    // near today, the CURRENT week still overlapped the term, and "Lay out this
+    // week" scheduled a sitting at 22:21 that evening.
+    const s = new Schedule({ config: defaultConfig });
+    const c = s.addCommitment({ ...ENGR, from: '2026-08-16', until: '2026-08-29' });
+
+    s.updateCommitment(c.id, { from: '2026-08-31' });
+    expect(s.commitments[0].from).toBe('2026-08-31'); // what you typed, kept
+    expect(s.commitments[0].until).toBe('2026-08-31'); // the other end gave way
+
+    s.updateCommitment(c.id, { until: '2026-09-30' });
+    expect([s.commitments[0].from, s.commitments[0].until]).toEqual(['2026-08-31', '2026-09-30']);
+  });
+
+  it('moves the START when an END date is pulled back before it', () => {
+    // The mirror image, and it must behave the same way round.
+    const s = new Schedule({ config: defaultConfig });
+    const c = s.addCommitment({ ...ENGR, from: '2026-09-07', until: '2026-10-04' });
+    s.updateCommitment(c.id, { until: '2026-08-31' });
+    expect(s.commitments[0].until).toBe('2026-08-31'); // what you typed, kept
+    expect(s.commitments[0].from).toBe('2026-08-31');
+  });
+
+  it('still swaps a backwards range that ARRIVES that way (not an edit)', () => {
+    // The constructor guard stays — an old save or an import may hold one.
+    const c = new Commitment({ ...ENGR, from: '2026-10-04', until: '2026-09-07' });
+    expect([c.from, c.until]).toEqual(['2026-09-07', '2026-10-04']);
+  });
+
   it('gives two identically-titled commitments distinct ids', () => {
     // The two-new-buckets bug: slug(title) alone collides, and a shared id makes
     // `find(id === …)` return the wrong one, so editing the second edits the first.
