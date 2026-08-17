@@ -100,12 +100,17 @@ export default function RoutineSteps({ steps, onChange, previewFrom, travelMin =
         <div className={s.kind === 'passive' ? 'rstep iswait' : 'rstep'} key={i}>
           <span className="rskind">{s.kind === 'passive' ? 'wait' : 'step'}</span>
           <input
-            className="control grow"
+            className="control rsname"
             value={s.label}
             placeholder={s.kind === 'passive' ? 'washing' : 'load the machine'}
             onChange={(e) => patch(i, { label: e.target.value })}
             aria-label={`Step ${i + 1} name`}
           />
+          {/* ⚠️ Numbers and buttons are GROUPED so each group wraps as a unit
+              rather than one input peeling off onto a line of its own. A Cabana
+              card can be as narrow as 250px (`.cabgrid`'s minmax), so wrapping
+              is the normal case here, not an edge one. */}
+          <span className="rsnums">
           {s.kind === 'passive' ? (
             <>
               <input
@@ -150,10 +155,16 @@ export default function RoutineSteps({ steps, onChange, previewFrom, travelMin =
               aria-label={`Step ${i + 1} minutes`}
             />
           )}
-          <span className="runit">min</span>
-          <button className="rsmove" onClick={() => move(i, -1)} disabled={i === 0} aria-label={`Move step ${i + 1} up`}>↑</button>
-          <button className="rsmove" onClick={() => move(i, 1)} disabled={i === list.length - 1} aria-label={`Move step ${i + 1} down`}>↓</button>
-          <button className="rm" onClick={() => remove(i)} aria-label={`Remove step ${i + 1}`}>×</button>
+            <span className="runit">min</span>
+          </span>
+          <span className="rsbtns">
+            <button className="rsmove" onClick={() => move(i, -1)} disabled={i === 0} aria-label={`Move step ${i + 1} up`}>↑</button>
+            <button className="rsmove" onClick={() => move(i, 1)} disabled={i === list.length - 1} aria-label={`Move step ${i + 1} down`}>↓</button>
+            {/* ⚠️ `rsdel`, not `rm`: the stylesheet scopes `.rm` to `.winrow .rm`
+                only, so a bare `.rm` here rendered as a raw browser button —
+                big, grey, and enough to break the row on its own. */}
+            <button className="rsdel" onClick={() => remove(i)} aria-label={`Remove step ${i + 1}`}>×</button>
+          </span>
         </div>
       ))}
 

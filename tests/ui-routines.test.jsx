@@ -8,6 +8,8 @@
 //
 // Dumped, not only driven: behaviour tests cannot see a missing field.
 import { describe, it, expect, afterEach, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { useState } from 'react';
 import { render, cleanup, screen, fireEvent } from '@testing-library/react';
 import {
@@ -53,7 +55,7 @@ const withLaundry = () => {
 const dumpSteps = () => [...document.querySelectorAll('.rstep')].map((r) => {
   const kind = r.querySelector('.rskind').textContent;
   const nums = [...r.querySelectorAll('input.num')].map((i) => i.value || '—');
-  return `  ${kind.padEnd(5)} ${(r.querySelector('input.grow').value || '(unnamed)').padEnd(12)} ${nums.join('-')}`;
+  return `  ${kind.padEnd(5)} ${(r.querySelector('input.rsname').value || '(unnamed)').padEnd(12)} ${nums.join('-')}`;
 }).join('\n');
 
 describe('the card, in every state', () => {
@@ -95,6 +97,51 @@ describe('the card, in every state', () => {
     expect(rows[0].querySelectorAll('input.num').length).toBe(1); // load
     expect(rows[1].querySelectorAll('input.num').length).toBe(2); // washing
     expect(rows[1].classList.contains('iswait')).toBe(true);
+  });
+});
+
+describe('the layout rules the DOM cannot show you', () => {
+  // ⚠️ Reported as "fix the css", with the suite fully green. jsdom has no
+  // layout engine, so the only thing testable here is that the rules exist.
+  // Two concrete defects, both invisible to every other test:
+  //
+  //   1. The delete × used `.rm`, which the stylesheet scopes to `.winrow .rm`
+  //      ONLY — so it rendered as a raw browser button, big and grey, enough to
+  //      break the row on its own.
+  //   2. Nine flex children in a card `.cabgrid` lets shrink to 250px wrapped
+  //      chaotically, and the columns never lined up between rows. A list of
+  //      steps is a table, and a table has columns.
+  const css = readFileSync(resolve(process.cwd(), 'src/ui/styles.css'), 'utf8');
+
+  it('styles the delete button in THIS context, not via .winrow', () => {
+    expect(css).toMatch(/\.rsdel\s*\{/);
+    // And the markup must use it, or the rule is decoration.
+    const s = withLaundry();
+    render(<Harness sched={s} />);
+    fireEvent.click(screen.getByLabelText('Edit routine Laundry'));
+    expect(document.querySelectorAll('.rstep .rsdel').length).toBe(5);
+    expect(document.querySelectorAll('.rstep .rm').length).toBe(0);
+  });
+
+  it('lays a step row out as a GRID, so columns align down the list', () => {
+    expect(css).toMatch(/\.rstep\s*\{[^}]*display:\s*grid/);
+    expect(css).toMatch(/\.rstep\s*\{[^}]*grid-template-columns/);
+  });
+
+  it('GROUPS the numbers and the buttons, so neither half-wraps', () => {
+    const s = withLaundry();
+    render(<Harness sched={s} />);
+    fireEvent.click(screen.getByLabelText('Edit routine Laundry'));
+    const row = document.querySelector('.rstep.iswait');
+    // Both number inputs live in ONE group, so they move together.
+    expect(row.querySelectorAll('.rsnums input.num').length).toBe(2);
+    expect(row.querySelectorAll('.rsbtns button').length).toBe(3);
+  });
+
+  it('does not overhang the card — no negative margins on the tinted row', () => {
+    // The wait tint used `margin: -3px -4px` to bleed to the row edge, which
+    // let it stick out past the card's own padding.
+    expect(css).not.toMatch(/\.rstep\.iswait\s*\{[^}]*margin:\s*-/);
   });
 });
 

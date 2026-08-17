@@ -993,21 +993,52 @@ body.sc-dragging { user-select: none; }
    glance WITHOUT the user ever naming them — the kind came from which button
    they pressed, and the row just shows which. Not coral: a wait is not a
    scheduling problem (P-1), it is free time. */
-.rsteps { display: flex; flex-direction: column; gap: 5px; width: 100%; }
-.rstep { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
-.rstep .rskind {
-  flex: none; width: 34px; font-family: var(--font-type); font-size: 9.5px;
-  text-transform: uppercase; letter-spacing: .04em; color: #d8c6a5; opacity: .7;
+.rsteps { display: flex; flex-direction: column; gap: 4px; width: 100%; min-width: 0; }
+
+/* ⚠️ A GRID, not a wrapping flex row. Nine flex children in a card that
+   `.cabgrid` lets shrink to 250px wrapped chaotically and the columns never
+   lined up between rows — a list of steps is a table, and a table has columns.
+   The name takes the slack (`1fr`, `min-width:0`), and the numbers and the
+   buttons sit in their own tracks so they stay put down the whole list.
+   At the narrow end the two right-hand groups drop to a second line TOGETHER
+   rather than one input at a time. */
+.rstep {
+  display: grid; gap: 4px 5px; align-items: center; min-width: 0;
+  grid-template-columns: 32px minmax(0, 1fr) auto auto;
+  padding: 3px 5px; border-radius: 8px;
 }
-/* The tint carries the distinction; the label above says which word it is. */
-.rstep.iswait { background: rgba(168,218,220,.07); border-radius: 8px; padding: 3px 4px; margin: -3px -4px; }
+.rstep .rskind {
+  font-family: var(--font-type); font-size: 9.5px; text-transform: uppercase;
+  letter-spacing: .04em; color: #d8c6a5; opacity: .7;
+}
+.rstep .rsname { min-width: 0; width: 100%; }
+.rstep .rsnums { display: flex; gap: 4px; align-items: center; }
+.rstep .rsnums .control.num { width: 48px; }
+.rstep .rsbtns { display: flex; gap: 1px; align-items: center; }
+@media (max-width: 1100px) {
+  /* Name on the first line with its label; numbers and buttons share the
+     second. Both groups move together, so the row never half-wraps. */
+  .rstep { grid-template-columns: 32px minmax(0, 1fr); }
+  .rstep .rsnums { grid-column: 2; }
+  .rstep .rsbtns { grid-column: 2; justify-content: flex-end; }
+}
+/* The tint carries the distinction; the row's own label says which word it is.
+   Not coral — a wait is not a scheduling problem (P-1), it is free time.
+   ⚠️ No negative margins: they let the tinted row overhang the card edge. */
+.rstep.iswait { background: rgba(168,218,220,.07); }
 .rstep.iswait .rskind { color: var(--cab-accent); opacity: .85; }
 .rsmove {
-  flex: none; background: none; border: none; cursor: pointer; padding: 2px 3px;
+  flex: none; background: none; border: none; cursor: pointer; padding: 2px 2px;
   color: var(--cab-text); opacity: .55; font-size: 12px; line-height: 1;
 }
 .rsmove:hover:not(:disabled) { opacity: 1; }
 .rsmove:disabled { opacity: .18; cursor: default; }
+/* Scoped, because `.rm` is defined only as `.winrow .rm` — a bare `.rm` here
+   rendered as an unstyled browser button and broke the row by itself. */
+.rsdel {
+  flex: none; border: none; background: none; color: var(--warning);
+  font-weight: 800; cursor: pointer; font-size: 15px; line-height: 1; padding: 0 3px;
+}
 /* The live preview of REAL touchpoint times — §"the bar" calls this the thing
    that settles an argument the wording cannot. */
 .rspreview {
