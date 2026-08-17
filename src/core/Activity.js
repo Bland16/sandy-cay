@@ -44,7 +44,14 @@ function reviveStep(raw, i) {
   const min = Number.isFinite(Number(d.durationMin))
     ? Math.max(STEP_MIN, Math.round(Number(d.durationMin))) : STEP_MIN;
   const rawMax = Number.isFinite(Number(d.durationMax)) ? Math.round(Number(d.durationMax)) : min;
-  const maxWait = Number.isFinite(Number(d.maxWaitMin)) ? Math.round(Number(d.maxWaitMin)) : null;
+  // ⚠️ `d.maxWaitMin == null` is checked FIRST, and it has to be:
+  // `Number(null) === 0`, which is finite — so a round-trip through an already
+  // -revived step (Activity → RoutineInstance) turned "no ceiling" into 0, and
+  // the `Math.max(min, …)` below then raised it to the wait's own floor. A wait
+  // with no ceiling acquired one exactly equal to its length, so ANY delay at
+  // all warned. That is the nagging R-1 forbids, arriving through a coercion.
+  const maxWait = d.maxWaitMin == null || !Number.isFinite(Number(d.maxWaitMin))
+    ? null : Math.round(Number(d.maxWaitMin));
   return {
     label: typeof d.label === 'string' && d.label.trim()
       ? d.label.trim() : (kind === 'passive' ? 'wait' : `step ${i + 1}`),

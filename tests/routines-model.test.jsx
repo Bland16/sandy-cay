@@ -173,7 +173,11 @@ describe('RoutineInstance — the frozen program', () => {
     const back = RoutineInstance.fromJSON(JSON.parse(JSON.stringify(run.toJSON())));
     expect(back.toJSON()).toEqual(run.toJSON());
     expect(back.startTime.getTime()).toBe(START.getTime());
-    expect(back.offsets()[0].offsetMin).toBe(10); // travel is the lead-in
+    // Travel is FUSED into the first touchpoint, not a leading gap: offset 0,
+    // duration 10 + 2. Held as an offset the travel was unoccupied and the
+    // placer could fill it — see RoutineInstance#offsets.
+    expect(back.offsets()[0].offsetMin).toBe(0);
+    expect(back.offsets()[0].durationMin).toBe(12);
   });
 });
 

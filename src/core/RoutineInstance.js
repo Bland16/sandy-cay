@@ -43,7 +43,11 @@ function reviveStep(raw, i) {
   const kind = d.kind === 'passive' ? 'passive' : 'active';
   const min = Number.isFinite(Number(d.durationMin)) ? Math.max(1, Math.round(Number(d.durationMin))) : 1;
   const rawMax = Number.isFinite(Number(d.durationMax)) ? Math.round(Number(d.durationMax)) : min;
-  const maxWait = Number.isFinite(Number(d.maxWaitMin)) ? Math.round(Number(d.maxWaitMin)) : null;
+  // ⚠️ null-checked BEFORE coercing — `Number(null) === 0` is finite, and this
+  // function re-revives steps that Activity already revived, so "no ceiling"
+  // became 0 and then got raised to the wait's own floor. Every delay warned.
+  const maxWait = d.maxWaitMin == null || !Number.isFinite(Number(d.maxWaitMin))
+    ? null : Math.round(Number(d.maxWaitMin));
   return {
     label: typeof d.label === 'string' && d.label.trim()
       ? d.label.trim() : (kind === 'passive' ? 'wait' : `step ${i + 1}`),
@@ -89,14 +93,30 @@ export class RoutineInstance {
    */
   offsets() {
     const out = [];
-    let cursor = this.travelMin;
+    let cursor = 0;
+    // ⚠️ TRAVEL IS FUSED TO THE FIRST TOUCHPOINT, not a leading gap. §"Travel"
+    // says it is "a leading active segment fused to the core, so it's one
+    // contiguous anchor", and the reason is the gym's whole point: 15m travel +
+    // 45m workout must reserve 60 CONTIGUOUS minutes, which is what "can't just
+    // go whenever" means.
+    //
+    // Held as a leading OFFSET instead — which is how this was first written —
+    // the travel was UNOCCUPIED, so the placer was free to drop something into
+    // it and leave you due at the gym with a task in the way of getting there.
+    // Caught by design/probes/probe-routines.mjs case 6: the suggestion said
+    // 08:00 and the anchor landed 08:15–09:00 with the quarter hour empty.
+    let travelLeft = this.travelMin;
     this.steps.forEach((s, i) => {
       if (s.kind === 'active') {
         out.push({
-          stepIndex: i, offsetMin: cursor, label: s.label,
-          durationMin: s.durationMin, durationMax: s.durationMax,
+          stepIndex: i,
+          offsetMin: cursor,
+          label: s.label,
+          durationMin: s.durationMin + travelLeft,
+          durationMax: s.durationMax + travelLeft,
         });
-        cursor += s.durationMin;
+        cursor += s.durationMin + travelLeft;
+        travelLeft = 0;
       } else {
         cursor += s.durationMin;
       }
@@ -114,12 +134,16 @@ export class RoutineInstance {
    */
   waits() {
     const out = [];
-    let cursor = this.travelMin;
+    let cursor = 0;
+    let travelLeft = this.travelMin; // fused into the first active step, as above
     this.steps.forEach((s, i) => {
       if (s.kind === 'passive') {
         out.push({ stepIndex: i, fromMin: cursor, toMin: cursor + s.durationMin, maxWaitMin: s.maxWaitMin });
+        cursor += s.durationMin;
+      } else {
+        cursor += s.durationMin + travelLeft;
+        travelLeft = 0;
       }
-      cursor += s.durationMin;
     });
     return out;
   }
