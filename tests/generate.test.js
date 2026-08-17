@@ -110,6 +110,65 @@ describe('nothing is placed in hours that have already gone', () => {
   });
 });
 
+describe('step 5 re-homes by CAPACITY, not by position', () => {
+  // ⚠️ Found by a probe agent. Sittings leave step 4 DESCENDING by minutes;
+  // `spreadDays` returns days ASCENDING by date. They were paired POSITIONALLY,
+  // so the longest sitting was always handed the earliest candidate day
+  // whatever that day's longest free run was — `placeTask` then fell through to
+  // its last-resort park and dropped a 3h block on top of an all-day booking
+  // while the app reported "700/700m short 0m". In a 2000-week fuzz, 68 of 77
+  // parked sittings were this.
+  //
+  // It also falsified this module's own header: "the day already has room for
+  // it by construction".
+  const tapering = () => {
+    resetIds();
+    const s = new Schedule({ config: defaultConfig });
+    // A week that gets FREER as it goes on — the shape that exposes it.
+    s.addFixed({ title: 'Mon work', tags: ['work'], startTime: at(0, 8), endTime: at(0, 21) });
+    s.addFixed({ title: 'Tue work', tags: ['work'], startTime: at(1, 8), endTime: at(1, 20) });
+    return s;
+  };
+  const big = { ...commitment(), amountMin: 700, minSitting: 60, maxSitting: 180, maxPerDay: 1, until: addDays(MON, 7) };
+
+  it('never lays a sitting on top of what is already there', () => {
+    const s = tapering();
+    const r = generateSittings(s, big, { now: NOW });
+    expect(r.sittings.length).toBeGreaterThan(0);
+    for (const t of r.sittings) {
+      for (const o of s.tasks) {
+        if (o === t || o.chunking || !o.startTime || !o.endTime) continue;
+        expect(t.startTime < o.endTime && o.startTime < t.endTime).toBe(false);
+      }
+    }
+  });
+
+  it('states the shortfall instead of claiming a full week it could not place', () => {
+    // Before: "700/700m short 0m" with an overlap. After: an honest short.
+    const s = tapering();
+    const r = generateSittings(s, big, { now: NOW });
+    const placed = r.sittings.reduce((n, t) => n + t.getDuration(), 0);
+    expect(placed + r.shortfall).toBe(700);
+    expect(r.shortfall).toBeGreaterThan(0);
+  });
+
+  it('respects maxPerDay above 1 — it was only ever safe at 1 by luck', () => {
+    // `spreadDays` returning fewer days than sittings made `|| sit.gap.date`
+    // refill the tail from the original gaps, and the per-day counter
+    // `chooseSittings` maintained was never re-checked after the re-home.
+    const s = tapering();
+    for (const maxPerDay of [2, 3]) {
+      const r = generateSittings(s, { ...big, maxPerDay, maxSitting: 120, amountMin: 480 }, { now: NOW });
+      const perDay = {};
+      for (const t of r.sittings) {
+        const k = dateKey(t.startTime);
+        perDay[k] = (perDay[k] || 0) + 1;
+      }
+      for (const n of Object.values(perDay)) expect(n).toBeLessThanOrEqual(maxPerDay);
+    }
+  });
+});
+
 describe('step 1 — R* ends a fifth of the runway early', () => {
   it('reserves a fifth of the RUNWAY, not a fifth of the task', () => {
     const end = runwayEnd(MON, addDays(MON, 10));

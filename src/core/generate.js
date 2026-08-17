@@ -251,10 +251,52 @@ export function generateSittings(schedule, commitment, opts = {}) {
     rank: (d) => energyRank(schedule, probe, d),
   });
 
+  // ⚠️ Sittings are DESCENDING by minutes; `spread` is ASCENDING by date. They
+  // used to be paired POSITIONALLY (`spread[i]`), which handed the longest
+  // sitting the earliest candidate day whatever that day's longest free run
+  // actually was — so a 3h sitting was re-homed onto a day whose longest run
+  // was one hour, `placeTask` fell through to its last-resort park, and the app
+  // reported "240/240m short 0m" with a sitting sitting on top of an eight-hour
+  // booking. In a 2000-week fuzz, 68 of 77 parked sittings were this.
+  //
+  // It also falsified this module's own header ("the day already has room for
+  // it by construction") and broke `maxPerDay`: when `spread` came back shorter
+  // than the sitting list, `|| sit.gap.date` refilled the tail from the
+  // original gaps and the per-day counter `chooseSittings` had maintained was
+  // never re-checked. Safe at maxPerDay 1 by luck (picked days are distinct);
+  // broken from 2 up.
+  //
+  // So days are now matched by CAPACITY, in spread order, with the per-day
+  // count enforced. A sitting that no day can hold is dropped into the
+  // shortfall rather than parked on top of something — §4.3 says state it.
+  const longestRun = new Map();
+  for (const g of gaps) {
+    const k = dateKey(g.date);
+    longestRun.set(k, Math.max(longestRun.get(k) || 0, g.minutes));
+  }
+  const perDay = new Map();
+  const dayCap = commitment.maxPerDay ?? Infinity;
+  const hasRoom = (d, mins) => {
+    const k = dateKey(d);
+    return (perDay.get(k) || 0) < dayCap && (longestRun.get(k) || 0) >= mins;
+  };
+  const claim = (d) => { const k = dateKey(d); perDay.set(k, (perDay.get(k) || 0) + 1); return d; };
+  const pool = [...spread];
+  const dayFor = (sit) => {
+    const i = pool.findIndex((d) => hasRoom(d, sit.minutes));
+    if (i >= 0) return claim(pool.splice(i, 1)[0]);
+    // Nothing left in the spread can hold it. Its OWN gap's day fits by
+    // construction — take that if the day still has room under maxPerDay.
+    if (hasRoom(sit.gap.date, sit.minutes)) return claim(sit.gap.date);
+    return null;
+  };
+
   const made = [];
   const usedDays = [];
-  plan.sittings.forEach((sit, i) => {
-    const day = spread[i] || sit.gap.date;
+  let dropped = 0;
+  plan.sittings.forEach((sit) => {
+    const day = dayFor(sit);
+    if (!day) { dropped += sit.minutes; return; }
     const child = new Task({
       title: commitment.title,
       tags: [...(commitment.tags || [])],
@@ -283,7 +325,9 @@ export function generateSittings(schedule, commitment, opts = {}) {
     made.push(child);
   });
 
-  return { sittings: made, shortfall: plan.shortfall, days: usedDays };
+  // Anything no day could hold joins the shortfall, so conservation still
+  // holds: placed + shortfall === amount (§4.3).
+  return { sittings: made, shortfall: plan.shortfall + dropped, days: usedDays };
 }
 
 /**
