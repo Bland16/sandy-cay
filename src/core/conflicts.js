@@ -2,7 +2,7 @@
 // ripple/displace chooser (SPEC §3.2, OD-8).
 
 import { weekStart as weekStartOf, addDays, dayStart } from './time.js';
-import { placeTask, intervalsOf } from './placement.js';
+import { placeTask, intervalsOf, recurrenceIntervals } from './placement.js';
 import { expandRecurrence } from './recurrence.js';
 
 /**
@@ -59,18 +59,21 @@ export function resolveDropConflicts(schedule, droppedTask, opts = {}) {
     // taken before this loop still describes the slot the previous evictee just
     // vacated, and every later evictee is placed blind on top of it. evacuate.js
     // and carryOver.js already recompute inside their loops; this must too.
+    // ⚠️ THE SEARCH RANGE FIRST, because the occupied set has to span it. This
+    // expanded recurrence for `ws` alone while the search ran three days from
+    // the target's own day — so displacing a Saturday task walked straight
+    // through Monday's recurring lecture (sharp edge #3). Measured: the
+    // displaced task landed 08:00-10:00 on top of a 09:00-11:00 lecture.
+    let from = opts.from ? new Date(opts.from) : dayStart(target.startTime);
+    if (from.getTime() < now.getTime()) from = new Date(now.getTime());
+    const to = opts.to ? new Date(opts.to) : addDays(from, schedule.config.maxPlacementLookahead);
     const others = intervalsOf(
       schedule.tasks.filter((t) => t !== droppedTask && !t.chunking && !t.recurrence),
-    ).concat(
-      schedule.tasks.filter((t) => t.recurrence).flatMap((t) => intervalsOf(expandRecurrence(t, ws))),
-    );
+    ).concat(recurrenceIntervals(schedule, from, to));
     // occupied = everyone except the evicted target, including the dropped task.
     const occupied = others
       .filter((iv) => iv.task !== target && iv.task.id !== target.id)
       .concat([{ start: droppedTask.startTime, end: droppedTask.endTime, task: droppedTask }]);
-    let from = opts.from ? new Date(opts.from) : dayStart(target.startTime);
-    if (from.getTime() < now.getTime()) from = new Date(now.getTime());
-    const to = opts.to ? new Date(opts.to) : addDays(from, schedule.config.maxPlacementLookahead);
     target.history.displacedCount += 1;
     const res = placeTask(schedule, target, { from, to, occupied, origin: target.startTime });
     target.placedBy = 'auto';

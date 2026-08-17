@@ -270,7 +270,21 @@ export function findBestSlot(schedule, task, opts = {}) {
     const windows = computeWindows(schedule, task, d, { ignoreZone });
     if (windows.length === 0) continue;
     const capacity = dayCapacityMin(config, d) || 1;
-    const dayOccupied = occupied.filter((iv) => iv.end > dayWindowBounds(config, d).start && iv.start < dayWindowBounds(config, d).end);
+    // ⚠️ Sliced by the CALENDAR DAY, not by `config.windows`. Since SPEC §2.1's
+    // amendment a zone DEFINES the window for its own tags and is no longer
+    // clipped to the day window — so an hour that is inside a zone but outside
+    // `config.windows` was filtered out here and then walked as if free, and
+    // placement landed straight on top of an existing task.
+    //
+    // Stock config is enough to hit it: Sunday opens at 10:00, so any
+    // Sunday-morning zone does. Measured — an 08:45 stretch placed on top of an
+    // 08:00 run, silently, with no warning. Found independently by two probe
+    // agents, from the placement side and from the generation side.
+    //
+    // `walkGaps` re-filters per window, so a wider slice is safe.
+    const dayFrom = dayStart(d);
+    const dayTo = addDays(dayFrom, 1);
+    const dayOccupied = occupied.filter((iv) => iv.end > dayFrom && iv.start < dayTo);
     const occMin = occupiedMinutesOnDay(dayOccupied, config, d);
     const fill = clamp(occMin / capacity, 0, 1);
     const breakMin = ignoreBreaks ? 0 : breakMinForFill(fill, config);

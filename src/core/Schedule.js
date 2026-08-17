@@ -26,6 +26,7 @@ import {
   dayCapacityMin,
   intervalsOf,
   placeTask,
+  recurrenceIntervals,
 } from './placement.js';
 import { walkGaps, breakMinForFill, clampWindowToTimeOfDay } from './gaps.js';
 import { expandRecurrence } from './recurrence.js';
@@ -140,21 +141,34 @@ export class Schedule {
     return expandRecurrence(task, ws);
   }
 
-  /** Occupied intervals for placement, excluding a given task. */
-  _occupiedExcluding(task, ws) {
+  /**
+   * Occupied intervals for placement, excluding a given task.
+   *
+   * ⚠️ THE RANGE IS THE SEARCH RANGE, not one week. `findBestSlot` runs
+   * `from … from + config.maxPlacementLookahead` (3 days), which crosses the
+   * Sunday/Monday seam — so expanding recurrence for `weekStart(from)` alone
+   * left the placer blind to next Monday's lecture and it scheduled straight
+   * through it. Measured: a task added on a Saturday landed 08:00–10:00 on the
+   * Monday, on top of a recurring 09:00 lecture, silently.
+   *
+   * Sharp edge #3, and `recurrenceIntervals` is the helper that edge names —
+   * every other occupied-set builder in the engine already uses it. The new set
+   * is a strict superset of the old (`recurrenceIntervals` starts at
+   * `weekStart(from)`), so nothing can be lost.
+   */
+  _occupiedExcluding(task, from, to) {
     const reals = intervalsOf(
       this.tasks.filter((t) => t !== task && t.id !== (task && task.id) && !t.chunking && !t.recurrence),
     );
-    const occs = this.tasks
-      .filter((t) => t.recurrence)
-      .flatMap((t) => intervalsOf(expandRecurrence(t, ws)));
-    return reals.concat(occs);
+    return reals.concat(recurrenceIntervals(this, from, to));
   }
 
   _place(task, opts = {}) {
     const from = opts.from || new Date();
-    const ws = weekStartOf(from);
-    const occupied = opts.occupied || this._occupiedExcluding(task, ws);
+    // The same upper bound `findBestSlot` will use, so the occupied set covers
+    // every day the search can actually reach.
+    const to = opts.to ? new Date(opts.to) : addDays(from, this.config.maxPlacementLookahead);
+    const occupied = opts.occupied || this._occupiedExcluding(task, from, to);
     return placeTask(this, task, { ...opts, from, occupied });
   }
 
