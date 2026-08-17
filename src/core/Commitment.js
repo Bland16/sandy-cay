@@ -139,10 +139,24 @@ export class Commitment {
    *    written for. The last usable day is `dueDay` if set, else Sunday, and
    *    never past the term's own end.
    *
-   * Returns null when the week is outside the term, or when the term ends
-   * before the week's due day leaves no day at all to work in.
+   * Returns null when there is nothing to offer: the week is outside the term,
+   * the term ends before the week begins, or — with `now` supplied — THE LAST
+   * USABLE DAY HAS ALREADY PASSED.
+   *
+   * ⚠️ That last one is a defect found by `design/probes/probe-mixed-terms.mjs`
+   * and it is not cosmetic. A commitment due Thursday, asked on Friday, used to
+   * return a window of Mon→Thu; `generateSittings` then floors its search at
+   * `now`, finds no legal day, places nothing and reports the WHOLE amount as a
+   * shortfall. So the preview promised "owes 3h" for work that could no longer
+   * be done, and pressing the button manufactured a 3h shortfall out of the
+   * passage of time. §4.3 says a shortfall is a fact that gets stated once,
+   * D-3 says it must never grow because time passed, and §5 forbids "you missed
+   * your target" outright. A week you can no longer act on owes nothing.
+   *
+   * `now` is INJECTED (sharp edge #8 — the engine must never read the clock)
+   * and optional, because the pure date arithmetic is useful without it.
    */
-  engineInputForWeek(ws) {
+  engineInputForWeek(ws, now = null) {
     const start = weekStartOf(ws);
     if (!this.coversWeek(start)) return null;
 
@@ -152,7 +166,10 @@ export class Commitment {
     const lastInWeek = addDays(start, this.dueDay ? DAY_KEYS.indexOf(this.dueDay) : 6);
     const termUntil = dateFromKey(this.until);
     const last = lastInWeek.getTime() < termUntil.getTime() ? lastInWeek : termUntil;
-    if (last.getTime() < from.getTime()) return null; // the due day has gone
+    if (last.getTime() < from.getTime()) return null; // the term ended first
+    // Compared by DAY KEY, so the due day itself still counts: asked ON
+    // Thursday there are hours left, asked on Friday there are not.
+    if (now && dateKey(last) < dateKey(now)) return null;
 
     return {
       id: this.id,

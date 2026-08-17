@@ -10,7 +10,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup, screen, fireEvent, act } from '@testing-library/react';
 import {
   Schedule, Commitment, defaultConfig, exportState, summarizeImport, resetIds,
-  weekStart as weekStartOf, addDays, dateKey, generateSittings,
+  weekStart as weekStartOf, addDays, dateKey, generateSittings, generateAll,
 } from '../src/core/index.js';
 import { useEngine } from '../src/ui/useEngine.js';
 import Cabana from '../src/ui/components/Cabana.jsx';
@@ -152,6 +152,38 @@ describe('engineInputForWeek() — the per-week period (sharp edge #11)', () => 
     expect(c.engineInputForWeek(addDays(MON, -7))).toBe(null);
     expect(c.engineInputForWeek(addDays(MON, 35))).toBe(null);
     expect(c.coversWeek(MON)).toBe(true);
+  });
+
+  it('owes NOTHING once the due day has passed — no shortfall from time passing', () => {
+    // ⚠️ Found by design/probes/probe-mixed-terms.mjs, and it is not cosmetic.
+    // A commitment due Thursday, asked on FRIDAY, used to return a Mon→Thu
+    // window; `generateSittings` floors its search at `now`, finds no legal day,
+    // places nothing and reports the WHOLE amount as a shortfall. So the
+    // preview promised "owes 3h" for work that could no longer be done, and the
+    // button manufactured a 3h shortfall out of the passage of time — which
+    // §4.3 (state it once), D-3 (never grow it) and §5 (no "you missed your
+    // target") each forbid on their own.
+    const c = new Commitment({ ...ENGR, dueDay: 'thu' });
+    const THU = new Date(2026, 8, 10, 12, 0);
+    const FRI = new Date(2026, 8, 11, 12, 0);
+
+    // ON the due day there are still hours left, so it is still owed.
+    expect(c.engineInputForWeek(MON, THU)).not.toBe(null);
+    // The day AFTER, the week is over for this commitment.
+    expect(c.engineInputForWeek(MON, FRI)).toBe(null);
+
+    // And prove the consequence rather than the bound: generating on Friday
+    // must not produce a 240-minute shortfall out of nowhere.
+    const s = termWeek();
+    const input = c.engineInputForWeek(MON, FRI);
+    const results = generateAll(s, [input].filter(Boolean), { now: FRI });
+    expect(results).toEqual([]);
+  });
+
+  it('still owes a whole-week commitment on Friday — Sat and Sun remain', () => {
+    // The guard must not swallow a commitment that genuinely has days left.
+    const c = new Commitment(ENGR); // no dueDay → the week's end
+    expect(c.engineInputForWeek(MON, new Date(2026, 8, 11, 12, 0))).not.toBe(null);
   });
 
   it('lays out the SAME amount in every week of the term', () => {
