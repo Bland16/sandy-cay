@@ -84,7 +84,7 @@ export class Schedule {
     // opening the picker IS asking. That is R-1 applied honestly: a rule you
     // set yourself is the clearest case of one you are entitled to overrule.
     this.blockedDays = [...new Set((init.blockedDays || []).map(String))].sort();
-    // Standing commitments — "8h of ENGR project by 3 October"
+    // Standing commitments — "2h of maths a week, all term"
     // (design/WEEKLY-PLANNING.md §2/§4). Additive, so old saves load empty and
     // schemaVersion stays 1 (sharp edge #15). ⚠️ That edge has now been sprung
     // THREE times, so: this is written by `toJSON`, read by `fromJSON`, AND
@@ -419,13 +419,42 @@ export class Schedule {
   /**
    * The sittings already laid out for a commitment — derived, never stored.
    *
-   * "Has this been laid out?" is answered by looking, the same call the
+   * "Has this week been laid out?" is answered by LOOKING, the same call the
    * "every weekday" dropdown makes rather than keeping a flag: a stored
    * `lastFilled` would be free to disagree with the tasks actually on the grid
    * the moment one is deleted by hand.
+   *
+   * ⚠️ `ws` is load-bearing once generation is weekly. Without it, a commitment
+   * that has EVER been laid out looks laid out for every week, so week two
+   * would never generate; and an automatic trigger checking the un-weeked
+   * version would re-lay week one on every app open. Pass the week.
+   *
+   * Selection is by CALENDAR day, which is deliberate and needs sharp edge #5
+   * addressed rather than ignored. The grid draws a 5am-anchored day, so a task
+   * starting 00:00–04:59 belongs to the PREVIOUS column — and a surface that
+   * selects by calendar week while placing by grid day is exactly the bug that
+   * made a Monday 04:15 task render nowhere at all.
+   *
+   * It cannot bite here, because a GENERATED sitting can never start before
+   * 05:00: `generateSittings` places only inside `computeWindows`, and the
+   * earliest window `config` allows is 08:00 (10:00 on Sunday). Calendar day
+   * and grid day therefore agree for every task this function selects, and
+   * matching the generator's own calendar-day arithmetic is what keeps the
+   * "this week owes" count and the generator from disagreeing.
+   *
+   * ⚠️ The assumption is `config.windows`, so if a window is ever allowed to
+   * open before 05:00 this needs revisiting — along with anything that displays
+   * these counts beside the grid.
    */
-  sittingsFor(commitmentId) {
-    return this.tasks.filter((t) => t.parentId === commitmentId && !t.chunking);
+  sittingsFor(commitmentId, ws = null) {
+    const mine = this.tasks.filter((t) => t.parentId === commitmentId && !t.chunking);
+    if (!ws) return mine;
+    const start = weekStartOf(ws);
+    const first = dateKey(start);
+    const last = dateKey(addDays(start, 6));
+    // ISO keys sort chronologically, so this is a string comparison and cannot
+    // be knocked out by a DST hour the way a millisecond range can.
+    return mine.filter((t) => t.startTime && dateKey(t.startTime) >= first && dateKey(t.startTime) <= last);
   }
 
   /**

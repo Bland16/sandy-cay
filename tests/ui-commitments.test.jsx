@@ -34,7 +34,13 @@ function dumpFields() {
   const rows = [...card.querySelectorAll('.field')].map((f) => {
     const label = f.querySelector('.flabel').textContent;
     const vals = [...f.querySelectorAll('input, select')]
-      .map((el) => (el.type === 'checkbox' ? String(el.checked) : el.value))
+      // A <select> is dumped by what it SAYS, not by its value — an empty value
+      // meaning "end of the week" printed as a bare dash, which hides exactly
+      // the thing a dump exists to show.
+      .map((el) => {
+        if (el.tagName === 'SELECT') return `"${el.options[el.selectedIndex].text}"`;
+        return el.type === 'checkbox' ? String(el.checked) : el.value;
+      })
       .filter((v) => v !== '');
     const units = [...f.querySelectorAll('.runit, .rdash')].map((u) => u.textContent).join(' ');
     return `  ${label.padEnd(10)} ${vals.join(' / ') || '—'}${units ? `   [${units}]` : ''}`;
@@ -63,12 +69,12 @@ describe('the card, in every state it has', () => {
   it('STATE 2 — a list: every row states its amount, period and bounds', () => {
     const s = fresh();
     s.addCommitment({
-      title: 'ENGR project', tags: ['study'], amountMin: 480,
-      from: '2026-09-07', until: '2026-10-03', minSitting: 60, maxSitting: 180, maxPerDay: 1,
+      title: 'ENGR project', tags: ['study'], amountMinPerWeek: 240,
+      from: '2026-09-07', until: '2026-10-04', minSitting: 60, maxSitting: 180, maxPerDay: 1,
     });
     s.addCommitment({
-      title: 'Reading', tags: ['reading'], amountMin: 180,
-      from: '2026-09-07', until: '2026-09-13', minSitting: 45, maxSitting: 90, maxPerDay: 2,
+      title: 'Reading', tags: ['reading'], amountMinPerWeek: 180, dueDay: 'thu',
+      from: '2026-09-07', until: '2026-09-27', minSitting: 45, maxSitting: 90, maxPerDay: 2,
     });
     render(<Harness sched={s} />);
     // eslint-disable-next-line no-console
@@ -81,18 +87,21 @@ describe('the card, in every state it has', () => {
     expect(rows[0].textContent).toContain('ENGR project');
     // "3 Oct", not "2026-10-03". A storage key is not a label, and this test
     // read the key back happily until the row was DUMPED and looked at.
-    expect(rows[0].textContent).toContain('8h by 3 Oct');
+    expect(rows[0].textContent).toContain('4h/week');
+    expect(rows[0].textContent).toContain('7 Sep – 4 Oct');
     expect(rows[0].textContent).toContain('sittings 1h–3h');
     expect(rows[0].textContent).toContain('max 1/day');
-    expect(rows[1].textContent).toContain('3h by 13 Sep');
+    // The optional due day only appears when it is set — the second has one.
+    expect(rows[0].textContent).not.toContain('due ');
+    expect(rows[1].textContent).toContain('3h/week · due Thursday');
     expect(rows[1].textContent).toContain('max 2/day');
   });
 
   it('STATE 3 — the editor: every field the brief names is PRESENT and filled', () => {
     const s = fresh();
     s.addCommitment({
-      title: 'ENGR project', tags: ['study'], amountMin: 480,
-      from: '2026-09-07', until: '2026-10-03', minSitting: 60, maxSitting: 180, maxPerDay: 1,
+      title: 'ENGR project', tags: ['study'], amountMinPerWeek: 240,
+      from: '2026-09-07', until: '2026-10-04', minSitting: 60, maxSitting: 180, maxPerDay: 1,
     });
     render(<Harness sched={s} />);
     fireEvent.click(screen.getByLabelText('Edit commitment ENGR project'));
@@ -102,19 +111,20 @@ describe('the card, in every state it has', () => {
     // The four the brief asks for, by their VALUES — a field that rendered but
     // lost its value is the same defect as one that vanished.
     expect(screen.getByLabelText('Commitment name').value).toBe('ENGR project');
-    expect(screen.getByLabelText('Commitment hours').value).toBe('8');
+    expect(screen.getByLabelText('Commitment hours per week').value).toBe('4');
     expect(screen.getByLabelText('Commitment start date').value).toBe('2026-09-07');
-    expect(screen.getByLabelText('Commitment end date').value).toBe('2026-10-03');
+    expect(screen.getByLabelText('Commitment end date').value).toBe('2026-10-04');
+    expect(screen.getByLabelText('Commitment due day').value).toBe(''); // end of week
     expect(screen.getByLabelText('Commitment minimum sitting minutes').value).toBe('60');
     expect(screen.getByLabelText('Commitment maximum sitting minutes').value).toBe('180');
     expect(screen.getByLabelText('Commitment sittings per day').value).toBe('1');
 
     // The labels themselves, in order — this is what catches "Whenpick a time".
     const labels = [...document.querySelectorAll('.flabel')].map((l) => l.textContent);
-    expect(labels).toEqual(['name', 'tags', 'how much', 'between', 'sittings', 'at most']);
+    expect(labels).toEqual(['name', 'tags', 'how much', 'due by', 'between', 'sittings', 'at most']);
     // And the units, which are the difference between "8" and "8 hours".
     const units = [...document.querySelectorAll('.runit')].map((u) => u.textContent);
-    expect(units).toEqual(['hours', 'min', 'a day']);
+    expect(units).toEqual(['hours/week', 'min', 'a day']);
   });
 
   it('STATE 4 — a brand-new commitment opens straight into its editor', () => {
@@ -127,7 +137,7 @@ describe('the card, in every state it has', () => {
     // Adding something and being left on the list, guessing which row is yours,
     // is the thing the drill idiom exists to avoid.
     expect(screen.getByLabelText('Commitment name').value).toBe('New commitment');
-    expect(screen.getByLabelText('Commitment hours').value).toBe('2');
+    expect(screen.getByLabelText('Commitment hours per week').value).toBe('2');
     expect(s.commitments.length).toBe(1);
   });
 });
@@ -136,8 +146,8 @@ describe('the controls do what they say', () => {
   const withOne = () => {
     const s = fresh();
     s.addCommitment({
-      title: 'ENGR project', tags: [], amountMin: 480,
-      from: '2026-09-07', until: '2026-10-03', minSitting: 60, maxSitting: 180, maxPerDay: 1,
+      title: 'ENGR project', tags: [], amountMinPerWeek: 240,
+      from: '2026-09-07', until: '2026-10-04', minSitting: 60, maxSitting: 180, maxPerDay: 1,
     });
     return s;
   };
@@ -146,11 +156,20 @@ describe('the controls do what they say', () => {
     fireEvent.click(screen.getByLabelText('Edit commitment ENGR project'));
   };
 
-  it('types HOURS and stores MINUTES (D-1)', () => {
+  it('types HOURS PER WEEK and stores MINUTES (D-1, §2)', () => {
     const s = withOne();
     open(s);
-    fireEvent.change(screen.getByLabelText('Commitment hours'), { target: { value: '2.5' } });
-    expect(s.commitments[0].amountMin).toBe(150);
+    fireEvent.change(screen.getByLabelText('Commitment hours per week'), { target: { value: '2.5' } });
+    expect(s.commitments[0].amountMinPerWeek).toBe(150);
+  });
+
+  it('sets an optional due weekday, and can clear it back to the week end', () => {
+    const s = withOne();
+    open(s);
+    fireEvent.change(screen.getByLabelText('Commitment due day'), { target: { value: 'thu' } });
+    expect(s.commitments[0].dueDay).toBe('thu');
+    fireEvent.change(screen.getByLabelText('Commitment due day'), { target: { value: '' } });
+    expect(s.commitments[0].dueDay).toBe(null);
   });
 
   it('reads a date as a day key, never through `new Date(string)`', () => {
@@ -210,7 +229,7 @@ describe('tags are OFFERED, never free text (§4.6)', () => {
     const s = fresh();
     s.addFixed({ title: 'CHEM', tags: ['classes'], startTime: new Date(2026, 8, 7, 9), endTime: new Date(2026, 8, 7, 10) });
     s.addFixed({ title: 'Gym', tags: ['gym'], startTime: new Date(2026, 8, 7, 17), endTime: new Date(2026, 8, 7, 18) });
-    s.addCommitment({ title: 'ENGR project', tags: [], amountMin: 480, from: '2026-09-07', until: '2026-10-03' });
+    s.addCommitment({ title: 'ENGR project', tags: [], amountMinPerWeek: 240, from: '2026-09-07', until: '2026-10-04' });
     render(<Harness sched={s} />);
     fireEvent.click(screen.getByLabelText('Edit commitment ENGR project'));
 
@@ -230,7 +249,7 @@ describe('tags are OFFERED, never free text (§4.6)', () => {
   it('adds the offered tag verbatim, so the string-exact link actually holds', () => {
     const s = fresh();
     s.addFixed({ title: 'CHEM', tags: ['classes'], startTime: new Date(2026, 8, 7, 9), endTime: new Date(2026, 8, 7, 10) });
-    s.addCommitment({ title: 'ENGR project', tags: [], amountMin: 480, from: '2026-09-07', until: '2026-10-03' });
+    s.addCommitment({ title: 'ENGR project', tags: [], amountMinPerWeek: 240, from: '2026-09-07', until: '2026-10-04' });
     render(<Harness sched={s} />);
     fireEvent.click(screen.getByLabelText('Edit commitment ENGR project'));
     fireEvent.click(screen.getByText('＋ tag'));
@@ -244,7 +263,7 @@ describe('it is actually MOUNTED, not merely written', () => {
     // A component that exists and is never rendered is the card-sized version of
     // the field that vanished. Only rendering the real page can tell.
     const s = fresh();
-    s.addCommitment({ title: 'ENGR project', amountMin: 480, from: '2026-09-07', until: '2026-10-03' });
+    s.addCommitment({ title: 'ENGR project', amountMinPerWeek: 240, from: '2026-09-07', until: '2026-10-04' });
     render(
       <Cabana
         sched={s}
@@ -260,7 +279,7 @@ describe('it is actually MOUNTED, not merely written', () => {
     // eslint-disable-next-line no-console
     console.log(`\nCABANA CARDS: ${signs.join(' | ')}\n`);
     expect(signs).toContain('Standing commitments');
-    expect(screen.getByText(/8h by 3 Oct/)).toBeTruthy();
+    expect(screen.getByText(/4h\/week/)).toBeTruthy();
   });
 });
 
@@ -321,17 +340,17 @@ describe('the layout rules the DOM cannot show you', () => {
     // right-aligned in the column while TAGS, BETWEEN and SITTINGS started at
     // the card's left edge.
     const s = fresh();
-    s.addCommitment({ title: 'ENGR project', amountMin: 480, from: '2026-09-07', until: '2026-10-03' });
+    s.addCommitment({ title: 'ENGR project', amountMinPerWeek: 240, from: '2026-09-07', until: '2026-10-04' });
     render(<Harness sched={s} />);
     fireEvent.click(screen.getByLabelText('Edit commitment ENGR project'));
     const fields = [...document.querySelectorAll('.field')];
-    expect(fields.length).toBe(6);
+    expect(fields.length).toBe(7);
     for (const f of fields) expect(f.classList.contains('stack')).toBe(false);
   });
 
   it('carries no explanatory paragraphs — removed by request', () => {
     const s = fresh();
-    s.addCommitment({ title: 'ENGR project', amountMin: 480, from: '2026-09-07', until: '2026-10-03' });
+    s.addCommitment({ title: 'ENGR project', amountMinPerWeek: 240, from: '2026-09-07', until: '2026-10-04' });
     render(<Harness sched={s} />);
     fireEvent.click(screen.getByLabelText('Edit commitment ENGR project'));
     expect(document.querySelectorAll('.field-help').length).toBe(0);
@@ -343,9 +362,10 @@ describe('the layout rules the DOM cannot show you', () => {
 });
 
 describe('commitmentMeta — the one-line summary', () => {
-  it('says "on" rather than "by" for a single-day period', () => {
+  it('collapses a one-day term to a single date', () => {
     expect(commitmentMeta({
-      amountMin: 60, from: '2026-09-07', until: '2026-09-07', minSitting: 60, maxSitting: 60, maxPerDay: 1,
-    })).toBe('1h on 7 Sep · sittings 1h–1h · max 1/day');
+      amountMinPerWeek: 60, from: '2026-09-07', until: '2026-09-07', dueDay: null,
+      minSitting: 60, maxSitting: 60, maxPerDay: 1,
+    })).toBe('1h/week · 7 Sep · sittings 1h–1h · max 1/day');
   });
 });

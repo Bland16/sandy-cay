@@ -742,6 +742,48 @@ severs the link without any symptom.
   anything drawn *between* columns; and ROUTINES will later want a linked-chain
   marker for laundry's touchpoints, so whatever is chosen should be able to serve
   both rather than becoming a second vocabulary.
+- **D-7. NEW, RESOLVED 2026-08-16 — an OPTIONAL per-week due weekday.**
+  A commitment may name a weekday its week's amount is due by; blank means the
+  week's end, which is §2's behaviour unchanged. ⚠️ **This does not contradict
+  §2's "No separate deadline field", and the distinction is the point.** What §1
+  rejected was per-OCCURRENCE dated deadlines — *"eleven psets, each due its own
+  Friday"* — eleven objects with their own machinery. This is ONE value applying
+  uniformly to every week: it moves the period's end from Sunday to Thursday,
+  which is *"the period's end is the implicit deadline"* with a different end.
+  **It needs no engine change.** It becomes that week's `until`, so §4.4's buffer
+  shortens with it and §4.1.1 step 2 stops offering the days after it — both
+  proven by placing, not by reading the bound back.
+
+- **D-8. NEW, RESOLVED 2026-08-16 — the amount is PER WEEK, and `from`/`until`
+  are the TERM.** §2 always said this (`amountMin` is *"what each period owes"*
+  with a weekly cadence); it is recorded here because the first build made it a
+  total across `from`→`until` and the field had to be renamed
+  `amountMinPerWeek` to stop the old meaning surviving in the name. Generation
+  loops the weeks and calls the existing `generateSittings` once per week —
+  **`generate.js` is untouched.** "Has this week been laid out?" is derived from
+  the grid per week (`sittingsFor(id, weekStart)`), never a stored `lastFilled`:
+  the un-weeked answer makes a commitment laid out ONCE look laid out for every
+  week of the term.
+
+  **Consequence worth stating:** a weekly rate cannot express "8 hours by 3
+  October". That is correct rather than a loss — D-5's table already puts
+  one-off work in a different category ("a planned event […] an ordinary task")
+  — but it means coursework-by-a-date still needs `AddProjectPanel`, which uses
+  `sliceChunks` rather than this generator. **Converging projects onto the
+  generator is now more necessary, not less.**
+
+- **D-9. NEW, RESOLVED 2026-08-16 — the horizon is ONE WEEK, and the offer is
+  the default.** For the current week and the next only, if a commitment owes
+  work there and none is laid out, the app OFFERS to lay it out; "Lay it out"
+  stays as the manual path (D-3 unchanged). One rule covers both the term's
+  first day and the weekly roll. Automatic writing is available as a setting but
+  **defaults to offer**, because a new user who has not yet learned what a
+  commitment does is the one person D-3's surprise argument still protects.
+  ⚠️ The trigger is per WEEK, not per commitment: staggered per-commitment
+  triggers would let whichever due day lands first pick days first, which is
+  §4.1.2's sibling-collision flaw reintroduced. And there is no server — it can
+  only fire on first open after the due day passed, so it must ANNOUNCE itself.
+
 - **D-5. RESOLVED 2026-08-11** — they sit beside each other, and the boundary
   is **how much lead time the thing needs**:
 

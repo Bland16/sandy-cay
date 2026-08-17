@@ -25,24 +25,31 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
-/** The user's own words, and the "done when" of this build. */
+/** A term commitment: 4h a week of ENGR, across four whole weeks. */
 const ENGR = {
   title: 'ENGR project',
   tags: ['study'],
-  amountMin: 480,
-  from: '2026-09-07',
-  until: '2026-10-03',
+  amountMinPerWeek: 240,
+  from: '2026-09-07', // Monday
+  until: '2026-10-04', // the Sunday four weeks later
   minSitting: 60,
   maxSitting: 180,
   maxPerDay: 1,
 };
 
+const MON = new Date(2026, 8, 7); // Mon 7 Sep 2026, the term's first week
+
 describe('Commitment — the fields, and what they refuse', () => {
-  it('stores hours as minutes and the period as inclusive day keys', () => {
+  it('stores the WEEKLY amount as minutes and the term as inclusive day keys', () => {
     const c = new Commitment(ENGR);
-    expect(c.amountMin).toBe(480);
+    // Per WEEK, not a total across the term. The field is named for it because
+    // it was briefly built as a total, and a name that outlives its meaning is
+    // how this codebase's bugs live.
+    expect(c.amountMinPerWeek).toBe(240);
+    expect(c.amountMin).toBeUndefined();
     expect(c.from).toBe('2026-09-07');
-    expect(c.until).toBe('2026-10-03');
+    expect(c.until).toBe('2026-10-04');
+    expect(c.dueDay).toBe(null); // optional; the week's end by default
     expect(c.minSitting).toBe(60);
     expect(c.maxSitting).toBe(180);
     expect(c.maxPerDay).toBe(1);
@@ -56,10 +63,10 @@ describe('Commitment — the fields, and what they refuse', () => {
     const c = new Commitment({ ...ENGR, load: { mental: 2 } });
     expect(c.load).toBeUndefined();
     expect(c.toJSON().load).toBeUndefined();
-    expect(c.engineInput().load).toBeUndefined();
+    expect(c.engineInputForWeek(MON).load).toBeUndefined();
   });
 
-  it('has no cadence and no lastFilled — the ritual is not built', () => {
+  it('has no cadence and no lastFilled — weekly only, and laid-out is derived', () => {
     // A stored field nothing reads drifts out of truth before its first user.
     const c = new Commitment({ ...ENGR, cadence: 'weekly', lastFilled: '2026-09-01' });
     expect(c.toJSON().cadence).toBeUndefined();
@@ -67,8 +74,8 @@ describe('Commitment — the fields, and what they refuse', () => {
   });
 
   it('swaps a backwards period rather than storing one that generates nothing', () => {
-    const c = new Commitment({ ...ENGR, from: '2026-10-03', until: '2026-09-07' });
-    expect([c.from, c.until]).toEqual(['2026-09-07', '2026-10-03']);
+    const c = new Commitment({ ...ENGR, from: '2026-10-04', until: '2026-09-07' });
+    expect([c.from, c.until]).toEqual(['2026-09-07', '2026-10-04']);
   });
 
   it('never lets the sitting maximum fall below the minimum', () => {
@@ -83,54 +90,94 @@ describe('Commitment — the fields, and what they refuse', () => {
   });
 });
 
-describe('engineInput() — the boundary conversion (sharp edge #11)', () => {
-  it('turns the INCLUSIVE last day into the half-open bound the placer wants', () => {
-    const c = new Commitment(ENGR);
-    const e = c.engineInput();
-    expect(dateKey(e.from)).toBe('2026-09-07');
-    // 4 October, not the 3rd. `placeTask` clips every window to `end ≤ deadline`,
-    // so 3 Oct 00:00 would make the 2nd the last usable day — a whole day of
-    // runway lost, silently, on every commitment the user ever writes.
-    expect(dateKey(e.until)).toBe('2026-10-04');
-    expect(e.until.getHours()).toBe(0);
-  });
-
-  it('lets work land ON the last day the user typed', () => {
-    // Proven by execution, not by reading the bound: a one-day period where the
-    // only day available IS the deadline day.
+describe('engineInputForWeek() — the per-week period (sharp edge #11)', () => {
+  /** A real term week: classes Mon/Wed/Fri 09-10, seminars Tue/Thu 11-12. */
+  const termWeek = () => {
     resetIds();
-    const s = new Schedule({ config: defaultConfig });
-    const c = new Commitment({
-      ...ENGR, amountMin: 60, from: '2026-09-07', until: '2026-09-07', minSitting: 60,
-    });
-    const r = generateSittings(s, c.engineInput(), { now: new Date(2026, 8, 7, 6, 0) });
-    expect(r.sittings.length).toBe(1);
-    expect(dateKey(r.sittings[0].startTime)).toBe('2026-09-07');
-  });
-
-  it('feeds the real engine and lays out the ENGR project across weeks', () => {
-    resetIds();
-    const MON = weekStartOf(new Date(2026, 8, 7));
-    const at = (o, h, e2) => { const d = addDays(MON, o); d.setHours(h, 0, 0, 0); const x = addDays(MON, o); x.setHours(e2, 0, 0, 0); return [d, x]; };
+    const ws = weekStartOf(MON);
     const s = new Schedule({ config: defaultConfig });
     [[0, 9, 10], [2, 9, 10], [4, 9, 10], [1, 11, 12], [3, 11, 12]].forEach(([o, h, e2], i) => {
-      const [st, en] = at(o, h, e2);
+      const st = addDays(ws, o); st.setHours(h, 0, 0, 0);
+      const en = addDays(ws, o); en.setHours(e2, 0, 0, 0);
       s.addFixed({ title: `class ${i}`, tags: ['classes'], startTime: st, endTime: en });
     });
-    const c = s.addCommitment(ENGR);
-    const r = generateSittings(s, c.engineInput(), { now: new Date(2026, 8, 7, 8, 0) });
+    return s;
+  };
 
-    expect(r.sittings.reduce((n, t) => n + t.getDuration(), 0) + r.shortfall).toBe(480);
-    // §4.3: a shortfall is stated, never crammed — and here there is none.
-    expect(r.shortfall).toBe(0);
+  it('bounds a week Monday → the Sunday AFTER it, exclusive', () => {
+    const e = new Commitment(ENGR).engineInputForWeek(MON);
+    expect(dateKey(e.from)).toBe('2026-09-07');
+    // 14 Sep, not the 13th. `placeTask` clips every window to `end ≤ deadline`,
+    // so a bound of Sunday 00:00 would make Saturday the last usable day — a
+    // day of runway lost, silently, EVERY WEEK.
+    expect(dateKey(e.until)).toBe('2026-09-14');
+    expect(e.until.getHours()).toBe(0);
+    // The engine's own field name is unchanged: the week's amount IS its amount.
+    expect(e.amountMin).toBe(240);
+  });
+
+  it('honours an optional due weekday by shortening the week', () => {
+    const e = new Commitment({ ...ENGR, dueDay: 'thu' }).engineInputForWeek(MON);
+    // Thursday 10 Sep is the last usable day, so the bound is Friday the 11th.
+    expect(dateKey(e.until)).toBe('2026-09-11');
+  });
+
+  it('PROVES the due day by placing — nothing lands after Thursday', () => {
+    // Reading the bound is not proof. §4.1.1 step 2 only offers days inside R*,
+    // so a Thursday deadline must make Fri/Sat/Sun uncandidates outright.
+    const s = termWeek();
+    const c = new Commitment({ ...ENGR, dueDay: 'thu', amountMinPerWeek: 240 });
+    const r = generateSittings(s, c.engineInputForWeek(MON), { now: new Date(2026, 8, 7, 6, 0) });
+    expect(r.sittings.length).toBeGreaterThan(0);
     for (const t of r.sittings) {
-      expect(t.getDuration()).toBeGreaterThanOrEqual(60);
-      expect(t.getDuration()).toBeLessThanOrEqual(180);
-      expect(t.parentId).toBe(c.id);
+      expect(dateKey(t.startTime) <= '2026-09-10').toBe(true);
     }
-    // maxPerDay 1 — one a day, the user's own words.
-    const days = r.sittings.map((t) => dateKey(t.startTime));
-    expect(new Set(days).size).toBe(days.length);
+  });
+
+  it('starts mid-week when the TERM starts mid-week, not on the Monday', () => {
+    // A commitment beginning on the Wednesday must not place on the Monday.
+    const c = new Commitment({ ...ENGR, from: '2026-09-09' });
+    const e = c.engineInputForWeek(MON);
+    expect(dateKey(e.from)).toBe('2026-09-09');
+  });
+
+  it('stops at the TERM end when the term ends mid-week', () => {
+    const c = new Commitment({ ...ENGR, until: '2026-09-09' });
+    const e = c.engineInputForWeek(MON);
+    expect(dateKey(e.until)).toBe('2026-09-10'); // exclusive bound after Wed 9th
+  });
+
+  it('returns null for a week outside the term — nothing owed, nothing offered', () => {
+    const c = new Commitment(ENGR);
+    expect(c.engineInputForWeek(addDays(MON, -7))).toBe(null);
+    expect(c.engineInputForWeek(addDays(MON, 35))).toBe(null);
+    expect(c.coversWeek(MON)).toBe(true);
+  });
+
+  it('lays out the SAME amount in every week of the term', () => {
+    // The whole point of a weekly rate: week two owes its own 4h, and the
+    // "already laid out" check is per week or week two never generates at all.
+    const s = termWeek();
+    const c = s.addCommitment(ENGR);
+    const w1 = generateSittings(s, c.engineInputForWeek(MON), { now: new Date(2026, 8, 7, 6, 0) });
+    const w2 = generateSittings(s, c.engineInputForWeek(addDays(MON, 7)), { now: new Date(2026, 8, 7, 6, 0) });
+
+    for (const r of [w1, w2]) {
+      expect(r.sittings.reduce((n, t) => n + t.getDuration(), 0) + r.shortfall).toBe(240);
+      expect(r.shortfall).toBe(0); // §4.3: stated when it happens; here it does not
+      for (const t of r.sittings) {
+        expect(t.getDuration()).toBeGreaterThanOrEqual(60);
+        expect(t.getDuration()).toBeLessThanOrEqual(180);
+        expect(t.parentId).toBe(c.id);
+      }
+      const days = r.sittings.map((t) => dateKey(t.startTime));
+      expect(new Set(days).size).toBe(days.length); // maxPerDay 1
+    }
+    // Two distinct weeks, no overlap between them.
+    const w1days = w1.sittings.map((t) => dateKey(t.startTime));
+    const w2days = w2.sittings.map((t) => dateKey(t.startTime));
+    expect(w1days.every((d) => d < '2026-09-14')).toBe(true);
+    expect(w2days.every((d) => d >= '2026-09-14')).toBe(true);
   });
 });
 
@@ -144,9 +191,9 @@ describe('Schedule — the collection', () => {
     // maxSitting under its minSitting gets stored and then generates nothing.
     s.updateCommitment(c.id, { maxSitting: 15 });
     expect(s.commitments[0].maxSitting).toBe(60);
-    s.updateCommitment(c.id, { title: 'ENGR pset', amountMin: 300 });
+    s.updateCommitment(c.id, { title: 'ENGR pset', amountMinPerWeek: 300 });
     expect(s.commitments[0].title).toBe('ENGR pset');
-    expect(s.commitments[0].amountMin).toBe(300);
+    expect(s.commitments[0].amountMinPerWeek).toBe(300);
     expect(s.commitments[0].id).toBe(c.id); // the id survives a rename
 
     expect(s.removeCommitment(c.id)).toBeTruthy();
@@ -167,13 +214,32 @@ describe('Schedule — the collection', () => {
     const s = new Schedule({ config: defaultConfig });
     const c = s.addCommitment(ENGR);
     expect(s.sittingsFor(c.id)).toEqual([]);
-    generateSittings(s, c.engineInput(), { now: new Date(2026, 8, 7, 8, 0) });
+    generateSittings(s, c.engineInputForWeek(MON), { now: new Date(2026, 8, 7, 6, 0) });
     expect(s.sittingsFor(c.id).length).toBeGreaterThan(0);
     // Delete one by hand and the answer changes with it — a `lastFilled` flag
     // would still be claiming the period was filled.
     const before = s.sittingsFor(c.id).length;
     s.removeTask(s.sittingsFor(c.id)[0].id);
     expect(s.sittingsFor(c.id).length).toBe(before - 1);
+  });
+
+  it('answers "laid out?" PER WEEK — without that, week two never generates', () => {
+    // ⚠️ The un-weeked answer is the trap: a commitment laid out ONCE looks laid
+    // out for every week of the term, so nothing after week one would ever be
+    // offered — and an automatic trigger reading it would instead re-lay week
+    // one on every single app open.
+    resetIds();
+    const s = new Schedule({ config: defaultConfig });
+    const c = s.addCommitment(ENGR);
+    generateSittings(s, c.engineInputForWeek(MON), { now: new Date(2026, 8, 7, 6, 0) });
+
+    expect(s.sittingsFor(c.id, MON).length).toBeGreaterThan(0);
+    expect(s.sittingsFor(c.id, addDays(MON, 7))).toEqual([]);
+    // And every sitting the week claims really is inside it.
+    for (const t of s.sittingsFor(c.id, MON)) {
+      expect(dateKey(t.startTime) >= '2026-09-07').toBe(true);
+      expect(dateKey(t.startTime) <= '2026-09-13').toBe(true);
+    }
   });
 });
 
