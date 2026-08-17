@@ -988,6 +988,38 @@ body.sc-dragging { user-select: none; }
 .drillactions .btn2 { padding: 5px 9px; }
 /* destructive action: bottom, ghost, and set apart from the rest */
 .editremove { margin-top: 12px; padding: 5px 9px; }
+/* ---------- routine steps (design/ROUTINES.md R-C) ----------
+   One row per step. A WAIT is tinted so the two kinds are distinguishable at a
+   glance WITHOUT the user ever naming them — the kind came from which button
+   they pressed, and the row just shows which. Not coral: a wait is not a
+   scheduling problem (P-1), it is free time. */
+.rsteps { display: flex; flex-direction: column; gap: 5px; width: 100%; }
+.rstep { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+.rstep .rskind {
+  flex: none; width: 34px; font-family: var(--font-type); font-size: 9.5px;
+  text-transform: uppercase; letter-spacing: .04em; color: #d8c6a5; opacity: .7;
+}
+/* The tint carries the distinction; the label above says which word it is. */
+.rstep.iswait { background: rgba(168,218,220,.07); border-radius: 8px; padding: 3px 4px; margin: -3px -4px; }
+.rstep.iswait .rskind { color: var(--cab-accent); opacity: .85; }
+.rsmove {
+  flex: none; background: none; border: none; cursor: pointer; padding: 2px 3px;
+  color: var(--cab-text); opacity: .55; font-size: 12px; line-height: 1;
+}
+.rsmove:hover:not(:disabled) { opacity: 1; }
+.rsmove:disabled { opacity: .18; cursor: default; }
+/* The live preview of REAL touchpoint times — §"the bar" calls this the thing
+   that settles an argument the wording cannot. */
+.rspreview {
+  display: flex; flex-direction: column; gap: 2px; margin-top: 8px;
+  padding: 8px 10px; border-radius: 9px; background: rgba(0,0,0,.2);
+  border: 1.5px solid var(--cab-trim);
+  font-family: var(--font-type); font-size: 10.5px; color: #e9dcc4;
+}
+.rspreview .rsplabel { font-size: 9.5px; text-transform: uppercase; letter-spacing: .04em; opacity: .6; }
+.rspreview .rspitem { opacity: .9; }
+.rspreview .rsptotal { margin-top: 4px; opacity: .7; }
+
 /* a stack of day/time rows inside one field (zone windows) */
 .winrows { display: flex; flex-direction: column; gap: 5px; width: 100%; }
 .winrow { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }

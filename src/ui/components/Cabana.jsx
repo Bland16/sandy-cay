@@ -11,6 +11,7 @@ import TagManager from './TagManager.jsx';
 import EnergyCard from './EnergyCard.jsx';
 import ZonesEditor from './ZonesEditor.jsx';
 import CommitmentsEditor from './CommitmentsEditor.jsx';
+import RoutinesEditor from './RoutinesEditor.jsx';
 
 const WEIGHT_KEYS = [['proximity', 'Proximity'], ['balance', 'Balance'], ['stability', 'Stability'], ['preference', 'Preference (learned)'], ['buffer', 'Finish early']];
 
@@ -116,6 +117,11 @@ export default function Cabana({ sched, mutate, weekStart, onBack, onReplace, on
             idiom (design/WEEKLY-PLANNING.md §4). Above zones because it is the
             thing the user comes here to author this term. */}
         <CommitmentsEditor sched={sched} mutate={mutate} weekStart={weekStart} showToast={showToast} />
+
+        {/* Routines — author a procedure with waits in it (design/ROUTINES.md
+            R-C). The procedure is the unit: named as a whole, created and
+            deleted as a whole, and a step only ever exists inside one. */}
+        <RoutinesEditor sched={sched} mutate={mutate} weekStart={weekStart} />
 
         {/* Zones — the shared drill-in editor (design/EDITOR-REDESIGN.md). */}
         <ZonesEditor sched={sched} mutate={mutate} />
