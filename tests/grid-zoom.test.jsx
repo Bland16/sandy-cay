@@ -182,7 +182,7 @@ describe('the grid honours the zoom', () => {
     expect(pxhOf(columns()[0])).toBe(zoomed);
   });
 
-  it('a two-minute block gets more honest, but bottoms out at the SPAN floor', () => {
+  it('a two-minute block gets taller in APPARENT honesty, not in pixels', () => {
     seedWeek();
     render(<App />);
     const heightOf = (name) => {
@@ -195,15 +195,15 @@ describe('the grid honours the zoom', () => {
     for (let i = 0; i < 4; i += 1) fireEvent.keyDown(window, { key: '+' });
     const at4 = heightOf('Load the machine');
 
-    // Real, and worth having: 26/34 of an hour reads as 46 minutes, 34/136 as
-    // 15. But it stops at 15 and NOT at the 5 minutes GRID-ZOOM §4 predicted,
-    // because a second floor upstream (`columnItems`, layout.js:34) inflates
-    // every span under a quarter-hour to a quarter-hour before `layoutDay` ever
-    // sees it. Zoom cannot go below a floor that is applied in MINUTES.
-    // Locked here so the limit is visible rather than folklore — GRID-ZOOM D-5.
-    expect(at4).toBe(34);
+    // SMALLER in pixels and far more honest: 26/34 of an hour reads as 46
+    // minutes, 12/136 reads as 5. That trade is the decision in GRID-ZOOM §4.
+    //
+    // This only reaches 5 minutes because D-5 removed the 15-minute minimum
+    // SPAN that used to sit upstream in `columnItems` — before that it bottomed
+    // out at an apparent 15 minutes however far you zoomed.
+    expect(at4).toBe(12);
     expect((at1 / 34) * 60).toBeCloseTo(45.9, 1);
-    expect((at4 / 136) * 60).toBeCloseTo(15.0, 1);
+    expect((at4 / 136) * 60).toBeCloseTo(5.3, 1);
   });
 
   it('an hour-long block still fills exactly one hour at every rung', () => {
@@ -219,47 +219,73 @@ describe('the grid honours the zoom', () => {
   });
 });
 
-describe('the SECOND floor, found while building this (GRID-ZOOM D-5)', () => {
-  // Not part of zoom, and deliberately NOT changed here — it has layout
-  // consequences and wants a decision. Locked so it is a known quantity.
-  it('columnItems inflates any span under 15 minutes to 15 minutes', () => {
-    const date = new Date(2026, 6, 15, 12, 0, 0, 0);
-    const mk = (durMin) => {
-      const st = new Date(2026, 6, 15, 8, 0, 0, 0);
-      return {
-        id: 't', title: 't', startTime: st,
-        endTime: new Date(st.getTime() + durMin * 60000),
-        getDuration: () => durMin,
-      };
+describe('D-5 — the span is the truth, the minimum is a drawn height', () => {
+  const DATE = new Date(2026, 6, 15, 12, 0, 0, 0);
+  const mk = (id, min, durMin) => {
+    const st = new Date(2026, 6, 15, 8, min, 0, 0);
+    return {
+      id, title: id, startTime: st,
+      endTime: new Date(st.getTime() + durMin * 60000),
+      getDuration: () => durMin,
     };
+  };
+
+  it('columnItems reports the REAL span, however short', () => {
+    // It used to floor every span at a quarter of an hour, which made one number
+    // answer two unrelated questions — how tall to draw a card, and whether it
+    // overlaps its neighbours — and got both wrong for short work.
     const spanOf = (durMin) => {
-      const [seg] = columnItems([mk(durMin)], date, 5);
+      const [seg] = columnItems([mk('t', 0, durMin)], DATE, 5);
       return (seg.e - seg.s) * 60;
     };
-    expect(spanOf(2)).toBe(15);
-    expect(spanOf(10)).toBe(15);
-    expect(spanOf(15)).toBe(15);
-    expect(spanOf(30)).toBe(30); // untouched above the floor
+    expect(spanOf(2)).toBeCloseTo(2, 5);
+    expect(spanOf(5)).toBeCloseTo(5, 5);
+    expect(spanOf(30)).toBeCloseTo(30, 5);
   });
 
-  it('so two touchpoints five minutes apart are treated as OVERLAPPING', () => {
-    // A routine is a chain of short touchpoints, which is exactly the shape this
-    // hits: they get half-width side-by-side lanes for an overlap that does not
-    // exist. This is the cost of the minute-floor, stated rather than hidden.
-    const date = new Date(2026, 6, 15, 12, 0, 0, 0);
-    const mk = (id, min) => {
-      const st = new Date(2026, 6, 15, 8, min, 0, 0);
-      return {
-        id, title: id, startTime: st,
-        endTime: new Date(st.getTime() + 2 * 60000),
-        getDuration: () => 2,
-      };
-    };
-    const segs = columnItems([mk('load', 0), mk('move', 5)], date, 5);
-    expect(segs[0].e).toBeGreaterThan(segs[1].s); // computed as overlapping
-    const laid = layoutDay(segs, 5, 136, floorPxFor(4));
+  it('still guards a DEGENERATE span, which is a broken card not a short one', () => {
+    const [seg] = columnItems([mk('zero', 0, 0)], DATE, 5);
+    expect(seg.e).toBeGreaterThan(seg.s);
+    expect((seg.e - seg.s) * 60).toBeCloseTo(1, 5); // one minute, not fifteen
+  });
+
+  it('never draws two cards on top of each other, at any zoom', () => {
+    // THE INVARIANT, and the reason lanes are assigned on pixels rather than on
+    // minutes. Two 2-minute touchpoints five minutes apart do not overlap in
+    // TIME, but each is drawn at the floor — 26px tall, 2.8px apart at rest — so
+    // they collide on SCREEN. If the boxes collide they must be in separate
+    // lanes; if they do not, they may share the full width.
+    const segs = columnItems([mk('load', 0, 2), mk('move', 5, 2)], DATE, 5);
+    for (const z of ZOOM_LEVELS) {
+      const laid = layoutDay(segs, 5, pxhFor(BASE_PXH_WEEK, z), floorPxFor(z));
+      const box = (c) => ({
+        top: parseFloat(c.style.top),
+        bottom: parseFloat(c.style.top) + parseFloat(c.style.height),
+        split: c.style.width.includes('50%'),
+      });
+      const [a, b] = laid.map(box);
+      const collide = a.top < b.bottom && b.top < a.bottom;
+      expect(a.split).toBe(collide);
+      expect(b.split).toBe(collide);
+    }
+  });
+
+  it('still shares lanes for work that genuinely overlaps', () => {
+    // The change must not buy short-card honesty by breaking the ordinary case.
+    const segs = columnItems([mk('long', 0, 60), mk('inside', 30, 15)], DATE, 5);
+    const laid = layoutDay(segs, 5, 34, 26);
     expect(laid[0].style.width).toBe('calc(50% - 6px)');
     expect(laid[1].style.width).toBe('calc(50% - 6px)');
+  });
+
+  it('leaves a normal-length card exactly where it was', () => {
+    // Above the floor, pixel overlap and time overlap are the same thing, so
+    // nothing about an ordinary day may move.
+    const segs = columnItems([mk('a', 0, 60), mk('b', 90, 60)], DATE, 5);
+    const laid = layoutDay(segs, 5, 34, 26);
+    expect(laid[0].style.height).toBe('34px');
+    expect(laid[0].style.width).toBe('calc(100% - 6px)');
+    expect(laid[1].style.width).toBe('calc(100% - 6px)');
   });
 });
 

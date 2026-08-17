@@ -6,7 +6,7 @@
 import {
   ZOOM_LEVELS, BASE_PXH_WEEK, BASE_PXH_DAY, pxhFor, floorPxFor, zoomIn, zoomOut,
 } from '../../src/ui/zoom.js';
-import { layoutDay } from '../../src/ui/layout.js';
+import { layoutDay, columnItems } from '../../src/ui/layout.js';
 
 const seg = (min, startHour) => ({
   task: { id: `t${min}`, title: `${min}m` },
@@ -123,6 +123,70 @@ console.log('   WeekGrid: scrollTop = (mid * pxh) / prevPxh - clientHeight/2\n')
     const pxh = pxhFor(BASE_PXH_WEEK, z);
     console.log(`     z=${String(z).padEnd(4)} centre hour = ${hourAtCentre(st, pxh).toFixed(2)}`);
   }
+  console.log('');
+}
+
+console.log('=== 6b. D-5: the span is the TRUTH; the minimum is a DRAWN height ===');
+console.log('   columnItems used to floor every span at a quarter hour, so one');
+console.log('   number answered two unrelated questions. Now it answers one.\n');
+{
+  const date = new Date(2026, 6, 15, 12, 0, 0, 0);
+  const mk = (id, h, m, durMin) => {
+    const st = new Date(2026, 6, 15, h, m, 0, 0);
+    return {
+      id, title: id, startTime: st,
+      endTime: new Date(st.getTime() + durMin * 60000),
+      getDuration: () => durMin,
+    };
+  };
+
+  console.log('   -- the span columnItems reports --');
+  for (const dur of [2, 5, 10, 15, 30]) {
+    const [seg] = columnItems([mk('t', 8, 0, dur)], date, 5);
+    const span = (seg.e - seg.s) * 60;
+    console.log(`     real ${String(dur).padStart(2)}m -> span ${span.toFixed(1).padStart(5)}m`
+      + `  ${Math.abs(span - dur) < 0.01 ? 'honest' : 'INFLATED'}`);
+  }
+
+  console.log('\n   -- the drawn height still never goes below the floor --');
+  for (const z of [1, 2, 4]) {
+    const pxh = pxhFor(BASE_PXH_WEEK, z);
+    const laid = layoutDay(columnItems([mk('t', 8, 0, 2)], date, 5), 5, pxh, floorPxFor(z));
+    const h = parseFloat(laid[0].style.height);
+    console.log(`     z=${String(z).padEnd(4)} pxh=${String(pxh).padStart(3)}`
+      + ` -> ${h.toFixed(1).padStart(5)}px, looks like ${((h / pxh) * 60).toFixed(1)}m`
+      + `  (floor ${floorPxFor(z)}px)`);
+  }
+
+  console.log('\n   -- two touchpoints 5 minutes apart, at each zoom --');
+  console.log('      The lane test now measures DRAWN BOXES, so the answer is');
+  console.log('      allowed to change with zoom — and must, or 26px cards 2.8px');
+  console.log('      apart would be drawn on top of each other.\n');
+  const segs = columnItems([mk('load', 8, 0, 2), mk('move', 8, 5, 2)], date, 5);
+  console.log(`      spans: load ${(segs[0].s * 60).toFixed(0)}->${(segs[0].e * 60).toFixed(1)}m`
+    + `, move ${(segs[1].s * 60).toFixed(0)}->${(segs[1].e * 60).toFixed(1)}m (both honest)\n`);
+  console.log('      z     pxh floor | boxes collide | lanes  | cards drawn overlapping?');
+  for (const z of ZOOM_LEVELS) {
+    const pxh = pxhFor(BASE_PXH_WEEK, z);
+    const laid = layoutDay(segs, 5, pxh, floorPxFor(z));
+    const [a, b] = laid.map((c) => ({
+      top: parseFloat(c.style.top), h: parseFloat(c.style.height), w: c.style.width,
+    }));
+    const collide = a.top < b.top + b.h && b.top < a.top + a.h;
+    const shared = a.w.includes('50%');
+    // The invariant: if the boxes collide they MUST be in separate lanes.
+    const ok = collide === shared;
+    console.log(`      ${String(z).padEnd(4)}  ${String(pxh).padStart(3)}   ${String(floorPxFor(z)).padStart(2)}  |`
+      + ` ${(collide ? 'yes' : 'no').padStart(13)} |`
+      + ` ${(shared ? 'split' : 'full').padStart(6)} |`
+      + ` ${ok ? 'no — OK' : 'YES — CARDS ON TOP OF EACH OTHER'}`);
+  }
+
+  console.log('\n   -- genuinely overlapping work must STILL share lanes --');
+  const both = columnItems([mk('long', 9, 0, 60), mk('inside', 9, 30, 15)], date, 5);
+  const laid2 = layoutDay(both, 5, 34, 26);
+  console.log(`      overlap in time? ${both[0].e > both[1].s ? 'yes' : 'NO — broken'}`);
+  for (const c of laid2) console.log(`      ${c.task.title}: width ${c.style.width}`);
   console.log('');
 }
 

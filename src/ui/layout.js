@@ -31,14 +31,30 @@ export function columnItems(tasks, date, startHour) {
     const rawEnd = gridHour(task.endTime);
     // A task ending at/after the 5am anchor (e.g. 23:00–01:00) must not wrap to
     // a tiny negative height — measure its end from its own start.
-    const e = Math.max(s + 0.25, rawEnd > s ? rawEnd : s + task.getDuration() / 60);
+    //
+    // ⚠️ THIS SPAN IS THE TRUTH, AND MUST STAY THE TRUTH. It used to be floored
+    // at a QUARTER HOUR (`s + 0.25`), which made one number answer two unrelated
+    // questions: how tall to draw the card, and whether it overlaps its
+    // neighbours. Both answers were wrong for short work. A 2-minute routine
+    // touchpoint could never read as shorter than 15 minutes however far you
+    // zoomed, and two touchpoints five minutes apart were computed as
+    // OVERLAPPING — drawn in half-width side-by-side lanes for an overlap that
+    // does not exist, which is a routine's normal case rather than an edge one.
+    //
+    // The drawn MINIMUM is now `layoutDay`'s `floorPx`, where it belongs and
+    // where zoom can shrink it. The guard that survives here is only against a
+    // DEGENERATE span — zero or negative, which is a broken card, not a short
+    // one. One minute, not fifteen.
+    const e = Math.max(s + 1 / 60, rawEnd > s ? rawEnd : s + task.getDuration() / 60);
 
     if (startsHere) {
       const crosses = e > endOfDay + 1e-6;
       out.push({ task, s, e: crosses ? endOfDay : e, continued: false, continues: crosses });
     } else if (endsHere) {
       // The tail: from the anchor to the real end, at the top of this column.
-      out.push({ task, s: startHour, e: Math.max(startHour + 0.25, rawEnd), continued: true, continues: false });
+      // Same rule as the head above: the true end, guarded only against a
+      // degenerate span. The drawn minimum is `floorPx`'s job.
+      out.push({ task, s: startHour, e: Math.max(startHour + 1 / 60, rawEnd), continued: true, continues: false });
     }
   }
   return out;
@@ -90,27 +106,42 @@ export function layoutRemainders(laid, truncations, startHour, pxh) {
  * the span it occupies HERE is not derivable from the task alone.
  */
 export function layoutDay(segments, startHour, pxh, floorPx = 26) {
-  const items = [...segments].sort(
-    (a, b) => a.s - b.s || b.e - a.e,
-  );
-  const laneEnds = []; // running end (decimal hour) per lane
-  const placed = items.map((seg) => {
-    const { task, s, e } = seg;
-    let lane = laneEnds.findIndex((end) => end <= s + 1e-6);
-    if (lane === -1) { lane = laneEnds.length; laneEnds.push(e); } else { laneEnds[lane] = e; }
-    return { ...seg, task, s, e, lane };
+  // ⚠️ LANES ARE ASSIGNED ON DRAWN PIXELS, NOT ON NOMINAL MINUTES, and that is
+  // load-bearing. `floorPx` keeps a 2-minute touchpoint visible by drawing it
+  // taller than it really is, so two short cards that do NOT overlap in time can
+  // still overlap on screen — 2-minute cards five minutes apart are 26px tall
+  // and 2.8px apart at rest. Colouring the interval graph on time would put them
+  // in one lane and they would sit on top of each other, breaking this module's
+  // one hard requirement.
+  //
+  // Measuring the boxes actually drawn answers both questions with one rule, and
+  // it is zoom-aware for free: zoom in far enough that the floor stops inflating
+  // them and they separate and stack on their own. The old code got this right
+  // by accident, via a 15-minute minimum SPAN in `columnItems` — which also made
+  // every short card lie about its length. See that function's note.
+  const items = [...segments]
+    .map((seg) => {
+      const top = (seg.s - startHour) * pxh;
+      // `floorPx` SHRINKS as you zoom in — see `zoom.js#floorPxFor`. It defaults
+      // to 26 so callers with no opinion about zoom behave exactly as before.
+      const height = Math.max(floorPx, (seg.e - seg.s) * pxh);
+      return { ...seg, top, height, bottom: top + height };
+    })
+    .sort((a, b) => a.top - b.top || b.bottom - a.bottom);
+
+  const laneEnds = []; // running bottom edge (px) per lane
+  const placed = items.map((it) => {
+    let lane = laneEnds.findIndex((end) => end <= it.top + 1e-6);
+    if (lane === -1) { lane = laneEnds.length; laneEnds.push(it.bottom); } else { laneEnds[lane] = it.bottom; }
+    return { ...it, lane };
   });
   const laneCount = Math.max(1, laneEnds.length);
   // Second pass: cluster width = number of lanes actually overlapping this item.
   return placed.map((p) => {
-    const overlapping = placed.filter((q) => q.s < p.e && p.s < q.e);
+    const overlapping = placed.filter((q) => q.top < p.bottom && p.top < q.bottom);
     const cluster = Math.max(...overlapping.map((q) => q.lane)) + 1;
     const lanes = Math.min(laneCount, Math.max(cluster, p.lane + 1));
-    const top = (p.s - startHour) * pxh;
-    // `floorPx` is what keeps a 2-minute touchpoint visible at all, and it
-    // SHRINKS as you zoom in — see `zoom.js#floorPxFor`. It defaults to 26 so
-    // every caller that has no opinion about zoom behaves exactly as before.
-    const height = Math.max(floorPx, (p.e - p.s) * pxh);
+    const { top, height } = p;
     const widthPct = 100 / lanes;
     return {
       task: p.task,

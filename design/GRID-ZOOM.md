@@ -111,7 +111,7 @@ nothing else moves with it.
 and a true height above it already wins today. This decision only ever touches
 short blocks.
 
-### ⚠️ CORRECTION, found while building: there is a SECOND floor, and it wins
+### ⚠️ CORRECTION, found while building: there was a SECOND floor — ZOOM D-5, now FIXED
 
 **The table above is what `layoutDay` does. It is NOT what you see**, because a
 2-minute block never reaches `layoutDay` as 2 minutes.
@@ -143,11 +143,27 @@ both spans were inflated to 15 minutes. They are laid out in half-width
 side-by-side lanes for an overlap that does not exist. A routine is a chain of
 short touchpoints, so this is its normal case, not an edge one.
 
-**Deliberately NOT changed here.** It is not part of zoom, `s + 0.25` also
-guards the post-midnight wrap case the comment describes, and shrinking it moves
-lane assignment — a presentation change with its own consequences that wants an
-eye on it. It is **ZOOM D-5** and both behaviours are locked by tests in
-`tests/grid-zoom.test.jsx` so the limit is visible rather than folklore.
+**FIXED 2026-08-17, by the user's answer to D-5: split the two jobs.**
+
+`columnItems` now reports the **true** span, guarded only against a degenerate
+(zero or negative) one — a minute, not a quarter of one. The drawn minimum moved
+to `layoutDay`'s `floorPx`, where it belongs and where zoom can shrink it. A
+2-minute block now reaches the 5.3 apparent minutes §4 promised.
+
+**The consequence that had to be handled, and would have shipped as a real bug:**
+with honest spans, two 2-minute cards five minutes apart no longer overlap *in
+time* — but each is still **drawn** 26px tall and they are only 2.8px apart, so
+they collide *on screen*. Putting them in one lane would have drawn one on top of
+the other, breaking `layout.js`'s one hard requirement.
+
+**So lanes are now assigned on DRAWN PIXELS, not on nominal minutes.** One rule
+answers both questions, and it is zoom-aware for free: zoom in far enough that
+the floor stops inflating a card and it separates from its neighbour and stacks
+normally. Above the floor, pixel overlap and time overlap are the same thing, so
+no ordinary day moves at all.
+
+Locked by five tests, including the invariant *if the boxes collide they are in
+separate lanes* asserted at every rung. All four mutations bite.
 
 **Note, no change needed:** `layout.js:125` sets `compact: height < 44`, so
 zooming in un-compacts cards. That is correct and wanted — a 30-minute block at
@@ -193,15 +209,16 @@ with a device checklist (§9). The zoom state and the `data-pxh` plumbing (§6)
 are the whole risk of this feature and both controls share them, so pinch lands
 on a base that has already been proven rather than being entangled with it.
 
-### 5.3 Two questions pinch raises that are NOT yet answered
+### 5.3 How pinch behaves — ANSWERED 2026-08-17
 
-Neither blocks step 1. Both are asked before step 2 is written:
-
-- **Does pinch snap to the five rungs, or move continuously?** D-4 chose discrete
-  steps, which argues for snapping — likely tracking continuously *during* the
-  gesture for feel and settling on the nearest rung at release. Not decided.
-- **Does the tablet get pinch too?** The answer said "phone". Tablet (768–1279)
-  is also a touch device, and it renders `WeekGrid`, not `DayView`. Not decided.
+- **Track live, snap on release (D-6).** The grid follows the fingers smoothly
+  during the gesture, then settles on the nearest of the five rungs when they
+  lift. One zoom model shared with the keyboard, and the stored value is always
+  a rung — so `loadZoom`'s "must be one of `ZOOM_LEVELS`" guard still holds.
+- **The tablet gets it too (D-7).** Any touch device. On tablet the surface is
+  `WeekGrid` plus the weekend drawer, and both already take the same `zoom` prop,
+  so the gesture zooms them together — they must not diverge, because a drag can
+  cross from Friday into the drawer.
 
 ### 5.4 Discoverability, still open
 
@@ -273,18 +290,13 @@ rendering. An unreadable or nonsense value falls back to 1×.
 | **ZOOM D-3** | Is there a rung **below** 1× (zoom out, to see the whole day)? | **No zoom out.** Rungs start at 1×. Adding one later is one array entry |
 | **ZOOM D-4** | Does the phone day view get zoom too? | **Yes** — and it gets **pinch** as its control (§5.2) |
 
-**Opened by the build, and the one that matters most:**
+**Opened by the build, and answered the same day:**
 
-| # | Question | Options |
+| # | Question | Answer |
 |---|---|---|
-| **ZOOM D-5** | `columnItems` rounds every span up to 15 minutes (§4's correction), so a 2-minute touchpoint can never read as shorter than 15 however far you zoom — and two touchpoints 5 minutes apart are laid side-by-side as if they overlapped | (a) leave it — zoom's 46→15 improvement is enough; (b) lower the minute-floor to ~2m and accept whatever it does to lane layout; (c) keep the span honest for OVERLAP purposes but keep a minimum for HEIGHT, which fixes the lanes and keeps small cards hittable |
-
-**(c) is what I would propose** — the overlap test and the drawn height are two
-different questions being answered by one number today — but it is a real change
-to how the grid lays out and it is not mine to make. Nothing is built for it.
-
-**Still open, and asked before step 2 only:** the two pinch questions in §5.3
-(snap-to-rung vs continuous; tablet or phone only). Neither blocks step 1.
+| **ZOOM D-5** | `columnItems` rounded every span up to 15 minutes, so a 2-minute touchpoint could never read as shorter than 15 however far you zoomed, and two touchpoints 5 minutes apart were laid side-by-side as if they overlapped | **Split the two jobs** — honest spans, a drawn minimum height, and lanes assigned on drawn pixels. §4's correction box has the detail |
+| **ZOOM D-6** | Does pinch snap to the rungs or move continuously? | **Track live, snap on release** — the grid follows your fingers, then settles on the nearest rung. One zoom model shared with the keyboard |
+| **ZOOM D-7** | Does the tablet get pinch too? | **Yes.** Any touch device. On tablet the gesture zooms `WeekGrid` and the weekend drawer together |
 
 ## 9. Done when — proven by execution, not by going green
 
