@@ -174,7 +174,7 @@ same standard applies here:
 the two passive waits overlap with no special handling — only the tiny active
 touchpoints are anchors, and they simply mustn't collide.
 
-## ⚠️ OPEN — R-1: a passive wait may need a CEILING too (raised 2026-08-16)
+## ✅ R-1 RESOLVED 2026-08-16 — waits get a MAX alongside the MIN, and it never refuses
 
 **Decision 1 above says passive waits are min-only, and the user's own test case
 breaks it.** Their morning:
@@ -205,9 +205,30 @@ Two things fall out, and they are separate:
    SAYING so, because the fix is usually a reorder rather than a compromise.
    Out of scope for R-A/R-B; note it and move on.
 
-**Do not silently pick one.** Building the ceiling is small and additive;
-building the reorder suggestion is a feature. The user raised the case, so the
-call is theirs.
+**The user's answer: add the max alongside the min, and let the waffles go cold.**
+*"I think it is fine though if there is cold waffles, as long as I have the
+ability to place it there."*
+
+**The two bounds are NOT the same kind of thing, and that is the whole decision:**
+
+| | means | binds |
+|---|---|---|
+| `minWaitMin` | the machine is not finished | **physics** — the scheduler may never place the next touchpoint earlier, full stop |
+| `maxWaitMin` | it degrades after this | **preference** — stated, never enforced |
+
+So the max **never blocks a placement and never refuses a drop**. It is a
+statement about the food, not a constraint on the person: you may always put the
+shower there and eat cold waffles, and that is R-1's manual autonomy in its
+plainest form — a rule you wrote about your own breakfast is the clearest
+possible case of one you are entitled to overrule.
+
+What the max IS for: saying so. When a chain cannot honour it, surface it the way
+§2.2's last resort does (visible beats invisible) — a note that the waffles will
+be sitting for 25 minutes, not a refusal and not a nag. And it gives the reorder
+idea below something to reason from later.
+
+**Not built yet:** the reorder suggestion ("shower first, then waffles") stays
+out of R-A/R-B. It is a feature, and the max is the field it would need.
 
 ## Build phases (later, after the opens close)
 
