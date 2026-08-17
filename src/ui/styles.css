@@ -919,6 +919,22 @@ body.sc-dragging { user-select: none; }
 /* help text beneath a field — the calm alternative to a wall of explanation */
 .field-help { font-size: 10.5px; line-height: 1.45; color: #d8c6a5; opacity: .75; margin-top: 3px; }
 .field-help strong { color: var(--cab-accent); font-weight: 700; }
+/* ⚠️ "beneath" was a LIE on a non-stacked field. `.field` is a flex ROW and had
+   no wrap, so `help` became a THIRD COLUMN beside the label and the control —
+   and a paragraph next to `flex:1` crushes the control to a sliver. The
+   commitments "sittings" row shipped as two number boxes squeezed to nothing
+   under a sprawl of text, and every green test agreed it was fine.
+   It went unseen because all three earlier `help` callers happen to be `stack`
+   (column direction), where a third child genuinely does land underneath. */
+.field { flex-wrap: wrap; }
+/* Full row of its own, indented to the control column (54px label + 8px gap). */
+.field:not(.stack) > .field-help { flex: 0 0 100%; margin-left: 62px; }
+/* A date pair shares one line and wraps as a UNIT. Left to its intrinsic width a
+   date input is ~200px, so two of them overflowed a narrow card and wrapped
+   BETWEEN the arrow and the second date, stranding the "→" in mid-air. Both
+   call sites are the same from → until shape (zones' "runs", commitments'
+   "between"), so both want this. */
+.field .control[type="date"] { flex: 1 1 130px; }
 
 /* one input/select skin (was .zonewin input + .cabinput, which disagreed) */
 .control {

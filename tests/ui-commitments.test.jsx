@@ -6,6 +6,8 @@
 // "Whenpick a time". So this file DUMPS what the panel actually renders in every
 // state and asserts against the dump, rather than only driving it.
 import { describe, it, expect, afterEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { useState } from 'react';
 import { render, cleanup, screen, fireEvent } from '@testing-library/react';
 import { Schedule, defaultConfig, resetIds, weekStart as weekStartOf } from '../src/core/index.js';
@@ -259,6 +261,50 @@ describe('it is actually MOUNTED, not merely written', () => {
     console.log(`\nCABANA CARDS: ${signs.join(' | ')}\n`);
     expect(signs).toContain('Standing commitments');
     expect(screen.getByText(/8h by 3 Oct/)).toBeTruthy();
+  });
+});
+
+describe('the layout rules the DOM cannot show you', () => {
+  // ⚠️ Reported by the user from a SCREENSHOT, with the suite fully green:
+  // the "sittings" row rendered as two number boxes crushed to slivers with the
+  // help text sprawled across them. jsdom has no layout engine, so no amount of
+  // rendering here can see it — the defect lives entirely in CSS.
+  //
+  // So this asserts the two rules the fix depends on. Testing stylesheet text is
+  // blunt, and it is honestly what it is: a guard against someone deleting a
+  // rule whose absence is invisible to every other test in this suite.
+  // `import.meta.url` is not a file: URL under this jsdom environment, so the
+  // path comes off the project root vitest already runs from.
+  const css = readFileSync(resolve(process.cwd(), 'src/ui/styles.css'), 'utf8');
+
+  it('lets a field WRAP, so help cannot become a third column', () => {
+    // `.field` is a flex row. Without wrap, `help` sits BESIDE the label and the
+    // control, and a paragraph next to `flex:1` leaves the control nothing.
+    expect(css).toMatch(/\.field\s*\{\s*flex-wrap:\s*wrap/);
+  });
+
+  it('gives help in a non-stacked field a full row of its own', () => {
+    expect(css).toMatch(/\.field:not\(\.stack\)\s*>\s*\.field-help\s*\{[^}]*flex:\s*0 0 100%/);
+  });
+
+  it('lets a date pair shrink to share one line', () => {
+    // Intrinsic width of a date input is ~200px, so two of them overflowed a
+    // narrow card and wrapped between the arrow and the second date — stranding
+    // the "→" in mid-air.
+    expect(css).toMatch(/\.field \.control\[type="date"\]\s*\{[^}]*flex:\s*1 1 130px/);
+  });
+
+  it('stacks every field that carries help — the shape all four callers use', () => {
+    // The CSS above makes a non-stacked help SAFE; this keeps them CONSISTENT.
+    // A long explanation reads better under a left-aligned label than squeezed
+    // beside a 54px right-aligned one.
+    const s = fresh();
+    s.addCommitment({ title: 'ENGR project', amountMin: 480, from: '2026-09-07', until: '2026-10-03' });
+    render(<Harness sched={s} />);
+    fireEvent.click(screen.getByLabelText('Edit commitment ENGR project'));
+    const withHelp = [...document.querySelectorAll('.field')].filter((f) => f.querySelector('.field-help'));
+    expect(withHelp.length).toBe(2);
+    for (const f of withHelp) expect(f.classList.contains('stack')).toBe(true);
   });
 });
 

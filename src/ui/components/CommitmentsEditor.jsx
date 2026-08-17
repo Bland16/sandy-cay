@@ -159,8 +159,9 @@ export default function CommitmentsEditor({ sched, mutate }) {
             about — the same split `ActivityEditor` makes. */}
         <Field
           label="sittings"
+          stack
           ctlClass="rangefield"
-          help="Takes the longest run your week has room for, and splits only when it has to. 15 minutes is the shortest block the grid can hold."
+          help="Takes the longest run your week has room for, and splits only when it has to. 15 min is the shortest block the grid holds."
         >
           <input
             className="control num"
