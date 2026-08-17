@@ -128,6 +128,31 @@ one contiguous anchor — no gap, no linkage needed for the simple case.
 - **"Do it now" / Add**: instantiates the whole routine from the chosen start,
   then the day's flexibles settle around its anchors.
 
+### ⚠️ The bar for the routine editor: SEAMLESS (added 2026-08-16, the user's word)
+
+A steps editor is one wrong turn away from being a thermocycler programmer —
+rows of `kind`/`durationMin`/`durationMax` that make you hold the active/passive
+distinction in your head before you can say a thing you already know.
+
+**This project has been here and the answer is written down.** The first monthly
+recurrence control asked the user to choose "by date" or "by position" in the
+abstract; they called it confusing and were right, and the fix was to generate
+**finished sentences** from what they had already chosen ("on the first Tuesday")
+with a live preview of real dates settling whatever the wording could not. The
+same standard applies here:
+
+- Say it the way a person says it: *"waffles in the air fryer · 2 min · then wait
+  5 min · then eat · 10 min"* — one line you read, not a grid you fill.
+- **Never make them name `active` vs `passive`.** A wait is the thing with no
+  verb; if a row has "I do this" in it, it is active. Infer it, the way
+  `isWeekdayPattern` reads a pattern back rather than storing a flag that can
+  drift.
+- A **live preview of the real touchpoint times** ("load 07:00 · switch 07:47 ·
+  fold 08:52") is what settles an argument the wording cannot — the recurrence
+  editor's preview runs the real engine and this should too.
+- Authoring a routine you already do should take one sentence and no decisions
+  about scheduling.
+
 ## Decisions locked (session 4)
 
 1. **Passive wait = min-only.** A wait has a floor (switch *≥* 45m after load);
