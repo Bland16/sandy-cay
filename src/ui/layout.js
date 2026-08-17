@@ -89,7 +89,7 @@ export function layoutRemainders(laid, truncations, startHour, pxh) {
  * Takes segments rather than tasks because a task can occupy two columns and
  * the span it occupies HERE is not derivable from the task alone.
  */
-export function layoutDay(segments, startHour, pxh) {
+export function layoutDay(segments, startHour, pxh, floorPx = 26) {
   const items = [...segments].sort(
     (a, b) => a.s - b.s || b.e - a.e,
   );
@@ -107,7 +107,10 @@ export function layoutDay(segments, startHour, pxh) {
     const cluster = Math.max(...overlapping.map((q) => q.lane)) + 1;
     const lanes = Math.min(laneCount, Math.max(cluster, p.lane + 1));
     const top = (p.s - startHour) * pxh;
-    const height = Math.max(26, (p.e - p.s) * pxh);
+    // `floorPx` is what keeps a 2-minute touchpoint visible at all, and it
+    // SHRINKS as you zoom in — see `zoom.js#floorPxFor`. It defaults to 26 so
+    // every caller that has no opinion about zoom behaves exactly as before.
+    const height = Math.max(floorPx, (p.e - p.s) * pxh);
     const widthPct = 100 / lanes;
     return {
       task: p.task,

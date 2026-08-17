@@ -320,9 +320,16 @@ body {
 .daymenu { position: fixed; width: 186px; }
 .axis .h { font-family: var(--font-type); font-size: 10px; color: var(--ink-soft); text-align: right; padding-right: 6px; }
 .axis .h span { display: block; transform: translateY(-6px); }
+/* ⚠️ THE HOUR RULES ARE DRAWN HERE, IN CSS — not by the JS that places cards.
+   That split is a trap: the grid zooms (design/GRID-ZOOM.md), and a hardcoded
+   34px would leave the lines ruled every 34px while the cards moved to 136,
+   with nothing to say the two disagreed about what an hour is. `--pxh` is set
+   inline on the column by WeekGrid from the SAME value it lays cards out with.
+   The fallback keeps the rules honest for any column rendered without it. */
 .day {
   position: relative; border-left: 1px solid var(--hair);
-  background-image: repeating-linear-gradient(180deg, transparent 0 33px, var(--hair) 33px 34px);
+  --pxh: 34px;
+  background-image: repeating-linear-gradient(180deg, transparent 0 calc(var(--pxh) - 1px), var(--hair) calc(var(--pxh) - 1px) var(--pxh));
 }
 .day.wknd { background-color: rgba(42,38,32,.045); }
 
@@ -351,11 +358,8 @@ body {
   background-color: rgba(201,169,110,.20);
   background-image:
     repeating-linear-gradient(135deg, transparent 0 6px, rgba(138,107,50,.10) 6px 12px),
-    repeating-linear-gradient(180deg, transparent 0 33px, var(--hair) 33px 34px);
+    repeating-linear-gradient(180deg, transparent 0 calc(var(--pxh) - 1px), var(--hair) calc(var(--pxh) - 1px) var(--pxh));
 }
-.dvcol.blocked { background-image:
-  repeating-linear-gradient(135deg, transparent 0 6px, rgba(138,107,50,.10) 6px 12px),
-  repeating-linear-gradient(180deg, transparent 0 41px, var(--hair) 41px 42px); }
 
 .zone {
   position: absolute; left: 0; right: 0; z-index: var(--z-zone); background: rgba(46,140,153,.10);
@@ -707,8 +711,12 @@ body.sc-dragging { user-select: none; }
 .dvhead .dvt { font-family: var(--font-display); font-size: 21px; }
 .dvhead .dvt small { font-family: var(--font-type); font-size: 11px; color: var(--ink-soft); display: block; letter-spacing: .05em; }
 .dvgrid { display: grid; grid-template-columns: 52px 1fr; max-width: 660px; }
+/* Same `--pxh` contract as `.day` above, with the day view's own denser base.
+   Setting it here is what let the blocked-day rule collapse into one shared
+   declaration instead of a 34px version and a 42px copy of it. */
 .dvcol { position: relative; border-left: 1px solid var(--hair); margin: 0 14px;
-  background-image: repeating-linear-gradient(180deg, transparent 0 41px, var(--hair) 41px 42px); }
+  --pxh: 42px;
+  background-image: repeating-linear-gradient(180deg, transparent 0 calc(var(--pxh) - 1px), var(--hair) calc(var(--pxh) - 1px) var(--pxh)); }
 .dvcol .card .t { font-size: 12.5px; } .dvcol .card .tm { font-size: 10px; }
 
 /* ---------- right panel ---------- */

@@ -1,24 +1,34 @@
 // WeekGrid — 7 day columns + time axis. Real tasks from getTasksForWeek,
 // positioned by time; zones drawn as bands; day headers click into a day view.
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useLayoutEffect } from 'react';
 import { addDays, sameDay, hhmmToMinutes, dayStart, routineWaits } from '../../core/index.js';
 import { DAY_NAMES, DAY_KEYS, hourLabel, gridBounds, windowForDay } from '../format.js';
 import { columnItems, layoutDay, layoutRemainders } from '../layout.js';
+import { BASE_PXH_WEEK, DEFAULT_ZOOM, pxhFor, floorPxFor } from '../zoom.js';
 import TaskCard from './TaskCard.jsx';
 import { DayNoteBar } from './DayNotes.jsx';
 import Icon from '../Icon.jsx';
 
-const PXH = 34;
 const WAKE_HOUR = 7; // the grid opens just before the working window, not at 5am
 
+/**
+ * ⚠️ `pxh` USED TO BE A MODULE CONSTANT AND MUST NOT BECOME ONE AGAIN.
+ *
+ * Every function below takes it as an argument for one reason: `data-pxh` on the
+ * day column (see the render) is read by `useCardInteraction.js:64` at
+ * pointer-down and drives every drop calculation. If any site here draws at one
+ * scale while `data-pxh` reports another, drags land at the wrong time and
+ * nothing anywhere says so. One value, computed once per render, passed down.
+ */
+
 /** Hours outside the day's auto-placement window: shaded, still droppable. */
-function offWindowBands(config, dayKey, startHour, endHour) {
+function offWindowBands(config, dayKey, startHour, endHour, pxh) {
   const win = windowForDay(config, dayKey);
   const ws = hhmmToMinutes(win.start) / 60;
   const we = hhmmToMinutes(win.end) / 60;
   const bands = [];
-  if (ws > startHour) bands.push({ key: 'pre', top: 0, height: (ws - startHour) * PXH });
-  if (we < endHour) bands.push({ key: 'post', top: (we - startHour) * PXH, height: (endHour - we) * PXH });
+  if (ws > startHour) bands.push({ key: 'pre', top: 0, height: (ws - startHour) * pxh });
+  if (we < endHour) bands.push({ key: 'post', top: (we - startHour) * pxh, height: (endHour - we) * pxh });
   return bands;
 }
 
@@ -32,7 +42,7 @@ function offWindowBands(config, dayKey, startHour, endHour) {
  * (placement.js checks `activeOn`), which made it worse than cosmetic: the grid
  * showed reserved time in weeks where the scheduler correctly saw none.
  */
-function zoneBands(zones, dayKey, startHour, date) {
+function zoneBands(zones, dayKey, startHour, date, pxh) {
   const bands = [];
   for (const z of zones) {
     if (date && !z.activeOn(date)) continue;
@@ -42,8 +52,8 @@ function zoneBands(zones, dayKey, startHour, date) {
       bands.push({
         key: `${z.id}-${w.day}-${w.start}`,
         label: z.label,
-        top: (s - startHour) * PXH,
-        height: (e - s) * PXH,
+        top: (s - startHour) * pxh,
+        height: (e - s) * pxh,
       });
     }
   }
@@ -64,7 +74,7 @@ function zoneBands(zones, dayKey, startHour, date) {
  * actually on the grid — so the band cannot claim a wait the grid does not have,
  * and it follows a dragged touchpoint for free.
  */
-function waitBands(waits, date, startHour) {
+function waitBands(waits, date, startHour, pxh) {
   const dayFrom = dayStart(date);
   const dayTo = addDays(dayFrom, 1);
   return waits
@@ -80,8 +90,8 @@ function waitBands(waits, date, startHour) {
         key: `${w.routineId}-${i}`,
         label: w.label,
         overrun: w.overrun,
-        top: (sh - startHour) * PXH,
-        height: Math.max(4, (eh - sh) * PXH),
+        top: (sh - startHour) * pxh,
+        height: Math.max(4, (eh - sh) * pxh),
       };
     });
 }
@@ -100,8 +110,11 @@ function waitBands(waits, date, startHour) {
 export default function WeekGrid({
   sched, weekStart, today, onOpenTask, onToggleComplete, onOpenDay, onDayMenu, onOpenNotes,
   notesDay = null, interaction, truncations, notice,
-  days = [0, 1, 2, 3, 4, 5, 6], compactHeads = false,
+  days = [0, 1, 2, 3, 4, 5, 6], compactHeads = false, zoom = DEFAULT_ZOOM,
 }) {
+  // ONE value, computed once, used by every site below INCLUDING `data-pxh`.
+  const pxh = pxhFor(BASE_PXH_WEEK, zoom);
+  const floorPx = floorPxFor(zoom);
   // ⚠️ The grid day is 5am-anchored (sharp edge #5), so the WEEK it draws runs
   // Mon 05:00 → next Mon 05:00 — which is NOT the calendar week
   // `getTasksForWeek` selects. The two disagree for the 00:00–05:00 band, and a
@@ -118,16 +131,37 @@ export default function WeekGrid({
   const weekTasks = sched.getTasksForWeek(weekStart)
     .concat(sched.getTasksForWeek(addDays(weekStart, 7)));
   const { start, end } = gridBounds();
-  const colHeight = (end - start) * PXH;
+  const colHeight = (end - start) * pxh;
   const hours = [];
   for (let h = start; h < end; h += 1) hours.push(h);
 
   // A 24h grid opens on the working day rather than on 3am. Mount-only, so it
   // never fights the user's scroll.
+  //
+  // ⚠️ DO NOT ADD `pxh` TO THIS DEPENDENCY ARRAY. It reads as an omission and it
+  // is not: this effect JUMPS the grid to 07:00, so firing it on a zoom change
+  // would yank the view back to morning on every single key press. Preserving
+  // the hour you were looking at is the effect below, which is a different job.
   const wrapRef = useRef(null);
   useEffect(() => {
-    if (wrapRef.current) wrapRef.current.scrollTop = (WAKE_HOUR - start) * PXH;
+    if (wrapRef.current) wrapRef.current.scrollTop = (WAKE_HOUR - start) * pxh;
   }, [start]);
+
+  // Zooming keeps the hour at the CENTRE of the visible grid where it was.
+  // Without this, zooming in at 20:00 dumps you somewhere near dawn: the column
+  // grows underneath a `scrollTop` that did not move, so the same offset now
+  // points at a much earlier hour.
+  //
+  // `useLayoutEffect`, not `useEffect`: the correction has to land in the same
+  // frame the taller column is painted in, or the jump is visible.
+  const prevPxh = useRef(pxh);
+  useLayoutEffect(() => {
+    const el = wrapRef.current;
+    if (!el || prevPxh.current === pxh) return;
+    const mid = el.scrollTop + el.clientHeight / 2;
+    el.scrollTop = (mid * pxh) / prevPxh.current - el.clientHeight / 2;
+    prevPxh.current = pxh;
+  }, [pxh]);
 
   return (
     <>
@@ -183,7 +217,7 @@ export default function WeekGrid({
 
         <div className="axis" style={{ position: 'relative' }}>
           {hours.map((h) => (
-            <div className="h" key={h} style={{ height: PXH }}><span>{hourLabel(h)}</span></div>
+            <div className="h" key={h} style={{ height: pxh }}><span>{hourLabel(h)}</span></div>
           ))}
         </div>
 
@@ -192,9 +226,9 @@ export default function WeekGrid({
           const date = addDays(weekStart, i);
           // Grid-day, not calendar-day: a 02:00 task belongs to the night
           // before, and a 04:15–06:15 one is CUT across two columns.
-          const bands = zoneBands(sched.zones, DAY_KEYS[i], start, date);
-          const waits = waitBands(routineWaits(sched), date, start);
-          const laid = layoutDay(columnItems(weekTasks, date, start), start, PXH);
+          const bands = zoneBands(sched.zones, DAY_KEYS[i], start, date, pxh);
+          const waits = waitBands(routineWaits(sched), date, start, pxh);
+          const laid = layoutDay(columnItems(weekTasks, date, start), start, pxh, floorPx);
           return (
             <div
               /* The tint IS the statement that the scheduler stays out (D-6) —
@@ -204,15 +238,20 @@ export default function WeekGrid({
                  `zoneBands` is the cautionary tale (sharp edge #14). */
               className={`day${i >= 5 ? ' wknd' : ''}${sched.isDayBlocked(date) ? ' blocked' : ''}`}
               key={dn}
-              style={{ height: colHeight }}
-              /* drop-geometry contract — see useCardInteraction.js */
+              /* `--pxh` is not decoration: the hour rules are a CSS repeating
+                 gradient (`.day` in styles.css), so without it the gridlines
+                 stay ruled every 34px while the cards move to 136 — lines and
+                 cards silently disagreeing about what an hour is. */
+              style={{ height: colHeight, '--pxh': `${pxh}px` }}
+              /* drop-geometry contract — see useCardInteraction.js. This MUST be
+                 the same `pxh` the cards above were laid out with. */
               data-dropzone=""
               data-day-index={i}
               data-start-hour={start}
               data-end-hour={end}
-              data-pxh={PXH}
+              data-pxh={pxh}
             >
-              {offWindowBands(sched.config, DAY_KEYS[i], start, end).map((b) => (
+              {offWindowBands(sched.config, DAY_KEYS[i], start, end, pxh).map((b) => (
                 <div className="offwindow" key={b.key} style={{ top: b.top, height: b.height }} aria-hidden="true" />
               ))}
               {waits.map((b) => (
@@ -233,7 +272,7 @@ export default function WeekGrid({
                   <span className="tag">{b.label}</span>
                 </div>
               ))}
-              {layoutRemainders(laid, truncations, start, PXH).map((r) => (
+              {layoutRemainders(laid, truncations, start, pxh).map((r) => (
                 <div
                   className="remainder"
                   key={r.key}

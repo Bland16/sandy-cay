@@ -111,6 +111,44 @@ nothing else moves with it.
 and a true height above it already wins today. This decision only ever touches
 short blocks.
 
+### ⚠️ CORRECTION, found while building: there is a SECOND floor, and it wins
+
+**The table above is what `layoutDay` does. It is NOT what you see**, because a
+2-minute block never reaches `layoutDay` as 2 minutes.
+
+`columnItems` (`layout.js:34`) clamps every span to a quarter of an hour:
+
+```
+Math.max(s + 0.25, rawEnd > s ? rawEnd : s + task.getDuration() / 60)
+```
+
+Probed (`design/probes/probe-grid-zoom.mjs`): a real 2m, 5m or 10m task is all
+laid out as **15 minutes** before any pixel arithmetic happens. So the honest
+floor is applied in MINUTES, upstream, and no amount of zoom can go below it:
+
+| z | week px/hr | 2m block renders | it *looks* like |
+|---|---|---|---|
+| 1 | 34 | 26px | 46 min |
+| 2 | 68 | 17px | **15 min** |
+| 4 | 136 | 34px | **15 min** |
+
+**Zoom still buys the real improvement — 46 minutes down to 15** — and that is
+worth having on its own. But the 5 minutes promised above is not reachable while
+`columnItems` rounds up, and the routine touchpoint that motivated this whole
+feature is exactly the block that hits it.
+
+**A second consequence, also probed, and arguably worse than the height:** two
+2-minute touchpoints five minutes apart are computed as **overlapping**, because
+both spans were inflated to 15 minutes. They are laid out in half-width
+side-by-side lanes for an overlap that does not exist. A routine is a chain of
+short touchpoints, so this is its normal case, not an edge one.
+
+**Deliberately NOT changed here.** It is not part of zoom, `s + 0.25` also
+guards the post-midnight wrap case the comment describes, and shrinking it moves
+lane assignment — a presentation change with its own consequences that wants an
+eye on it. It is **ZOOM D-5** and both behaviours are locked by tests in
+`tests/grid-zoom.test.jsx` so the limit is visible rather than folklore.
+
 **Note, no change needed:** `layout.js:125` sets `compact: height < 44`, so
 zooming in un-compacts cards. That is correct and wanted — a 30-minute block at
 4× has room for its full label.
@@ -234,6 +272,16 @@ rendering. An unreadable or nonsense value falls back to 1×.
 | **ZOOM D-2** | Persist in `localStorage` or in `config` | **`localStorage`** — §7 |
 | **ZOOM D-3** | Is there a rung **below** 1× (zoom out, to see the whole day)? | **No zoom out.** Rungs start at 1×. Adding one later is one array entry |
 | **ZOOM D-4** | Does the phone day view get zoom too? | **Yes** — and it gets **pinch** as its control (§5.2) |
+
+**Opened by the build, and the one that matters most:**
+
+| # | Question | Options |
+|---|---|---|
+| **ZOOM D-5** | `columnItems` rounds every span up to 15 minutes (§4's correction), so a 2-minute touchpoint can never read as shorter than 15 however far you zoom — and two touchpoints 5 minutes apart are laid side-by-side as if they overlapped | (a) leave it — zoom's 46→15 improvement is enough; (b) lower the minute-floor to ~2m and accept whatever it does to lane layout; (c) keep the span honest for OVERLAP purposes but keep a minimum for HEIGHT, which fixes the lanes and keeps small cards hittable |
+
+**(c) is what I would propose** — the overlap test and the drawn height are two
+different questions being answered by one number today — but it is a real change
+to how the grid lays out and it is not mine to make. Nothing is built for it.
 
 **Still open, and asked before step 2 only:** the two pinch questions in §5.3
 (snap-to-rung vs continuous; tablet or phone only). Neither blocks step 1.

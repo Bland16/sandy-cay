@@ -3,15 +3,22 @@
 import { addDays, hhmmToMinutes } from '../../core/index.js';
 import { DAY_FULL, DAY_KEYS, MONTHS, hourLabel, gridBounds } from '../format.js';
 import { columnItems, layoutDay, layoutRemainders } from '../layout.js';
+import { BASE_PXH_DAY, DEFAULT_ZOOM, pxhFor, floorPxFor } from '../zoom.js';
 import TaskCard from './TaskCard.jsx';
 import { DayNoteList } from './DayNotes.jsx';
 import Icon from '../Icon.jsx';
 
-const PXH = 42;
-
 export default function DayView({
   sched, weekStart, dayIndex, onBack, onOpenTask, onToggleComplete, interaction, truncations,
+  zoom = DEFAULT_ZOOM,
 }) {
+  // The day view keeps its OWN base (42px/hour, denser than the week's 34
+  // because it has one column to spend the width on). Zoom is a multiplier over
+  // that, so at 1× this renders exactly as it always did.
+  //
+  // ⚠️ One value, used everywhere including `data-pxh` — see WeekGrid's note.
+  const pxh = pxhFor(BASE_PXH_DAY, zoom);
+  const floorPx = floorPxFor(zoom);
   const date = addDays(weekStart, dayIndex);
   // The grid day runs 05:00 → 05:00, so this column owns the small hours of the
   // next calendar day — and the TAIL of a session that began before the anchor
@@ -19,10 +26,10 @@ export default function DayView({
   // this column actually draws.
   const tasks = [...sched.getTasksForDay(addDays(date, -1)), ...sched.getTasksForDay(date), ...sched.getTasksForDay(addDays(date, 1))];
   const { start, end } = gridBounds();
-  const colHeight = (end - start) * PXH;
+  const colHeight = (end - start) * pxh;
   const hours = [];
   for (let h = start; h < end; h += 1) hours.push(h);
-  const laid = layoutDay(columnItems(tasks, date, start), start, PXH);
+  const laid = layoutDay(columnItems(tasks, date, start), start, pxh, floorPx);
 
   const bands = [];
   for (const z of sched.zones) {
@@ -32,7 +39,7 @@ export default function DayView({
     for (const w of z.windowsForDay(DAY_KEYS[dayIndex])) {
       const s = hhmmToMinutes(w.start) / 60;
       const e = hhmmToMinutes(w.end) / 60;
-      bands.push({ key: `${z.id}-${w.start}`, label: z.label, top: (s - start) * PXH, height: (e - s) * PXH });
+      bands.push({ key: `${z.id}-${w.start}`, label: z.label, top: (s - start) * pxh, height: (e - s) * pxh });
     }
   }
 
@@ -54,24 +61,27 @@ export default function DayView({
       <DayNoteList sched={sched} date={date} />
       <div className="dvgrid">
         <div className="axis" style={{ position: 'relative' }}>
-          {hours.map((h) => <div className="h" key={h} style={{ height: PXH }}><span>{hourLabel(h)}</span></div>)}
+          {hours.map((h) => <div className="h" key={h} style={{ height: pxh }}><span>{hourLabel(h)}</span></div>)}
         </div>
         <div
           /* Same predicate as the week grid, asked of the engine — see WeekGrid. */
           className={`dvcol${sched.isDayBlocked(date) ? ' blocked' : ''}`}
-          style={{ height: colHeight }}
-          /* drop-geometry contract — see useCardInteraction.js */
+          /* `--pxh` drives the hour rules, which are a CSS gradient on `.dvcol`
+             — see WeekGrid's note on why it has to be emitted. */
+          style={{ height: colHeight, '--pxh': `${pxh}px` }}
+          /* drop-geometry contract — see useCardInteraction.js. Same `pxh` the
+             cards were laid out with, or drops land at the wrong time. */
           data-dropzone=""
           data-day-index={dayIndex}
           data-start-hour={start}
           data-end-hour={end}
-          data-pxh={PXH}
+          data-pxh={pxh}
         >
           {bands.map((b) => (
             <div className="zone" key={b.key} style={{ top: b.top, height: b.height }}><span className="tag">{b.label}</span></div>
           ))}
           {laid.length === 0 && <div className="empty">Nothing scheduled. A clear shore.</div>}
-          {layoutRemainders(laid, truncations, start, PXH).map((r) => (
+          {layoutRemainders(laid, truncations, start, pxh).map((r) => (
             <div
               className="remainder"
               key={r.key}

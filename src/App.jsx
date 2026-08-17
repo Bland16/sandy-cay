@@ -11,6 +11,7 @@ import {
 } from './core/index.js';
 import { useEngine } from './ui/useEngine.js';
 import { useViewport, readViewport } from './ui/useViewport.js';
+import { loadZoom, saveZoom, zoomIn, zoomOut, DEFAULT_ZOOM } from './ui/zoom.js';
 import { useCardInteraction } from './ui/useCardInteraction.js';
 import { MIN_DURATION_MIN } from './ui/interaction.js';
 import { backfillCandidates, backfillGap, protectGap, protectSomeRecovery, worthOffering } from './ui/gapActions.js';
@@ -64,6 +65,36 @@ export default function App() {
   const [weekStart, setWeekStart] = useState(() => weekStartOf(now));
   const viewport = useViewport(); // 'phone' | 'tablet' | 'desktop' — SPEC §11
   const isPhone = viewport === 'phone';
+
+  // Grid zoom (design/GRID-ZOOM.md). A 2-minute routine touchpoint is 1.1px at
+  // rest, so it renders at the floor and looks nearly as tall as an hour; more
+  // pixels per hour is the honest fix. Read from localStorage on first render
+  // rather than in an effect, for the same reason the viewport is: settling on
+  // the stored zoom a frame later is a visible flash of the wrong grid.
+  const [zoom, setZoom] = useState(loadZoom);
+  useEffect(() => { saveZoom(zoom); }, [zoom]);
+
+  // `+` / `-` / `0`. The phone gets pinch instead (GRID-ZOOM §5.2) — it has no
+  // keyboard to press.
+  useEffect(() => {
+    const onKey = (e) => {
+      // ⚠️ Ctrl/Cmd +/- is the BROWSER's page zoom. Taking it would break a
+      // control the user already has and expects to work everywhere.
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      // ⚠️ Typing `-` in a task title, or `0` in a duration, must not zoom the
+      // grid. This guard is the whole reason the handler is not two lines.
+      const t = e.target;
+      if (t && (t.isContentEditable
+        || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return;
+      if (e.key === '+' || e.key === '=') setZoom(zoomIn);
+      else if (e.key === '-' || e.key === '_') setZoom(zoomOut);
+      else if (e.key === '0') setZoom(DEFAULT_ZOOM);
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   // On a phone the single day is the layout, so we open on one rather than on a
   // seven-column grid nobody can read (§11). readViewport() rather than the hook
   // because this is the FIRST render: the hook's effect hasn't run yet, and
@@ -482,6 +513,7 @@ export default function App() {
                   onToggleComplete={toggleComplete}
                   interaction={interaction}
                   truncations={truncations}
+                  zoom={zoom}
                 />
               ) : (
                 <div className="weekwrap">
@@ -503,6 +535,7 @@ export default function App() {
                     notice={notice}
                     /* Tablet: Mon–Fri here, the weekend in the drawer (§11). */
                     days={viewport === 'tablet' ? WEEKDAYS : undefined}
+                    zoom={zoom}
                   />
                   {viewport === 'tablet' && (
                     <WeekendDrawer
@@ -518,6 +551,11 @@ export default function App() {
                       notesDay={notesDay}
                       interaction={interaction}
                       truncations={truncations}
+                      /* Spread into the drawer's real <WeekGrid>, so the weekend
+                         columns zoom with the weekdays. They must: a drag can
+                         cross from Friday into the drawer, and two columns at
+                         different scales would mis-place that drop. */
+                      zoom={zoom}
                     />
                   )}
                 </div>
