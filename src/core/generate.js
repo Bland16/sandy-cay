@@ -241,11 +241,39 @@ export function generateSittings(schedule, commitment, opts = {}) {
   const gaps = days.flatMap((d) => gapsOnDay(schedule, probe, d, occupied, now));
   const sMin = commitment.minSitting;
   const sMax = commitment.maxSitting;
-  const plan = chooseSittings(gaps, commitment.amountMin, { sMin, sMax, maxPerDay: commitment.maxPerDay });
+  const bounds = { sMin, sMax, maxPerDay: commitment.maxPerDay };
+  let plan = chooseSittings(gaps, commitment.amountMin, bounds);
+  let usable = gaps;
+
+  // ⚠️ R* IS A PREFERENCE, NOT A WALL — decided 2026-08-16 (PLAN D-10).
+  //
+  // §4.4 argues the finish-early buffer is a preference, and `scoring.js`
+  // already applies it (`bufferScore`, with `runwayStart`). Truncating the
+  // CANDIDATE DAYS at R* applied it a SECOND time, as physics. For a Mon–Sun
+  // week the wall lands on Saturday, because runwayEnd(Mon, next Mon) is
+  // Sat 14:24 — so SUNDAY WAS NEVER OFFERED AT ALL.
+  //
+  // Measured: a week whose only real space was the weekend reported
+  // "540/600m short 60m" with Sunday holding a free 840m run, and 47 of 3000
+  // fuzzed weeks lost minutes this way — every single one a Sunday. For a
+  // student, the weekend is exactly where the long runs live (§4.5).
+  //
+  // So: prefer R*, but never MANUFACTURE a shortfall with it. Re-plan over the
+  // whole window only when the buffered one falls short, and keep the wider
+  // plan only if it is strictly better. A week that already fits is untouched,
+  // so finishing early is preserved wherever the week can afford it — and
+  // §4.3's shortfall goes back to meaning "the week had no room" rather than
+  // "the buffer ate the day that did".
+  if (plan.shortfall > 0) {
+    const wide = eachDay(from, addMinutes(commitment.until, -1))
+      .flatMap((d) => gapsOnDay(schedule, probe, d, occupied, now));
+    const retry = chooseSittings(wide, commitment.amountMin, bounds);
+    if (retry.shortfall < plan.shortfall) { plan = retry; usable = wide; }
+  }
   if (!plan.sittings.length) return { sittings: [], shortfall: commitment.amountMin, days: [] };
 
   // Step 5: re-home the chosen sittings onto an evenly spread set of days.
-  const dayCandidates = uniqueDays(gaps.filter((g) => g.minutes >= sMin));
+  const dayCandidates = uniqueDays(usable.filter((g) => g.minutes >= sMin));
   const spread = spreadDays(dayCandidates, plan.sittings.length, {
     taken: opts.taken || new Set(),
     rank: (d) => energyRank(schedule, probe, d),
@@ -270,7 +298,7 @@ export function generateSittings(schedule, commitment, opts = {}) {
   // count enforced. A sitting that no day can hold is dropped into the
   // shortfall rather than parked on top of something — §4.3 says state it.
   const longestRun = new Map();
-  for (const g of gaps) {
+  for (const g of usable) {
     const k = dateKey(g.date);
     longestRun.set(k, Math.max(longestRun.get(k) || 0, g.minutes));
   }

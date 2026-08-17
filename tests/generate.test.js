@@ -110,6 +110,50 @@ describe('nothing is placed in hours that have already gone', () => {
   });
 });
 
+describe('R* is a PREFERENCE, not a wall (PLAN D-10)', () => {
+  // ⚠️ Found by a probe agent, decided by the user 2026-08-16.
+  //
+  // §4.4 argues the finish-early buffer is a preference and `scoring.js`
+  // already applies it. §4.1.1 step 1 applied it a SECOND time by truncating
+  // the candidate DAYS at R* — and `runwayEnd(Mon, next Mon)` is Sat 14:24, so
+  // a Monday-planned Mon–Sun week NEVER OFFERED SUNDAY. 47 of 3000 fuzzed weeks
+  // reported a shortfall while a Sunday with room sat empty; for a student the
+  // weekend is exactly where the long runs live (§4.5).
+  const weekdaysFull = () => {
+    resetIds();
+    const s = new Schedule({ config: defaultConfig });
+    for (let d = 0; d < 5; d += 1) {
+      s.addFixed({ title: `full ${d}`, tags: ['classes'], startTime: at(d, 8), endTime: at(d, 21) });
+    }
+    return s;
+  };
+  const thesis = (amountMin) => ({
+    ...commitment(), amountMin, minSitting: 90, maxSitting: 240, maxPerDay: 1, until: addDays(MON, 7),
+  });
+
+  it('reaches Sunday rather than manufacturing a shortfall', () => {
+    // Measured with the retry disabled: short 15m across Sat+Mon+Wed+Thu with
+    // Sunday untouched. With it: short 5m, Sunday used. The 5m residual is gap
+    // arithmetic — the bounds cannot tile 600m exactly — not the wall.
+    const r = generateSittings(weekdaysFull(), thesis(600), { now: NOW });
+    expect(r.sittings.some((t) => t.startTime.getDay() === 0)).toBe(true);
+    expect(r.shortfall).toBeLessThan(15);
+  });
+
+  it('leaves a week that ALREADY fits alone — finish-early is preserved', () => {
+    // The retry fires only when the buffered plan falls short, so a week that
+    // can afford the buffer still finishes early and never touches Sunday.
+    const r = generateSittings(weekdaysFull(), thesis(180), { now: NOW });
+    expect(r.shortfall).toBe(0);
+    expect(r.sittings.some((t) => t.startTime.getDay() === 0)).toBe(false);
+  });
+
+  it('keeps runwayEnd itself unchanged — the buffer is not deleted', () => {
+    const end = runwayEnd(MON, addDays(MON, 10));
+    expect(Math.round((addDays(MON, 10) - end) / 86400000)).toBe(2);
+  });
+});
+
 describe('step 5 re-homes by CAPACITY, not by position', () => {
   // ⚠️ Found by a probe agent. Sittings leave step 4 DESCENDING by minutes;
   // `spreadDays` returns days ASCENDING by date. They were paired POSITIONALLY,

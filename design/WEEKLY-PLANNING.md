@@ -784,6 +784,27 @@ severs the link without any symptom.
   §4.1.2's sibling-collision flaw reintroduced. And there is no server — it can
   only fire on first open after the due day passed, so it must ANNOUNCE itself.
 
+- **D-10. NEW, RESOLVED 2026-08-16 — `R*` is a PREFERENCE, not a wall.**
+  §4.1.1 step 1 truncated the CANDIDATE DAYS at one fifth of the runway, which
+  applied §4.4's finish-early buffer a *second* time — `scoring.js` already
+  applies it via `bufferScore`/`runwayStart`. For a Mon–Sun week the wall lands
+  on Saturday, because `runwayEnd(Mon, next Mon)` is Sat 14:24, so **Sunday was
+  never offered at all.** Measured by probe: 47 of 3000 fuzzed weeks reported a
+  shortfall while a Sunday with room sat empty, and a 10h week came back
+  `585/600m short 15m` across four days with the weekend untouched. For a
+  student the weekend is exactly where the long runs live (§4.5).
+
+  **The rule now:** plan inside `R*` first; only if that falls short, re-plan
+  over the whole window, and adopt the wider plan only if it is *strictly
+  better*. A week that can afford the buffer is untouched — finish-early is
+  preserved wherever the week can pay for it — and §4.3's shortfall goes back
+  to meaning "the week had no room" instead of "the buffer ate the day that
+  did". Same 10h week after: `595/600m short 5m`, Sunday used; the 5m residual
+  is gap arithmetic, not the wall.
+
+  Alternatives considered and rejected: leave it (a Monday-planned week is a
+  six-day week); exempt only the window's last day; cap the buffer at one day.
+
 - **D-5. RESOLVED 2026-08-11** — they sit beside each other, and the boundary
   is **how much lead time the thing needs**:
 
