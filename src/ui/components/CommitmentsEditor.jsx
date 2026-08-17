@@ -113,6 +113,21 @@ export default function CommitmentsEditor({ sched, mutate, weekStart, now, showT
     const plan = planWeek(sched, weekStart, clock);
     if (!plan.length) { showToast('Nothing owed this week'); return; }
 
+    // ⚠️ Reported 2026-08-16 as "nothing generated, and no label or
+    // notification. Just nothing." Reproduced by probe-nothing-happened.mjs:
+    // pressed at 22:40 on the Sunday, the week had 20 minutes left against a
+    // 30-minute minimum sitting, so the plan was empty and the confirm asked
+    // the user to agree to doing nothing — then reported "Laid out 0 sittings".
+    //
+    // A dialog you accept and that changes nothing reads exactly like a broken
+    // button. §4.3 says state the fact and stop, so say it and stop: no
+    // confirm, because there is nothing to consent to.
+    if (plan.every((r) => r.sittings.length === 0)) {
+      const short = plan.reduce((n, r) => n + r.shortfall, 0);
+      showToast(`No room left in ${weekSign(weekStart).range} — ${fmtDur(short)} could not be placed`);
+      return;
+    }
+
     const lines = plan.map((r) => {
       const head = `  ${r.commitment.title} — ${fmtDur(r.commitment.amountMin)}`;
       const blocks = r.sittings.map((t) => `      ${blockLine(t)}`);

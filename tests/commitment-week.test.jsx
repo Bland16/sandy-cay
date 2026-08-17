@@ -226,6 +226,43 @@ describe('the Cabana button', () => {
     expect(toasts[0]).toMatch(/Laid out \d+ sitting/);
   });
 
+  it('says why when NOTHING can be placed, instead of an empty confirm', () => {
+    // ⚠️ Reported as "nothing generated, and no label or notification. Just
+    // nothing." Reproduced by probe-nothing-happened.mjs: pressed at 22:40 on
+    // the Sunday, the week had 20 minutes left against a 30-minute minimum
+    // sitting. The plan was empty, so the confirm asked you to agree to doing
+    // nothing and then reported "Laid out 0 sittings" — which reads exactly
+    // like a broken button.
+    const s = termWeek();
+    s.addCommitment({ ...COMMIT, from: '2026-07-01', until: '2026-09-30', minSitting: 30 });
+    const toasts = [];
+    const asked = [];
+    vi.spyOn(window, 'confirm').mockImplementation((m) => { asked.push(m); return true; });
+
+    const LATE = new Date(2026, 8, 13, 22, 40); // Sunday of the test week, 22:40
+    function Late() {
+      const [, setV] = useState(0);
+      const mutate = (fn) => { const r = fn(s); setV((v) => v + 1); return r; };
+      return (
+        <CommitmentsEditor
+          sched={s} mutate={mutate} weekStart={MON} now={LATE}
+          showToast={(m) => toasts.push(m)}
+        />
+      );
+    }
+    render(<Late />);
+    fireEvent.click(screen.getByLabelText('Lay out this week'));
+
+    // eslint-disable-next-line no-console
+    console.log(`
+EMPTY-PLAN TOAST: ${toasts[0]}
+`);
+    expect(asked.length).toBe(0); // nothing to consent to, so nothing is asked
+    expect(toasts[0]).toMatch(/No room left/);
+    expect(toasts[0]).toMatch(/could not be placed/);
+    expect(s.tasks.filter((t) => t.parentId).length).toBe(0);
+  });
+
   it('disables itself when the week owes nothing, rather than lying', () => {
     const s = termWeek();
     s.addCommitment({ ...COMMIT, from: D(7) }); // term starts next week
