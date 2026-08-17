@@ -52,6 +52,17 @@ const posInt = (v, fallback) => {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 };
 
+/** Like `posInt` but ZERO is a real answer, not an absent one.
+ *
+ *  ⚠️ `posInt`'s fallback treats 0 as missing, so a commitment set to zero
+ *  hours a week silently became 120 minutes and reported "120/120m short 0m" —
+ *  the model booking two hours of someone's week that they had explicitly set
+ *  to none. Reachable by import today; the editor's own minimum is 0.25h. */
+const nonNegInt = (v, fallback) => {
+  const n = Math.round(Number(v));
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+};
+
 export class Commitment {
   constructor(data = {}) {
     this.title = data.title ?? 'New commitment';
@@ -61,7 +72,7 @@ export class Commitment {
     // HOURS is the unit the user types (PLAN D-1, resolved 2026-08-12) and
     // MINUTES is the unit stored, because minutes are what every other duration
     // in the engine is. The editor converts; nothing downstream has to know.
-    this.amountMinPerWeek = posInt(data.amountMinPerWeek, 120);
+    this.amountMinPerWeek = nonNegInt(data.amountMinPerWeek, 120);
 
     // The TERM, as 'YYYY-MM-DD' STRINGS, BOTH ENDS INCLUSIVE. The same choice
     // DayNote makes, for the same reason: a span of days has no time of day,

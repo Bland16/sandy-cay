@@ -282,12 +282,22 @@ export function generateSittings(schedule, commitment, opts = {}) {
   };
   const claim = (d) => { const k = dateKey(d); perDay.set(k, (perDay.get(k) || 0) + 1); return d; };
   const pool = [...spread];
+  // Candidate days the spread did not pick. ⚠️ The spread is a PREFERENCE for
+  // which days, not a shortlist of the only legal ones — running out of it is
+  // no reason to report a shortfall while a day with room sits idle. Without
+  // this, 6 of 3000 fuzzed weeks silently lost a sitting: one week dropped 160m
+  // while Tuesday held a free 175m run and no sittings at all. That was a
+  // regression introduced BY the capacity-matching fix above.
+  const rest = dayCandidates.filter((d) => !spread.includes(d));
   const dayFor = (sit) => {
-    const i = pool.findIndex((d) => hasRoom(d, sit.minutes));
+    let i = pool.findIndex((d) => hasRoom(d, sit.minutes));
     if (i >= 0) return claim(pool.splice(i, 1)[0]);
     // Nothing left in the spread can hold it. Its OWN gap's day fits by
     // construction — take that if the day still has room under maxPerDay.
     if (hasRoom(sit.gap.date, sit.minutes)) return claim(sit.gap.date);
+    // Last resort before giving up the minutes: any candidate day with room.
+    i = rest.findIndex((d) => hasRoom(d, sit.minutes));
+    if (i >= 0) return claim(rest.splice(i, 1)[0]);
     return null;
   };
 

@@ -10,7 +10,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup, screen, fireEvent, act } from '@testing-library/react';
 import {
   Schedule, Commitment, defaultConfig, exportState, summarizeImport, resetIds,
-  weekStart as weekStartOf, addDays, dateKey, generateSittings, generateAll,
+  weekStart as weekStartOf, addDays, dateKey, generateSittings, generateAll, previewWeek, layOutWeek,
 } from '../src/core/index.js';
 import { useEngine } from '../src/ui/useEngine.js';
 import Cabana from '../src/ui/components/Cabana.jsx';
@@ -91,6 +91,23 @@ describe('Commitment — the fields, and what they refuse', () => {
     s.updateCommitment(c.id, { amountMinPerWeek: 30 });
     s.updateCommitment(c.id, { amountMinPerWeek: 120 });
     expect(s.commitments[0].minSitting).toBe(45);
+  });
+
+  it('keeps a ZERO weekly amount instead of inventing two hours', () => {
+    // ⚠️ Found by the probe agent. `posInt`'s fallback treats 0 as ABSENT, so a
+    // commitment set to zero hours a week silently became 120 minutes and
+    // reported "120/120m short 0m" — the model booking two hours of a week the
+    // user had explicitly set to none. Reachable by import; the editor's own
+    // minimum is 0.25h.
+    const c = new Commitment({ ...ENGR, amountMinPerWeek: 0 });
+    expect(c.amountMinPerWeek).toBe(0);
+    // And it owes nothing, rather than reaching the generator with amount 0 —
+    // `chooseSittings`' running total satisfies `>= 0` on the first gap, so it
+    // would book a sitting for work that was set to zero.
+    const s = new Schedule({ config: defaultConfig });
+    s.addCommitment({ ...ENGR, amountMinPerWeek: 0 });
+    expect(previewWeek(s, MON, new Date(2026, 8, 7, 6, 0))[0].state).not.toBe('owes');
+    expect(layOutWeek(s, MON, new Date(2026, 8, 7, 6, 0))).toEqual([]);
   });
 
   it('never lets the sitting MINIMUM exceed the weekly amount', () => {

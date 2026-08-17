@@ -144,12 +144,51 @@ describe('step 5 re-homes by CAPACITY, not by position', () => {
   });
 
   it('states the shortfall instead of claiming a full week it could not place', () => {
-    // Before: "700/700m short 0m" with an overlap. After: an honest short.
-    const s = tapering();
+    // Before the capacity fix: "700/700m short 0m" with a 3h sitting sitting on
+    // top of an all-day booking. The honest answer is a stated shortfall.
+    //
+    // ⚠️ The fixture is a week that GENUINELY cannot fit it — every day booked
+    // 08:00–21:00, so 120m a day. My first version used the tapering week, and
+    // the later `rest`-pool fix made that week fully placeable, so the test was
+    // asserting a shortfall that had correctly stopped existing.
+    resetIds();
+    const s = new Schedule({ config: defaultConfig });
+    for (let d = 0; d < 7; d += 1) {
+      s.addFixed({ title: `busy ${d}`, tags: ['work'], startTime: at(d, 8), endTime: at(d, 21) });
+    }
     const r = generateSittings(s, big, { now: NOW });
     const placed = r.sittings.reduce((n, t) => n + t.getDuration(), 0);
     expect(placed + r.shortfall).toBe(700);
     expect(r.shortfall).toBeGreaterThan(0);
+    // …and still nothing on top of anything.
+    for (const t of r.sittings) {
+      for (const o of s.tasks) {
+        if (o === t || o.chunking || !o.startTime || !o.endTime) continue;
+        expect(t.startTime < o.endTime && o.startTime < t.endTime).toBe(false);
+      }
+    }
+  });
+
+  it('never gives up minutes while a candidate day still has room', () => {
+    // ⚠️ A REGRESSION INTRODUCED BY THE CAPACITY FIX ABOVE, found by the probe
+    // agent in a 3000-week fuzz (6 hits). Day matching searched only `spread`
+    // plus the sitting's own gap day — but the spread is a PREFERENCE for which
+    // days, not a shortlist of the only legal ones. One week dropped 160m into
+    // the shortfall while Tuesday held a free 175m run and no sittings at all.
+    resetIds();
+    const s = new Schedule({ config: defaultConfig });
+    // Each day booked from 08:00 until it tapers — later days are freer, so
+    // `spreadDays` picks a subset and leaves days with room unpicked.
+    [21, 20, 19, 18, 17].forEach((h, i) => s.addFixed({
+      title: `busy ${i}`, tags: ['work'], startTime: at(i, 8), endTime: at(i, h),
+    }));
+    const c = { ...commitment(), amountMin: 700, minSitting: 60, maxSitting: 180, maxPerDay: 1, until: addDays(MON, 7) };
+    const r = generateSittings(s, c, { now: NOW });
+
+    const placed = r.sittings.reduce((n, t) => n + t.getDuration(), 0);
+    expect(placed + r.shortfall).toBe(700);
+    expect(r.shortfall).toBe(0); // every minute found a day
+    expect(r.sittings.length).toBe(4);
   });
 
   it('respects maxPerDay above 1 — it was only ever safe at 1 by luck', () => {

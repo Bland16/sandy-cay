@@ -46,6 +46,11 @@ export function previewWeek(schedule, ws, now) {
     let state = 'owes';
     if (sittings.length) state = 'done';
     else if (!input) state = c.coversWeek(start) ? 'passed' : 'outside';
+    // A commitment that owes nothing per week owes nothing this week either.
+    // Without this it reached the generator with `amountMin: 0`, and
+    // `chooseSittings`' running total satisfies `>= 0` on the first gap, so it
+    // booked a sitting for work the user had set to zero.
+    else if (c.amountMinPerWeek === 0) state = 'outside';
     return { commitment: c, state, input, sittings, placedMin, owedMin: c.amountMinPerWeek };
   });
 }
