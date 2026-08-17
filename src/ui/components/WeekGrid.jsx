@@ -1,7 +1,7 @@
 // WeekGrid — 7 day columns + time axis. Real tasks from getTasksForWeek,
 // positioned by time; zones drawn as bands; day headers click into a day view.
 import { useRef, useEffect } from 'react';
-import { addDays, sameDay, hhmmToMinutes } from '../../core/index.js';
+import { addDays, sameDay, hhmmToMinutes, dayStart, routineWaits } from '../../core/index.js';
 import { DAY_NAMES, DAY_KEYS, hourLabel, gridBounds, windowForDay } from '../format.js';
 import { columnItems, layoutDay, layoutRemainders } from '../layout.js';
 import TaskCard from './TaskCard.jsx';
@@ -48,6 +48,42 @@ function zoneBands(zones, dayKey, startHour, date) {
     }
   }
   return bands;
+}
+
+/**
+ * A routine's WAITS as bands on one day column (ROUTINES §UI: "passive waits
+ * optionally show as a non-blocking tinted band").
+ *
+ * ⚠️ NON-BLOCKING is the whole point. A wait consumes no capacity and reserves
+ * nothing — it is ordinary open time, and you may drop work straight into it.
+ * The band exists so you can SEE "washing 08:02-08:47" rather than a mysterious
+ * hole between two two-minute cards. `pointer-events: none` in the CSS is what
+ * keeps it out of the way of the drop it must not intercept.
+ *
+ * The intervals come from `routineWaits` in core, DERIVED from the touchpoints
+ * actually on the grid — so the band cannot claim a wait the grid does not have,
+ * and it follows a dragged touchpoint for free.
+ */
+function waitBands(waits, date, startHour) {
+  const dayFrom = dayStart(date);
+  const dayTo = addDays(dayFrom, 1);
+  return waits
+    .filter((w) => w.to > dayFrom && w.from < dayTo)
+    .map((w, i) => {
+      // Clipped to the column, so a wait that runs past midnight draws to the
+      // day's edge rather than off the end of it.
+      const s = Math.max(w.from.getTime(), dayFrom.getTime());
+      const e = Math.min(w.to.getTime(), dayTo.getTime());
+      const sh = (s - dayFrom.getTime()) / 3600000;
+      const eh = (e - dayFrom.getTime()) / 3600000;
+      return {
+        key: `${w.routineId}-${i}`,
+        label: w.label,
+        overrun: w.overrun,
+        top: (sh - startHour) * PXH,
+        height: Math.max(4, (eh - sh) * PXH),
+      };
+    });
 }
 
 /**
@@ -157,6 +193,7 @@ export default function WeekGrid({
           // Grid-day, not calendar-day: a 02:00 task belongs to the night
           // before, and a 04:15–06:15 one is CUT across two columns.
           const bands = zoneBands(sched.zones, DAY_KEYS[i], start, date);
+          const waits = waitBands(routineWaits(sched), date, start);
           const laid = layoutDay(columnItems(weekTasks, date, start), start, PXH);
           return (
             <div
@@ -177,6 +214,19 @@ export default function WeekGrid({
             >
               {offWindowBands(sched.config, DAY_KEYS[i], start, end).map((b) => (
                 <div className="offwindow" key={b.key} style={{ top: b.top, height: b.height }} aria-hidden="true" />
+              ))}
+              {waits.map((b) => (
+                /* Drawn BEFORE the cards and behind them, and inert to the
+                   pointer — a band that ate a drop would be a reservation, and
+                   a wait reserves nothing. */
+                <div
+                  className={b.overrun ? 'waitband over' : 'waitband'}
+                  key={b.key}
+                  style={{ top: b.top, height: b.height }}
+                  aria-hidden="true"
+                >
+                  <span className="tag">{b.label}</span>
+                </div>
               ))}
               {bands.map((b) => (
                 <div className="zone" key={b.key} style={{ top: b.top, height: b.height }}>

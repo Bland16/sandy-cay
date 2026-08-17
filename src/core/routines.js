@@ -66,7 +66,13 @@ export function instantiateRoutine(schedule, activity, startTime, opts = {}) {
     const end = addMinutes(start, o.durationMin);
     const hit = occupied.filter((iv) => overlaps(start, end, iv.start, iv.end));
     const t = new Task({
-      title: `${instance.label} — ${o.label}`,
+      // ⚠️ THE STEP'S OWN NAME, not "Laundry — load" (the user's call,
+      // 2026-08-17). On the grid a card has room for a few words, and prefixing
+      // every touchpoint with the routine spends them all saying the same thing
+      // three times over — "Laundry — l…", "Laundry — s…". Which routine it
+      // belongs to is carried by `routineId`, and shown by the wait band that
+      // links the chain rather than by repeating it in every label.
+      title: o.label || instance.label,
       tags: [...(activity.tags || [])],
       // FIXED, not flexible. See the header: a touchpoint is an appointment
       // with a machine, and a placer free to move it dissolves the chain.
@@ -144,13 +150,31 @@ export function reflowRoutine(schedule, routineId, opts = {}) {
       cur.endTime = addMinutes(earliest, dur);
       moved.push(cur);
     }
+  }
 
-    // Whatever the gap actually is now — it may be far larger, because the hand
-    // is free to leave it so.
-    const actualGap = Math.round((cur.startTime.getTime() - prev.endTime.getTime()) / 60000);
+  // ⚠️ WARNINGS SCAN THE WHOLE CHAIN, not just the part that was pushed.
+  //
+  // They used to be collected inside the loop above, which starts AFTER the
+  // pivot — so dragging a touchpoint later checked the waits behind it and
+  // missed the one it had actually stretched. Dragging "switch" from 09:47 to
+  // 11:00 grows the WASH, the wait BEFORE it, and that overrun went unreported.
+  // Found by its own test.
+  //
+  // A warning is a statement about the chain as it now stands, not about the
+  // move, so the right scope is every pair. Re-read the chain, because the push
+  // above has moved things.
+  const after = schedule.touchpointsFor(routineId);
+  for (let i = 1; i < after.length; i += 1) {
+    const prev = after[i - 1];
+    const cur = after[i];
+    if (!prev.endTime || !cur.startTime) continue;
     const wait = instance.steps.find((s, si) => s.kind === 'passive'
       && si > prev.stepIndex && si < cur.stepIndex && s.maxWaitMin !== null);
-    if (wait && actualGap > wait.maxWaitMin) {
+    if (!wait) continue;
+    // Whatever the gap actually is now — it may be far larger, because the hand
+    // is free to leave it so, and R-1 says the hand wins.
+    const actualGap = Math.round((cur.startTime.getTime() - prev.endTime.getTime()) / 60000);
+    if (actualGap > wait.maxWaitMin) {
       warnings.push({
         stepIndex: cur.stepIndex,
         label: wait.label,
@@ -161,6 +185,56 @@ export function reflowRoutine(schedule, routineId, opts = {}) {
   }
   if (moved.length) schedule._touch();
   return { moved, warnings };
+}
+
+/**
+ * The WAITS of every routine, as real intervals, for a date range.
+ *
+ * ⚠️ DERIVED FROM THE TOUCHPOINTS ON THE GRID, not from the stored offsets. The
+ * gap between two touchpoints is whatever it actually is — including after you
+ * dragged one — so a band can never claim a wait the grid does not have. That is
+ * the hybrid doing its job: the program says what was intended, the tasks say
+ * where things are, and the band is drawn from the tasks.
+ *
+ * ⚠️ ONE implementation, in core, because THREE surfaces want it (week grid, day
+ * view, weekend drawer). `zoneBands` is the cautionary tale — reimplemented per
+ * surface, it painted zones into weeks the scheduler correctly saw as free
+ * (sharp edge #14).
+ *
+ * `overrun` is TRUE when the gap has grown past the wait's `maxWaitMin`. It is a
+ * STATEMENT, never a constraint (R-1): the band is drawn either way, and a task
+ * may always be placed inside it.
+ *
+ * @returns {Array<{routineId, label, from, to, minWaitMin, maxWaitMin, overrun}>}
+ */
+export function routineWaits(schedule, from, to) {
+  const out = [];
+  for (const inst of schedule.routineInstances || []) {
+    const chain = schedule.touchpointsFor(inst.id);
+    for (let i = 1; i < chain.length; i += 1) {
+      const prev = chain[i - 1];
+      const cur = chain[i];
+      if (!prev.endTime || !cur.startTime) continue;
+      if (cur.startTime <= prev.endTime) continue; // dragged over it — no wait left
+      if (to && prev.endTime >= to) continue;
+      if (from && cur.startTime <= from) continue;
+      // The programmed wait sitting between these two steps, if any.
+      const step = inst.steps.find((st, si) => st.kind === 'passive'
+        && si > prev.stepIndex && si < cur.stepIndex);
+      if (!step) continue;
+      const gapMin = Math.round((cur.startTime.getTime() - prev.endTime.getTime()) / 60000);
+      out.push({
+        routineId: inst.id,
+        label: step.label || 'wait',
+        from: new Date(prev.endTime.getTime()),
+        to: new Date(cur.startTime.getTime()),
+        minWaitMin: step.durationMin,
+        maxWaitMin: step.maxWaitMin,
+        overrun: step.maxWaitMin != null && gapMin > step.maxWaitMin,
+      });
+    }
+  }
+  return out;
 }
 
 /**

@@ -32,7 +32,7 @@ export { expandRecurrence, addException, splitPeriod, periodFor, temporaryChange
 export { DayNote } from './DayNote.js';
 export { Commitment } from './Commitment.js';
 export { RoutineInstance } from './RoutineInstance.js';
-export { instantiateRoutine, reflowRoutine, suggestRoutineStart } from './routines.js';
+export { instantiateRoutine, reflowRoutine, suggestRoutineStart, routineWaits } from './routines.js';
 export { generateSittings, generateAll, chooseSittings, spreadDays, runwayEnd, gapsOnDay, openMinutesFor } from './generate.js';
 export { previewWeek, layOutWeek, planWeek, owedThisWeek } from './commitmentWeek.js';
 export { addProject, shrinkChunk, growChunk, deleteChunk, resizeChunk, finishProject, sliceChunks, redistribute } from './projects.js';

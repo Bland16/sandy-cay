@@ -361,6 +361,38 @@ body {
   position: absolute; left: 0; right: 0; z-index: var(--z-zone); background: rgba(46,140,153,.10);
   border-block: 1px dashed rgba(46,140,153,.55); pointer-events: none;
 }
+
+/* ---------- a routine's WAIT, as a band (design/ROUTINES.md §UI) ----------
+   Deliberately the same shape as `.zone` — the user asked for "a tint that kind
+   of looks like the zone" — but a DIFFERENT hue, because the two mean opposite
+   things: a zone RESERVES time, a wait is time that is FREE.
+
+   ⚠️ `pointer-events: none` is load-bearing, not tidiness. A wait consumes no
+   capacity and reserves nothing, so the band must not intercept the drop it
+   exists to invite: you may put work straight into the wash. It also sits BELOW
+   the cards, so the two-minute touchpoints at its ends stay readable on top.
+
+   The band is what makes a 2-minute step legible at all. At PXH=34 a 2-minute
+   card is 1.1px, floored to 26px by `layoutDay` — visible, but then a 2-minute
+   step looks nearly as tall as an hour. The band carries the real duration
+   visually, so the tiny cards can stop pretending to. */
+.waitband {
+  position: absolute; left: 0; right: 0; z-index: var(--z-zone);
+  background: rgba(168,218,220,.13);
+  border-block: 1px dashed rgba(168,218,220,.5);
+  pointer-events: none;
+}
+.waitband .tag {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  font-family: var(--font-type); font-size: 8.5px; letter-spacing: .04em;
+  color: #2c2016; background: rgba(168,218,220,.85); border-radius: 4px;
+  padding: 0 4px; white-space: nowrap; pointer-events: none;
+}
+/* Past the max the user set. STATED, never enforced (R-1) — the band still
+   draws, the drop still lands, the waffles just go cold. Amber rather than
+   coral: this is a fact about the food, not a scheduling failure (P-1). */
+.waitband.over { background: rgba(232,185,77,.16); border-block-color: rgba(232,185,77,.7); }
+.waitband.over .tag { background: rgba(232,185,77,.9); }
 .zone .tag {
   position: absolute; top: 0; left: 50%; transform: translate(-50%, -52%); font-family: var(--font-type); font-size: 8.5px;
   letter-spacing: .04em; color: var(--primary); background: var(--paper); border: 1.5px solid var(--primary);

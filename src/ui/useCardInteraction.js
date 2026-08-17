@@ -12,8 +12,8 @@
 // autoSchedule is never called (SPEC §2.4).
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { addDays, addMinutes, minutesBetween, addException, formatHHMM, dateKey, dateOfOccurrence } from '../core/index.js';
-import { gridHour } from './format.js';
+import { addDays, addMinutes, minutesBetween, addException, formatHHMM, dateKey, dateOfOccurrence, reflowRoutine } from '../core/index.js';
+import { gridHour, fmtDur } from './format.js';
 import {
   MIN_DURATION_MIN,
   atMinutes,
@@ -194,6 +194,37 @@ export function useCardInteraction({ sched, mutate, showToast, weekStart }) {
   );
 
   /**
+   * A routine touchpoint moved, so the CHAIN has to re-flow (ROUTINES R-B).
+   *
+   * ⚠️ This was the missing wire: `reflowRoutine` existed in core and nothing
+   * called it, so dragging the second touchpoint moved it alone and left the
+   * rest of the chain where it was — switching the laundry before the wash had
+   * finished, silently. Reported as "I can drag the second task down on the
+   * thing with no warning."
+   *
+   * MIN-GAPS ARE ONE-DIRECTIONAL: dragging later pushes everything after it,
+   * dragging earlier moves alone (the machine is not finished either way).
+   *
+   * ⚠️ A maxWait overrun WARNS AND NEVER PREVENTS — the user's decision:
+   * "ask/offer then warning not prevention", and R-1's "you may always put the
+   * shower there and eat cold waffles."
+   */
+  const reflowChain = useCallback((task) => {
+    if (!task || !task.routineId) return;
+    const r = mutate((s) => reflowRoutine(s, task.routineId, { movedStepIndex: task.stepIndex }));
+    const pushed = r.moved.length;
+    const warn = r.warnings[0];
+    if (warn) {
+      showToast(
+        `${warn.label} now waits ${fmtDur(warn.waitedMin)} — past the ${fmtDur(warn.maxWaitMin)} you set`
+        + (pushed ? ` · ${pushed} later step${pushed === 1 ? '' : 's'} moved` : ''),
+      );
+    } else if (pushed) {
+      showToast(`${pushed} later step${pushed === 1 ? '' : 's'} moved to keep the wait`);
+    }
+  }, [mutate, showToast]);
+
+  /**
    * Apply one completed drag/resize.
    *
    * op = { cause, task, applyToTask, scanStart, scanEnd, effEnd, heuristicDelta,
@@ -245,12 +276,14 @@ export function useCardInteraction({ sched, mutate, showToast, weekStart }) {
         if (res.displaced.length) {
           showToast(`Moved · ${res.displaced.length} re-placed`);
         }
+        reflowChain(task);
         return;
       }
 
-      // 3) no collision → done.
+      // 3) no collision → done, except a routine chain still has to re-flow.
       if (blockers.length === 0) {
         settleGhost(op.targetRect);
+        reflowChain(task);
         return;
       }
 
@@ -279,7 +312,7 @@ export function useCardInteraction({ sched, mutate, showToast, weekStart }) {
         anchor: op.targetRect,
       });
     },
-    [sched, mutate, showToast, settleGhost, rejectGhost],
+    [sched, mutate, showToast, settleGhost, rejectGhost, reflowChain],
   );
 
   const endSession = useCallback(() => {
