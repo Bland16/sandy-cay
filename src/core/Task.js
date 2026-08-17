@@ -93,6 +93,19 @@ export class Task {
     // Virtual-occurrence marker: set on materialized recurrence occurrences.
     this.isOccurrence = data.isOccurrence ?? false;
     this.occurrenceDate = data.occurrenceDate ?? null; // 'YYYY-MM-DD'
+    // ROUTINE TOUCHPOINT (design/ROUTINES.md R-A). A routine lays down one
+    // anchored task per ACTIVE step — load, switch, fold — with the passive
+    // waits as the gaps between them. These two fields are the whole link:
+    // which run this belongs to, and where in the chain it sits.
+    //
+    // ⚠️ This is the DERIVED half of the hybrid. The chain's membership and its
+    // placement live HERE, on the tasks, so deleting a touchpoint by hand makes
+    // the chain honestly shorter and can never leave a record disagreeing with
+    // the grid. The PROGRAM — the steps, the waits, and any per-run tweak —
+    // lives in `RoutineInstance`, because a passive wait is not a task and a
+    // stretched wash has nowhere else to go.
+    this.routineId = data.routineId ?? null;
+    this.stepIndex = Number.isInteger(data.stepIndex) ? data.stepIndex : null;
   }
 
   // ---- geometry ----------------------------------------------------------
@@ -217,6 +230,8 @@ export class Task {
       parentId: this.parentId,
       load: this.load ? { ...this.load } : null,
       isOccurrence: this.isOccurrence,
+      routineId: this.routineId,
+      stepIndex: this.stepIndex,
       occurrenceDate: this.occurrenceDate,
     };
   }

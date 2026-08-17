@@ -136,6 +136,7 @@ export function summarizeImport(blob) {
     dayNoteCount: (blob.dayNotes || []).length,
     blockedDayCount: (blob.blockedDays || []).length,
     commitmentCount: (blob.commitments || []).length,
+    routineCount: (blob.routineInstances || []).length,
     ratings: blob.model ? blob.model.sampleCount || 0 : 0,
   };
 }

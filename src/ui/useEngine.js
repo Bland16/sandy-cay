@@ -125,6 +125,11 @@ export function useEngine() {
         // generated sittings still on the grid and nothing left that owes them,
         // so the week would look planned and be unre-plannable.
         s.commitments = next.commitments;
+        // Routine runs, added in the SAME commit as the constructor and toJSON
+        // halves. Dropping them here would restore a footlocker with the
+        // touchpoints still on the grid and no program behind them — a chain
+        // that cannot re-flow and cannot be deleted as a group.
+        s.routineInstances = next.routineInstances;
       });
     }, [mutate]),
   };

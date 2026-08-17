@@ -7,6 +7,7 @@ import { Bucket } from './Bucket.js';
 import { Activity } from './Activity.js';
 import { DayNote } from './DayNote.js';
 import { Commitment } from './Commitment.js';
+import { RoutineInstance } from './RoutineInstance.js';
 import { makeId } from './ids.js';
 import { blendColors } from './color.js';
 import { makeConfig } from './config.js';
@@ -95,6 +96,18 @@ export class Schedule {
     // GENERATOR rather than a new kind of thing on the week.
     this.commitments = (init.commitments || []).map((c) => (c instanceof Commitment ? c : Commitment.fromJSON(c)));
     this._dedupeIds(this.commitments);
+    // Routine RUNS (design/ROUTINES.md R-A) — the frozen program for each run
+    // of a routine, plus that run's one-time adjustments. The PLACEMENT is not
+    // here: touchpoints carry `routineId`/`stepIndex` and are the only truth
+    // about where anything is. See RoutineInstance.js for why it is a split.
+    //
+    // Additive, so old saves load empty and schemaVersion stays 1 (sharp edge
+    // #15). ⚠️ That edge has been sprung THREE times, so this lands with ALL
+    // FIVE halves in one commit: constructor, toJSON, fromJSON,
+    // useEngine#replace, and summarizeImport + the Cabana's confirm.
+    this.routineInstances = (init.routineInstances || [])
+      .map((r) => (r instanceof RoutineInstance ? r : RoutineInstance.fromJSON(r)));
+    this._dedupeIds(this.routineInstances);
     this.learning = init.model instanceof LearningModule
       ? init.model
       : LearningModule.fromJSON(init.model, this.config);
@@ -481,6 +494,42 @@ export class Schedule {
     return mine.filter((t) => t.startTime && dateKey(t.startTime) >= first && dateKey(t.startTime) <= last);
   }
 
+  // ---- routine runs (design/ROUTINES.md R-A) -----------------------------
+  addRoutineInstance(data) {
+    const r = data instanceof RoutineInstance ? data : new RoutineInstance(data);
+    this._uniqueInColl(r, this.routineInstances);
+    this.routineInstances.push(r);
+    this._touch();
+    return r;
+  }
+
+  /**
+   * Remove a run AND its touchpoints — a routine is deleted as a group
+   * (ROUTINES R-B), because half a laundry is not a thing you meant to keep.
+   */
+  removeRoutineInstance(id) {
+    const i = this.routineInstances.findIndex((r) => r.id === id);
+    if (i < 0) return null;
+    const [gone] = this.routineInstances.splice(i, 1);
+    this.tasks = this.tasks.filter((t) => t.routineId !== id);
+    this._touch();
+    return gone;
+  }
+
+  /**
+   * The touchpoints of a run, in chain order — DERIVED, never stored.
+   *
+   * Sorted by `stepIndex` rather than by time on purpose: the chain's ORDER is
+   * the program's, and a touchpoint dragged out of sequence by hand should read
+   * as "step 3, moved", not silently renumber itself. R-1 — your hand may put
+   * it anywhere; it does not stop being the step it is.
+   */
+  touchpointsFor(routineId) {
+    return this.tasks
+      .filter((t) => t.routineId === routineId && !t.chunking)
+      .sort((a, b) => (a.stepIndex ?? 0) - (b.stepIndex ?? 0));
+  }
+
   /**
    * Is automatic placement barred from this day? (D-6.)
    *
@@ -851,6 +900,7 @@ export class Schedule {
       dayNotes: this.dayNotes.map((n) => n.toJSON()),
       blockedDays: [...this.blockedDays],
       commitments: this.commitments.map((c) => c.toJSON()),
+      routineInstances: this.routineInstances.map((r) => r.toJSON()),
       config: this.config,
       model: this.learning.toJSON(),
       // The planned baseline has to survive a reload or the Wrap report can
@@ -874,6 +924,7 @@ export class Schedule {
       dayNotes: json.dayNotes,
       blockedDays: json.blockedDays,
       commitments: json.commitments,
+      routineInstances: json.routineInstances,
       model: json.model,
       // Absent on every save written before this shipped — an old file loads as
       // a schedule with no baselines, which is exactly right. schemaVersion
