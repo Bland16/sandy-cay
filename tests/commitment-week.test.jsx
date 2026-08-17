@@ -263,13 +263,65 @@ EMPTY-PLAN TOAST: ${toasts[0]}
     expect(s.tasks.filter((t) => t.parentId).length).toBe(0);
   });
 
-  it('disables itself when the week owes nothing, rather than lying', () => {
+  it('is NEVER disabled — it answers instead (the "nothing appears" report)', () => {
+    // ⚠️ Reported: "Nothing appears. No dialog, no toast, nothing." The button
+    // was disabled whenever the week owed nothing, and `.btn2` has NO
+    // `:disabled` styling anywhere in the stylesheet — so it looked exactly
+    // like a working button and swallowed every click in silence. A disabled
+    // control that cannot say why it is disabled is worse than no control.
     const s = termWeek();
     s.addCommitment({ ...COMMIT, from: D(7) }); // term starts next week
-    render(<Harness sched={s} toasts={[]} />);
-    expect(screen.getByLabelText('Lay out this week').disabled).toBe(true);
-    const card = document.querySelector('.cabcard');
-    expect(card.textContent).toContain('nothing owed');
+    const toasts = [];
+    render(<Harness sched={s} toasts={toasts} />);
+
+    const btn = screen.getByLabelText('Lay out this week');
+    expect(btn.disabled).toBe(false);
+    fireEvent.click(btn);
+    // eslint-disable-next-line no-console
+    console.log(`
+WHY-TOAST: ${toasts[0]}
+`);
+    expect(toasts[0]).toMatch(/Nothing owed/);
+    expect(toasts[0]).toMatch(/no commitment runs this week/);
+    expect(document.querySelector('.cabcard').textContent).toContain('nothing owed');
+  });
+
+  it('says WHICH reason — already laid out, rather than a generic nothing', () => {
+    const s = termWeek();
+    s.addCommitment(COMMIT);
+    layOutWeek(s, MON, MON_6AM);
+    const toasts = [];
+    render(<Harness sched={s} toasts={toasts} />);
+    fireEvent.click(screen.getByLabelText('Lay out this week'));
+    // eslint-disable-next-line no-console
+    console.log(`
+ALREADY-TOAST: ${toasts[0]}
+`);
+    expect(toasts[0]).toMatch(/already laid out/);
+  });
+
+  it('says WHICH reason — the due day has passed', () => {
+    const s = termWeek();
+    s.addCommitment({ ...COMMIT, dueDay: 'thu' });
+    const toasts = [];
+    function Fri() {
+      const [, setV] = useState(0);
+      const mutate = (fn) => { const r = fn(s); setV((v) => v + 1); return r; };
+      return (
+        <CommitmentsEditor
+          sched={s} mutate={mutate} weekStart={MON}
+          now={new Date(2026, 8, 11, 12, 0)}
+          showToast={(m) => toasts.push(m)}
+        />
+      );
+    }
+    render(<Fri />);
+    fireEvent.click(screen.getByLabelText('Lay out this week'));
+    // eslint-disable-next-line no-console
+    console.log(`
+PASSED-TOAST: ${toasts[0]}
+`);
+    expect(toasts[0]).toMatch(/due day has passed/);
   });
 
   it('says "2h of 4h laid out" rather than "done" after a hand deletion (E3)', () => {

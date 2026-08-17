@@ -100,6 +100,15 @@ export default function CommitmentsEditor({ sched, mutate, weekStart, now, showT
   const patch = (id, changes) => mutate((s) => s.updateCommitment(id, changes));
   const remove = (id) => mutate((s) => s.removeCommitment(id));
 
+  // The week's position, computed ONCE for the footer and the button alike.
+  // `previewWeek` is the single implementation the week's own owed-line and the
+  // offer-on-open will share (sharp edge #14: a third copy drifts). Declared
+  // above `layOut` because that handler reads it — a closure over a `const`
+  // declared further down works, but only by accident of call order.
+  const preview = previewWeek(sched, weekStart, clock);
+  const owes = preview.filter((p) => p.state === 'owes');
+  const owedMin = owes.reduce((n, p) => n + p.owedMin, 0);
+
   /**
    * D-3's manual path: the week is EMPTY until asked, and this is the asking.
    *
@@ -110,8 +119,30 @@ export default function CommitmentsEditor({ sched, mutate, weekStart, now, showT
    * blocker conversion on this page already uses.
    */
   const layOut = () => {
+    // ⚠️ THIS BUTTON IS NEVER DISABLED, and that is the fix for a real report:
+    // "Nothing appears. No dialog, no toast, nothing."
+    //
+    // It WAS disabled whenever the week owed nothing — and `.btn2` has no
+    // `:disabled` styling anywhere in the stylesheet, so it looked exactly like
+    // a working button and swallowed every click in silence. A disabled control
+    // that cannot say why it is disabled is worse than no control.
+    //
+    // So it always responds, and always says which of the reasons applies.
+    // Cheaper than styling a disabled state, and more honest: the answer you
+    // want is "why", not "you may not".
+    const week = weekSign(weekStart).range;
+    const owing = preview.filter((p) => p.state === 'owes');
+    if (!owing.length) {
+      const n = (st) => preview.filter((p) => p.state === st).length;
+      if (!preview.length) showToast('No commitments yet — add one first');
+      else if (n('done')) showToast(`${week} is already laid out`);
+      else if (n('passed')) showToast(`${week} — the due day has passed, so nothing is owed`);
+      else showToast(`Nothing owed in ${week} — no commitment runs this week`);
+      return;
+    }
+
     const plan = planWeek(sched, weekStart, clock);
-    if (!plan.length) { showToast('Nothing owed this week'); return; }
+    if (!plan.length) { showToast(`Nothing owed in ${week}`); return; }
 
     // ⚠️ Reported 2026-08-16 as "nothing generated, and no label or
     // notification. Just nothing." Reproduced by probe-nothing-happened.mjs:
@@ -306,14 +337,6 @@ export default function CommitmentsEditor({ sched, mutate, weekStart, now, showT
   }
 
   // ---- commitment list --------------------------------------------------
-  //
-  // The week's position, computed for the preview and the button alike. ONE
-  // call — `previewWeek` is the single implementation the week's own owed-line
-  // and the offer-on-open will share (sharp edge #14: a third copy drifts).
-  const preview = previewWeek(sched, weekStart, clock);
-  const owes = preview.filter((p) => p.state === 'owes');
-  const owedMin = owes.reduce((n, p) => n + p.owedMin, 0);
-
   return (
     <DrillList
       title="Standing commitments"
@@ -327,9 +350,8 @@ export default function CommitmentsEditor({ sched, mutate, weekStart, now, showT
             <button
               className="btn2 ghost"
               onClick={layOut}
-              disabled={owes.length === 0}
               aria-label="Lay out this week"
-              title={owes.length ? `${fmtDur(owedMin)} across ${owes.length} commitment${owes.length === 1 ? '' : 's'}` : 'Nothing owed this week'}
+              title={owes.length ? `${fmtDur(owedMin)} across ${owes.length} commitment${owes.length === 1 ? '' : 's'}` : 'Nothing owed this week — press to see why'}
             >
               Lay out this week
             </button>
