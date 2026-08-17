@@ -6,7 +6,7 @@ import AddProjectPanel from './panels/AddProjectPanel.jsx';
 import FindPanel from './panels/FindPanel.jsx';
 import WhatToDoPanel from './panels/WhatToDoPanel.jsx';
 import { DayNotesPanel, dayNotesIndex } from './DayNotes.jsx';
-import { addDays, dateKey } from '../../core/index.js';
+import { addDays, dateKey, instantiateRoutine, suggestRoutineStart } from '../../core/index.js';
 import { DAY_FULL } from '../format.js';
 
 export default function RightPanel({ selection, resolvedTask, sched, mutate, weekStart, now, onClose, onOpenTask, showToast, onGapFreed, onJump, onClearDay }) {
@@ -34,7 +34,30 @@ export default function RightPanel({ selection, resolvedTask, sched, mutate, wee
       />
     );
   } else if (selection === 'add-task') {
-    body = <AddTaskPanel sched={sched} mutate={mutate} weekStart={weekStart} onClose={onClose} showToast={showToast} onJump={onJump} />;
+    body = (
+      <AddTaskPanel
+        sched={sched}
+        mutate={mutate}
+        weekStart={weekStart}
+        onClose={onClose}
+        showToast={showToast}
+        onJump={onJump}
+        /* Typing a routine's name into Add task offers to RUN the procedure
+           rather than making a bare task (the user's shape, 2026-08-17). The
+           panel asks; this only carries out the yes. */
+        onRunRoutine={(routine) => {
+          const clock = now || new Date();
+          const when = suggestRoutineStart(sched, routine, clock, { withinDays: 6 });
+          if (!when) { showToast(`No room for ${routine.label} in the next week`); return; }
+          const r = mutate((s) => instantiateRoutine(s, routine, when));
+          showToast(
+            `${routine.label} started · ${r.touchpoints.length} touchpoint${r.touchpoints.length === 1 ? '' : 's'}`
+            + (r.clashes.length ? ` · ${r.clashes.length} overlap${r.clashes.length === 1 ? '' : 's'}` : ''),
+          );
+          if (onJump && r.touchpoints[0]) onJump(r.touchpoints[0].startTime);
+        }}
+      />
+    );
   } else if (selection === 'add-project') {
     body = <AddProjectPanel mutate={mutate} weekStart={weekStart} onClose={onClose} showToast={showToast} />;
   } else if (selection === 'find') {

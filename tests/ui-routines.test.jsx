@@ -7,7 +7,7 @@
 // than asked for. These tests lock the affordance, not a heuristic.
 //
 // Dumped, not only driven: behaviour tests cannot see a missing field.
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { useState } from 'react';
 import { render, cleanup, screen, fireEvent } from '@testing-library/react';
 import {
@@ -15,15 +15,23 @@ import {
 } from '../src/core/index.js';
 import RoutinesEditor, { routineMeta } from '../src/ui/components/RoutinesEditor.jsx';
 import Cabana from '../src/ui/components/Cabana.jsx';
+import AddTaskPanel from '../src/ui/components/panels/AddTaskPanel.jsx';
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 const WS = weekStartOf(new Date(2026, 8, 7));
 
-function Harness({ sched }) {
+const NOW = new Date(2026, 8, 7, 6, 0, 0);
+
+function Harness({ sched, toasts = [] }) {
   const [, setV] = useState(0);
   const mutate = (fn) => { const r = fn(sched); setV((v) => v + 1); return r; };
-  return <RoutinesEditor sched={sched} mutate={mutate} weekStart={WS} />;
+  return (
+    <RoutinesEditor
+      sched={sched} mutate={mutate} weekStart={WS} now={NOW}
+      showToast={(m) => toasts.push(m)}
+    />
+  );
 }
 
 const LAUNDRY_STEPS = [
@@ -206,5 +214,145 @@ describe('routineMeta', () => {
   it('counts travel into both totals', () => {
     expect(routineMeta({ travelMin: 15, steps: [{ label: 'gym', kind: 'active', durationMin: 45 }] }))
       .toBe('1 touchpoint · 1h start to finish · 1h of your attention');
+  });
+});
+
+describe('Add to the calendar — the Cabana is where a run starts', () => {
+  it('SUGGESTS a start, names every touchpoint, and writes nothing if declined', () => {
+    const s = withLaundry();
+    const asked = [];
+    vi.spyOn(window, 'confirm').mockImplementation((m) => { asked.push(m); return false; });
+    render(<Harness sched={s} />);
+    fireEvent.click(screen.getByLabelText('Edit routine Laundry'));
+    fireEvent.click(screen.getByLabelText('Add Laundry to the calendar'));
+
+    expect(asked.length).toBe(1);
+    // eslint-disable-next-line no-console
+    console.log(`
+ADD-TO-CALENDAR CONFIRM:
+${asked[0]}
+`);
+    // It must name the BLOCKS, not just the total — that is what makes it
+    // something you can agree to (§3).
+    expect(asked[0]).toMatch(/load/);
+    expect(asked[0]).toMatch(/\d{2}:\d{2}/);
+    expect(asked[0]).toMatch(/of it yours/);
+    expect(s.routineInstances.length).toBe(0); // declined -> nothing written
+    expect(s.tasks.length).toBe(0);
+  });
+
+  it('accepting lays the chain down and says so', () => {
+    const s = withLaundry();
+    const toasts = [];
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    render(<Harness sched={s} toasts={toasts} />);
+    fireEvent.click(screen.getByLabelText('Edit routine Laundry'));
+    fireEvent.click(screen.getByLabelText('Add Laundry to the calendar'));
+
+    expect(s.routineInstances.length).toBe(1);
+    expect(s.touchpointsFor(s.routineInstances[0].id).length).toBe(3); // waits are not tasks
+    // eslint-disable-next-line no-console
+    console.log(`
+TOAST: ${toasts[0]}
+`);
+    expect(toasts[0]).toMatch(/3 touchpoints/);
+  });
+
+  it('says so plainly when there is no room, rather than inventing a start', () => {
+    const s = withLaundry();
+    // Fill the next week solid.
+    for (let d = 0; d < 8; d += 1) {
+      const from = new Date(WS); from.setDate(from.getDate() + d); from.setHours(0, 0, 0, 0);
+      const to = new Date(from); to.setDate(to.getDate() + 1);
+      s.addFixed({ title: `solid ${d}`, startTime: from, endTime: to });
+    }
+    const toasts = [];
+    const asked = [];
+    vi.spyOn(window, 'confirm').mockImplementation((m) => { asked.push(m); return true; });
+    render(<Harness sched={s} toasts={toasts} />);
+    fireEvent.click(screen.getByLabelText('Edit routine Laundry'));
+    fireEvent.click(screen.getByLabelText('Add Laundry to the calendar'));
+
+    expect(asked.length).toBe(0); // nothing to consent to
+    expect(toasts[0]).toMatch(/No room for Laundry/);
+    expect(s.routineInstances.length).toBe(0);
+  });
+});
+
+describe('typing a routine name into Add task ASKS', () => {
+  const openAdd = (s, onRunRoutine) => {
+    function H() {
+      const [, setV] = useState(0);
+      const mutate = (fn) => { const r = fn(s); setV((v) => v + 1); return r; };
+      return (
+        <AddTaskPanel
+          sched={s} mutate={mutate} weekStart={WS} onClose={() => {}}
+          showToast={() => {}} onJump={() => {}}
+          onRunRoutine={onRunRoutine}
+        />
+      );
+    }
+    render(<H />);
+  };
+  const type = (v) => fireEvent.change(document.querySelector('input.input'), { target: { value: v } });
+  const add = () => fireEvent.click(document.querySelector('button.btn.cta'));
+
+  it('offers the routine when the name matches EXACTLY', () => {
+    const s = withLaundry();
+    const ran = [];
+    const asked = [];
+    vi.spyOn(window, 'confirm').mockImplementation((m) => { asked.push(m); return true; });
+    openAdd(s, (r) => ran.push(r.label));
+    type('Laundry');
+    add();
+    // eslint-disable-next-line no-console
+    console.log(`\nADD-TASK ASK:\n${asked[0]}\n`);
+    expect(asked.length).toBe(1);
+    expect(asked[0]).toMatch(/is a routine/);
+    expect(ran).toEqual(['Laundry']);
+    // It ran the routine INSTEAD of making a bare task.
+    expect(s.tasks.filter((t) => t.title === 'Laundry').length).toBe(0);
+  });
+
+  it('matches case- and space-insensitively — the same intent', () => {
+    const s = withLaundry();
+    const ran = [];
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    openAdd(s, (r) => ran.push(r.label));
+    type('  laundry ');
+    add();
+    expect(ran).toEqual(['Laundry']);
+  });
+
+  it('DECLINING adds the ordinary task — declining is a real answer', () => {
+    const s = withLaundry();
+    const ran = [];
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    openAdd(s, (r) => ran.push(r.label));
+    type('Laundry');
+    add();
+    expect(ran).toEqual([]);
+    expect(s.tasks.filter((t) => t.title === 'Laundry').length).toBe(1);
+  });
+
+  it('says NOTHING for a name that is not a routine', () => {
+    const s = withLaundry();
+    const asked = [];
+    vi.spyOn(window, 'confirm').mockImplementation((m) => { asked.push(m); return true; });
+    openAdd(s, () => {});
+    type('Call plumber');
+    add();
+    expect(asked.length).toBe(0);
+    expect(s.tasks.filter((t) => t.title === 'Call plumber').length).toBe(1);
+  });
+
+  it('never matches a STEP name — the procedure is the unit', () => {
+    const s = withLaundry();
+    const asked = [];
+    vi.spyOn(window, 'confirm').mockImplementation((m) => { asked.push(m); return true; });
+    openAdd(s, () => {});
+    type('switch');
+    add();
+    expect(asked.length).toBe(0);
   });
 });

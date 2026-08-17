@@ -14,8 +14,11 @@
 // Derived, not stored: an activity that loses its last step honestly stops
 // being a routine.
 import { useState } from 'react';
-import { weekStart as weekStartOf, addDays } from '../../core/index.js';
-import { fmtDur } from '../format.js';
+import {
+  weekStart as weekStartOf, addDays, instantiateRoutine, suggestRoutineStart,
+  RoutineInstance,
+} from '../../core/index.js';
+import { fmtDur, MONTHS, DAY_NAMES } from '../format.js';
 import TagEditor, { tagsInUse } from './TagEditor.jsx';
 import { DrillList, DrillEditor, DrillRow, Field } from './Drill.jsx';
 import RoutineSteps from './RoutineSteps.jsx';
@@ -32,7 +35,22 @@ export function routineMeta(a) {
     + ` · ${fmtDur(attention)} of your attention`;
 }
 
-export default function RoutinesEditor({ sched, mutate, weekStart }) {
+/**
+ * "Mon 7 Sep 08:00  load · 2m" — one line per touchpoint, for the confirm.
+ *
+ * ⚠️ The LABEL is not decoration. §3 requires the preview to name each BLOCK,
+ * and the first version printed only times — so the confirm listed three
+ * moments with no way to tell the load from the fold. Caught by its own test.
+ */
+export function touchpointLine(t) {
+  const d = t.startTime || t.from;
+  const mins = t.getDuration ? t.getDuration() : Math.round((t.to - t.from) / 60000);
+  return `${DAY_NAMES[(d.getDay() + 6) % 7]} ${d.getDate()} ${MONTHS[d.getMonth()]}`
+    + ` ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+    + `  ${t.label || 'step'} · ${fmtDur(mins)}`;
+}
+
+export default function RoutinesEditor({ sched, mutate, weekStart, now, showToast }) {
   const [editingId, setEditingId] = useState(null);
   // Derived — a routine IS an activity with steps. No parallel collection to
   // drift, and dropping the last step honestly stops it being a routine.
@@ -52,6 +70,45 @@ export default function RoutinesEditor({ sched, mutate, weekStart }) {
   };
   const patch = (id, changes) => mutate((s) => s.updateActivity(id, changes));
   const remove = (id) => mutate((s) => s.removeActivity(id));
+  const clock = now || new Date();
+
+  /**
+   * Put a run on the calendar. The Cabana is where this lives (the user's
+   * call) — you author the procedure and start it from the same place.
+   *
+   * The engine SUGGESTS a start (Decision 3) and the confirm names every
+   * touchpoint before anything is written, the same plan-then-apply shape the
+   * blocker conversion and "Lay out this week" already use on this page. Then
+   * you drag to place if the suggestion is not what you wanted: the touchpoints
+   * are ordinary fixed anchors, and R-1 says your hand outranks the suggestion.
+   */
+  const addToCalendar = (a) => {
+    const when = suggestRoutineStart(sched, a, clock, { withinDays: 6 });
+    if (!when) {
+      // A suggestion may honestly have none, and saying so beats inventing one.
+      showToast(`No room for ${a.label} in the next week`);
+      return;
+    }
+    // Preview through the REAL engine on a throwaway instance, so the confirm
+    // names the actual blocks rather than a second guess at them.
+    const probe = RoutineInstance.fromActivity(a, when);
+    const lines = probe.offsets().map((o) => `      ${touchpointLine({
+      label: o.label,
+      from: new Date(when.getTime() + o.offsetMin * 60000),
+      to: new Date(when.getTime() + (o.offsetMin + o.durationMin) * 60000),
+    })}`);
+    const ok = window.confirm(
+      `Start ${a.label}?\n\n${lines.join('\n')}\n\n`
+      + `${fmtDur(probe.spanMin)} start to finish, ${fmtDur(probe.attentionMin)} of it yours.\n`
+      + 'The gaps stay free — drag any block afterwards and the rest follows.',
+    );
+    if (!ok) return;
+    const r = mutate((s) => instantiateRoutine(s, a, when));
+    showToast(
+      `${a.label} started · ${r.touchpoints.length} touchpoint${r.touchpoints.length === 1 ? '' : 's'}`
+      + (r.clashes.length ? ` · ${r.clashes.length} overlap${r.clashes.length === 1 ? '' : 's'}` : ''),
+    );
+  };
 
   const editing = routines.find((a) => a.id === editingId) || null;
 
@@ -75,6 +132,11 @@ export default function RoutinesEditor({ sched, mutate, weekStart }) {
         removeLabel="remove routine"
         removeAria={`Remove routine ${a.label}`}
       >
+        <div className="chest drillactions" style={{ marginBottom: 8 }}>
+          <button className="btn2" onClick={() => addToCalendar(a)} aria-label={`Add ${a.label} to the calendar`}>
+            Add to the calendar
+          </button>
+        </div>
         <Field label="name">
           <input
             className="control grow"

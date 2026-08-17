@@ -77,7 +77,7 @@ export function whenNote(key, now = new Date()) {
   return `${DAY_FULL[weekdayIndex(d)]} · ${dist}`;
 }
 
-export default function AddTaskPanel({ sched, mutate, weekStart, onClose, showToast, onJump }) {
+export default function AddTaskPanel({ sched, mutate, weekStart, onClose, showToast, onJump, onRunRoutine }) {
   const [type, setType] = useState('flexible');
   const [title, setTitle] = useState('');
   const [dur, setDur] = useState(60);
@@ -118,8 +118,43 @@ export default function AddTaskPanel({ sched, mutate, weekStart, onClose, showTo
     && (!showDate || !!dateStr)
     && !(type === 'fixed' && !repeats && !start); // a fixed task without a time isn't fixed
 
+  /**
+   * A task whose name IS a routine's name is probably that routine.
+   *
+   * ⚠️ IT ASKS. Typing "Laundry" and pressing add offers to run the procedure
+   * instead of making a bare task — and then does whichever you say. The user's
+   * shape (2026-08-17): "when you click add it asks if this is part of a
+   * routine." Never automatic: a name collision is a guess, and this app does
+   * not act on guesses (the same offer-never-impose rule as the ritual, the
+   * rollover and D-3).
+   *
+   * Matched on the ROUTINE'S OWN NAME, exactly — "a part of a procedure is
+   * nothing without the procedure itself", so a step name is never matched.
+   * Case- and space-insensitive, because "laundry" and "Laundry " are the same
+   * intent; nothing looser, because a fuzzy match would fire on work that has
+   * nothing to do with it.
+   */
+  const matchingRoutine = (name) => {
+    const key = String(name || '').trim().toLowerCase();
+    if (!key) return null;
+    return (sched.activities || []).find((a) => a.isRoutine && a.label.trim().toLowerCase() === key) || null;
+  };
+
   const submit = () => {
     if (!canSubmit) return;
+    const routine = matchingRoutine(title);
+    if (routine && onRunRoutine) {
+      const span = routine.steps.reduce((n, x) => n + x.durationMin, routine.travelMin || 0);
+      const touch = routine.steps.filter((x) => x.kind === 'active').length;
+      const hrs = span >= 60 ? `${Math.floor(span / 60)}h${span % 60 ? ` ${span % 60}m` : ''}` : `${span}m`;
+      const ok = window.confirm(
+        `"${routine.label}" is a routine — ${touch} step${touch === 1 ? '' : 's'} `
+        + `over ${hrs}, with the waits left free.\n\n`
+        + 'Run the routine? Cancel to add it as an ordinary task instead.',
+      );
+      if (ok) { onRunRoutine(routine); onClose(); return; }
+      // Declining is a real answer: fall through and add the plain task.
+    }
     const now = new Date();
     const data = {
       title: title.trim(),

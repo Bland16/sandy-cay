@@ -121,7 +121,7 @@ export default function Cabana({ sched, mutate, weekStart, onBack, onReplace, on
         {/* Routines — author a procedure with waits in it (design/ROUTINES.md
             R-C). The procedure is the unit: named as a whole, created and
             deleted as a whole, and a step only ever exists inside one. */}
-        <RoutinesEditor sched={sched} mutate={mutate} weekStart={weekStart} />
+        <RoutinesEditor sched={sched} mutate={mutate} weekStart={weekStart} showToast={showToast} />
 
         {/* Zones — the shared drill-in editor (design/EDITOR-REDESIGN.md). */}
         <ZonesEditor sched={sched} mutate={mutate} />
