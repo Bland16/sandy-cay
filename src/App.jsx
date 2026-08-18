@@ -72,7 +72,16 @@ export default function App() {
   // rather than in an effect, for the same reason the viewport is: settling on
   // the stored zoom a frame later is a visible flash of the wrong grid.
   const [zoom, setZoom] = useState(loadZoom);
+  // The transient value a pinch is currently at. `zoom` stays a RUNG at all
+  // times — this is the only thing that is allowed to be 2.37×, it lives only
+  // while two fingers are down, and it is deliberately never persisted (D-6:
+  // the gesture tracks live, then settles on a rung).
+  const [pinch, setPinch] = useState(null);
+  const gridZoom = pinch ?? zoom;
   useEffect(() => { saveZoom(zoom); }, [zoom]);
+
+  const onZoomPreview = useCallback((z) => setPinch(z), []);
+  const onZoomCommit = useCallback((rung) => { setPinch(null); setZoom(rung); }, []);
 
   // `+` / `-` / `0`. The phone gets pinch instead (GRID-ZOOM §5.2) — it has no
   // keyboard to press.
@@ -513,7 +522,9 @@ export default function App() {
                   onToggleComplete={toggleComplete}
                   interaction={interaction}
                   truncations={truncations}
-                  zoom={zoom}
+                  zoom={gridZoom}
+                  onZoomPreview={onZoomPreview}
+                  onZoomCommit={onZoomCommit}
                 />
               ) : (
                 <div className="weekwrap">
@@ -535,7 +546,9 @@ export default function App() {
                     notice={notice}
                     /* Tablet: Mon–Fri here, the weekend in the drawer (§11). */
                     days={viewport === 'tablet' ? WEEKDAYS : undefined}
-                    zoom={zoom}
+                    zoom={gridZoom}
+                    onZoomPreview={onZoomPreview}
+                    onZoomCommit={onZoomCommit}
                   />
                   {viewport === 'tablet' && (
                     <WeekendDrawer
@@ -555,7 +568,9 @@ export default function App() {
                          columns zoom with the weekdays. They must: a drag can
                          cross from Friday into the drawer, and two columns at
                          different scales would mis-place that drop. */
-                      zoom={zoom}
+                      zoom={gridZoom}
+                      onZoomPreview={onZoomPreview}
+                      onZoomCommit={onZoomCommit}
                     />
                   )}
                 </div>

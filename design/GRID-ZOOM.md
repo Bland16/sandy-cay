@@ -28,7 +28,7 @@ give the hour more pixels and the short block can stop pretending.
 | **A** | Which interaction? | **Both, split by device.** First answer was dealer's choice; then, on seeing §5: *"Phone should get pinch to zoom."* So: **keyboard where there is a keyboard, pinch on the phone.** §5. |
 | **B** | Week and day view share a zoom level? | **Moot as asked** — *"There is no day view anymore, it was replaced by daynotes, no way to get to it."* See the correction below. Resolved in §3 as one multiplier over each surface's own base. |
 | **C** | What happens to the 26px floor? | **Drop the floor as you zoom in.** Formula is **ZOOM D-1**, §4. |
-| **D** | How far, in what steps? | **Discrete steps, up to ~4×.** Rungs in §3. |
+| **D** | How far, in what steps? | **Discrete steps.** First answered "up to ~4×"; **revised to ~8× on 2026-08-17** after real use — 4× is not enough to see a 5-minute task. Rungs and the evidence in §3. |
 
 ### ⚠️ Correction to B, checked in the code rather than assumed
 
@@ -58,19 +58,43 @@ pixel on both surfaces is exactly what it is today, so the feature ships with a
 provable no-op at rest. A shared absolute would silently redensify the day view
 on first run.
 
-**Five rungs, `z ∈ {1, 1.4, 2, 2.8, 4}`** — geometric, so each press is the same
-proportional jump.
+**Seven rungs, `z ∈ {1, 1.4, 2, 2.8, 4, 5.6, 8}`** — geometric, so each press is
+the same proportional jump.
 
-| z | week px/hr | day px/hr | a 60m block | a 15m block | a 2m block (true) |
-|---|---|---|---|---|---|
-| 1 | 34 | 42 | 34px | 8.5px | 1.1px |
-| 1.4 | 48 | 59 | 48px | 12px | 1.6px |
-| 2 | 68 | 84 | 68px | 17px | 2.3px |
-| 2.8 | 95 | 118 | 95px | 24px | 3.2px |
-| 4 | 136 | 168 | 136px | 34px | 4.5px |
+| z | week px/hr | day px/hr | a 60m block | a 15m block | a 5m block | a 2m block |
+|---|---|---|---|---|---|---|
+| 1 | 34 | 42 | 34px | 8.5px | 2.8px | 1.1px |
+| 1.4 | 48 | 59 | 48px | 12px | 4.0px | 1.6px |
+| 2 | 68 | 84 | 68px | 17px | 5.7px | 2.3px |
+| 2.8 | 95 | 118 | 95px | 24px | 7.9px | 3.2px |
+| 4 | 136 | 168 | 136px | 34px | 11.3px | 4.5px |
+| **5.6** | **190** | **235** | 190px | 47px | **15.8px** | 6.3px |
+| **8** | **272** | **336** | 272px | 68px | **22.7px** | 9.1px |
 
-At 4× the whole 24-hour column is ~3260px. That is a lot of scrolling and it is
-the cost of the thing being asked for.
+### ⚠️ The top two rungs were added on evidence, 2026-08-17 — do not trim them back
+
+The range was first decided as "discrete steps, up to ~4×". Real use overturned
+it: *"we still can't see 5 minute tasks."* The numbers agree, and this is the
+entire reason 5.6 and 8 exist:
+
+| task | honest from | at 4× | at 8× |
+|---|---|---|---|
+| 15m | **2×** | 34px | 68px |
+| 10m | **2.8×** | 22.7px | 45.3px |
+| 5m | **5.6×** | 11.3px — *below the 12px floor, so still drawn at it* | 22.7px |
+| 2m | never | 4.5px | 9.1px (floored to 12, reads as 2.6 min) |
+
+"Honest" means a block's true height clears `floorPxFor`, so it is drawn at its
+real length rather than at the floor. **At 4× a 5-minute task is 11.3px against a
+12px floor** — it misses by seven tenths of a pixel, which is exactly the
+complaint. 5.6× is the first rung at which it tells the truth.
+
+A 2-minute block never fully clears the floor at any rung, but by 8× its apparent
+length is 2.6 minutes rather than 46 — the lie is down to a rounding error.
+Chasing it further would need a rung nobody would scroll.
+
+**The cost, accepted knowingly:** a 24-hour column is ~3260px at 4× and ~6530px
+at 8×. That is a lot of scrolling, and it is the price of the thing asked for.
 
 **Rounding rule:** compute `pxh` **once**, at the top of the component, and pass
 that one number to every consumer *including* `data-pxh`. Never recompute

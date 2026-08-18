@@ -1,17 +1,22 @@
 // DayView — single day, replaces the main area with its own ✕ back control
 // (per the B+C layout: day view is a main-area mode, not the panel).
+import { useRef } from 'react';
 import { addDays, hhmmToMinutes } from '../../core/index.js';
 import { DAY_FULL, DAY_KEYS, MONTHS, hourLabel, gridBounds } from '../format.js';
 import { columnItems, layoutDay, layoutRemainders } from '../layout.js';
 import { BASE_PXH_DAY, DEFAULT_ZOOM, pxhFor, floorPxFor } from '../zoom.js';
+import { usePinchZoom } from '../usePinchZoom.js';
 import TaskCard from './TaskCard.jsx';
 import { DayNoteList } from './DayNotes.jsx';
 import Icon from '../Icon.jsx';
 
 export default function DayView({
   sched, weekStart, dayIndex, onBack, onOpenTask, onToggleComplete, interaction, truncations,
-  zoom = DEFAULT_ZOOM,
+  zoom = DEFAULT_ZOOM, onZoomPreview, onZoomCommit,
 }) {
+  // The phone's primary surface, and the one the user asked pinch for.
+  const gridRef = useRef(null);
+  usePinchZoom(gridRef, { zoom, onPreview: onZoomPreview, onCommit: onZoomCommit });
   // The day view keeps its OWN base (42px/hour, denser than the week's 34
   // because it has one column to spend the width on). Zoom is a multiplier over
   // that, so at 1× this renders exactly as it always did.
@@ -59,7 +64,7 @@ export default function DayView({
           header to see them all", and on a phone the day view is the whole
           layout, so it is the only place the notes can be read in full. */}
       <DayNoteList sched={sched} date={date} />
-      <div className="dvgrid">
+      <div className="dvgrid" ref={gridRef}>
         <div className="axis" style={{ position: 'relative' }}>
           {hours.map((h) => <div className="h" key={h} style={{ height: pxh }}><span>{hourLabel(h)}</span></div>)}
         </div>

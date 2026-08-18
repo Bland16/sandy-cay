@@ -9,15 +9,16 @@
 // number `data-pxh` reports back, at every rung. `design/probes/probe-grid-zoom.mjs`
 // prints the rest.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, cleanup, screen, fireEvent } from '@testing-library/react';
+import { render, cleanup, screen, fireEvent, act } from '@testing-library/react';
 import App from '../src/App.jsx';
 import { Schedule, defaultConfig, weekStart as weekStartOf, addDays } from '../src/core/index.js';
 import { STORAGE_KEY } from '../src/ui/useEngine.js';
 import { layoutDay, columnItems } from '../src/ui/layout.js';
 import {
   ZOOM_LEVELS, DEFAULT_ZOOM, BASE_PXH_WEEK, BASE_PXH_DAY,
-  pxhFor, floorPxFor, zoomIn, zoomOut, loadZoom, saveZoom,
+  pxhFor, floorPxFor, zoomIn, zoomOut, loadZoom, saveZoom, clampZoom, nearestRung,
 } from '../src/ui/zoom.js';
+import { pinchZoomFor } from '../src/ui/usePinchZoom.js';
 
 const NOW = new Date(2026, 6, 15, 10, 0, 0, 0); // Wed 15 Jul 2026
 const thisWeek = () => weekStartOf(NOW);
@@ -39,6 +40,30 @@ const seedWeek = () => {
 
 const columns = () => [...document.querySelectorAll('[data-dropzone]')];
 const pxhOf = (col) => Number(col.dataset.pxh);
+
+/**
+ * ⚠️ jsdom has no PointerEvent, and `fireEvent.pointerDown(el, {pointerType})`
+ * silently DROPS the property — so the code under test takes the mouse path and
+ * the test passes while proving nothing. Same helper shape as ui-drag and
+ * ui-responsive, for the same reason.
+ */
+const touchEvent = (type, { x = 100, y = 100, id = 1, kind = 'touch' } = {}) => {
+  const e = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y });
+  Object.defineProperty(e, 'pointerId', { value: id });
+  Object.defineProperty(e, 'pointerType', { value: kind });
+  return e;
+};
+
+/** Phone: the day view is the layout, and the surface pinch was asked for. */
+const setPhone = () => {
+  window.innerWidth = 390;
+  window.matchMedia = (query) => ({
+    matches: /max-width:\s*767px/.test(query) && !/min-width/.test(query),
+    media: query,
+    addEventListener() {}, removeEventListener() {},
+    addListener() {}, removeListener() {},
+  });
+};
 
 beforeEach(() => {
   window.localStorage.clear();
@@ -75,6 +100,32 @@ describe('the zoom model', () => {
     expect(floorPxFor(4)).toBe(12);
   });
 
+  it('zooms far enough to SEE A 5-MINUTE TASK — the reason the top rungs exist', () => {
+    // The user's report was "we still can't see 5 minute tasks" at 4×, and the
+    // arithmetic agreed: 136px/hour × 5min = 11.3px, which is under the 12px
+    // floor, so it was drawn AT the floor and still overstating its length.
+    //
+    // This locks the requirement rather than the rung list, so trimming the
+    // ladder back to 4× fails here with the reason attached — the numbers are
+    // data, the requirement is not.
+    const honestAt = (durMin) => ZOOM_LEVELS.find((z) => {
+      const pxh = pxhFor(BASE_PXH_WEEK, z);
+      return (durMin / 60) * pxh >= floorPxFor(z);
+    });
+
+    // 4× is NOT enough for five minutes. That is the whole finding.
+    expect((5 / 60) * pxhFor(BASE_PXH_WEEK, 4)).toBeLessThan(floorPxFor(4));
+    expect(honestAt(5)).toBe(5.6);
+
+    // And at the top rung it is comfortably readable, not merely non-zero.
+    const top = ZOOM_LEVELS[ZOOM_LEVELS.length - 1];
+    expect((5 / 60) * pxhFor(BASE_PXH_WEEK, top)).toBeGreaterThan(20);
+
+    // The rungs it already handled must not regress.
+    expect(honestAt(15)).toBe(2);
+    expect(honestAt(10)).toBe(2.8);
+  });
+
   it('shrinks the floor\'s LIE as it zooms in', () => {
     // The floor buys visibility by overstating length, and the overstatement is
     // measured in apparent minutes, not pixels.
@@ -91,18 +142,20 @@ describe('the zoom model', () => {
     expect(ZOOM_LEVELS[0]).toBe(1);
 
     // ⚠️ Assert the STEP, not just where a loop ends up. An earlier version of
-    // this test pressed + nine times and expected 4 — which a wrapping zoomIn
-    // also satisfies, because nine steps through five rungs happens to land back
-    // on the top one. It passed against a broken implementation. Caught by
-    // mutation, which is the only reason it is written this way.
-    expect(zoomIn(4)).toBe(4);
+    // this test pressed + nine times and expected the top rung — which a
+    // WRAPPING zoomIn also satisfies whenever the press count lands back on it.
+    // It passed against a broken implementation. Caught by mutation, which is
+    // the only reason it is written this way. Derived from the ladder, not
+    // hardcoded, so adding rungs cannot quietly make it vacuous again.
+    const top = ZOOM_LEVELS[ZOOM_LEVELS.length - 1];
+    expect(zoomIn(top)).toBe(top);
     expect(zoomOut(1)).toBe(1);
 
     // And the whole ladder, in order, both ways.
     const up = [1];
     for (let i = 0; i < ZOOM_LEVELS.length; i += 1) up.push(zoomIn(up[up.length - 1]));
-    expect(up).toEqual([...ZOOM_LEVELS, 4]);
-    const down = [4];
+    expect(up).toEqual([...ZOOM_LEVELS, top]);
+    const down = [top];
     for (let i = 0; i < ZOOM_LEVELS.length; i += 1) down.push(zoomOut(down[down.length - 1]));
     expect(down).toEqual([...[...ZOOM_LEVELS].reverse(), 1]);
   });
@@ -286,6 +339,75 @@ describe('D-5 — the span is the truth, the minimum is a drawn height', () => {
     expect(laid[0].style.height).toBe('34px');
     expect(laid[0].style.width).toBe('calc(100% - 6px)');
     expect(laid[1].style.width).toBe('calc(100% - 6px)');
+  });
+});
+
+describe('pinch (D-6/D-7) — the half that is provable without a touchscreen', () => {
+  // ⚠️ jsdom has no touch, no PointerEvent and no layout. These prove the maths
+  // and the bookkeeping ONLY. Whether pinch feels right against the 450ms
+  // long-press is a device question and went to the user as a checklist.
+  it('scales from the finger distance, and clamps to the end rungs', () => {
+    expect(pinchZoomFor(1, 100, 200)).toBeCloseTo(2, 5); // fingers twice as far
+    expect(pinchZoomFor(2, 100, 50)).toBeCloseTo(1, 5); // half as far
+    expect(pinchZoomFor(1, 100, 1000)).toBe(ZOOM_LEVELS[ZOOM_LEVELS.length - 1]); // never past the top
+    expect(pinchZoomFor(4, 100, 1)).toBe(1); // never below 1× (D-3)
+    expect(pinchZoomFor(2, 0, 100)).toBe(2); // no division by zero
+  });
+
+  it('settles on the NEAREST rung, so a stored zoom is always a rung', () => {
+    expect(nearestRung(1.05)).toBe(1);
+    expect(nearestRung(1.6)).toBe(1.4);
+    expect(nearestRung(2.5)).toBe(2.8);
+    expect(nearestRung(3.9)).toBe(4);
+    // Which is what keeps loadZoom's whitelist honest after a pinch.
+    saveZoom(nearestRung(2.37));
+    expect(ZOOM_LEVELS).toContain(loadZoom());
+  });
+
+  it('renders a mid-gesture value rather than snapping it back to 1×', () => {
+    // The committed zoom is always a rung, but DURING a pinch the grid is
+    // legitimately at 2.37×. Running that through the stored-value whitelist
+    // would snap every intermediate frame to 1× and the gesture would judder.
+    expect(pxhFor(BASE_PXH_WEEK, 2.37)).toBe(Math.round(34 * 2.37));
+    expect(clampZoom(2.37)).toBeCloseTo(2.37, 5);
+    expect(clampZoom(NaN)).toBe(1);
+  });
+
+  it('a second finger abandons a LIVE drag, through the existing cancel path', () => {
+    // Two fingers can only mean zoom, and a pinch that quietly moved a task is
+    // the one failure here that corrupts data rather than merely looking wrong.
+    //
+    // ⚠️ An earlier version of this test dispatched `pointercancel` itself and
+    // checked that a listener fired — which tests the DOM, not this code, and
+    // passed with the cancel removed from `usePinchZoom` entirely. Caught by
+    // mutation. It now drives the real gesture: hold to arm a drag, then land a
+    // second finger, and assert the drag is gone.
+    setPhone();
+    seedWeek();
+    render(<App />);
+
+    const card = document.querySelector('.dayview .card');
+    fireEvent(card, touchEvent('pointerdown', { x: 100, y: 100, id: 1 }));
+    act(() => { vi.advanceTimersByTime(500); }); // past LONG_PRESS_MS
+    expect(document.body.classList.contains('sc-dragging')).toBe(true);
+
+    // The second finger arrives on the grid the gesture lives on.
+    const grid = document.querySelector('.dvgrid');
+    fireEvent(grid, touchEvent('pointerdown', { x: 200, y: 300, id: 2 }));
+
+    expect(document.body.classList.contains('sc-dragging')).toBe(false);
+  });
+
+  it('one finger is never a pinch — it must still be able to arm a drag', () => {
+    // The mirror of the rule above: if a single pointerdown cancelled drags,
+    // touch drag would be dead on the phone entirely.
+    setPhone();
+    seedWeek();
+    render(<App />);
+    const card = document.querySelector('.dayview .card');
+    fireEvent(card, touchEvent('pointerdown', { x: 100, y: 100, id: 1 }));
+    act(() => { vi.advanceTimersByTime(500); });
+    expect(document.body.classList.contains('sc-dragging')).toBe(true);
   });
 });
 

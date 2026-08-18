@@ -9,8 +9,21 @@
 // redensify one of the two the moment the feature shipped; with a multiplier,
 // `z === 1` is an exact no-op on both — which is what makes the change provable.
 
-/** The rungs. Geometric, so every press is the same proportional jump. */
-export const ZOOM_LEVELS = [1, 1.4, 2, 2.8, 4];
+/**
+ * The rungs. Geometric, so every press is the same proportional jump.
+ *
+ * ⚠️ THE TOP TWO EXIST FOR A MEASURED REASON — do not trim them back to 4×.
+ * The user's report was "we still can't see 5 minute tasks", and the numbers
+ * agree: at 4× (136px/hour) a 5-minute task is 11.3px, which is BELOW the 12px
+ * floor — so it is drawn at the floor and is still lying about its length. It
+ * takes 5.6× before a 5-minute block clears the floor and renders at its true
+ * size, and 8× before it is comfortably readable at 23px.
+ *
+ *     5-minute task:   4× -> 11.3px (floored to 12)   5.6× -> 15.8px   8× -> 22.7px
+ *
+ * The cost, accepted knowingly: a 24-hour column is ~6500px tall at 8×.
+ */
+export const ZOOM_LEVELS = [1, 1.4, 2, 2.8, 4, 5.6, 8];
 export const DEFAULT_ZOOM = 1;
 
 /**
@@ -22,9 +35,31 @@ export const BASE_PXH_DAY = 42;
 
 const KEY = 'sandycay.gridZoom';
 
-/** A stored value is only honoured if it is one of the rungs we actually have. */
+/** A STORED value is only honoured if it is one of the rungs we actually have. */
 function legal(z) {
   return ZOOM_LEVELS.includes(z) ? z : DEFAULT_ZOOM;
+}
+
+const MIN_ZOOM = ZOOM_LEVELS[0];
+const MAX_ZOOM = ZOOM_LEVELS[ZOOM_LEVELS.length - 1];
+
+/**
+ * A RENDERED value may be anything between the end rungs.
+ *
+ * Pinch tracks the fingers continuously and only settles on a rung when they
+ * lift (GRID-ZOOM D-6), so mid-gesture the grid is legitimately at 2.37×. That
+ * is why rendering clamps rather than reaching for `legal` — running a live
+ * gesture through a whitelist would snap every intermediate frame back to 1×.
+ */
+export function clampZoom(z) {
+  if (!Number.isFinite(z)) return DEFAULT_ZOOM;
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
+}
+
+/** Where a continuous gesture settles when the fingers lift. */
+export function nearestRung(z) {
+  const c = clampZoom(z);
+  return ZOOM_LEVELS.reduce((best, r) => (Math.abs(r - c) < Math.abs(best - c) ? r : best), ZOOM_LEVELS[0]);
 }
 
 /**
@@ -36,7 +71,7 @@ function legal(z) {
  * is completely silent — see `useCardInteraction.js:64`.
  */
 export function pxhFor(base, zoom) {
-  return Math.round(base * legal(zoom));
+  return Math.round(base * clampZoom(zoom));
 }
 
 /**
@@ -60,7 +95,7 @@ export function pxhFor(base, zoom) {
  * out to be awkward on a real screen, and nothing else moves with it.
  */
 export function floorPxFor(zoom) {
-  return Math.max(12, Math.round(26 / legal(zoom)));
+  return Math.max(12, Math.round(26 / clampZoom(zoom)));
 }
 
 /** The next rung in, saturating at the top. */

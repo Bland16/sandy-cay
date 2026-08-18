@@ -5,6 +5,7 @@ import { addDays, sameDay, hhmmToMinutes, dayStart, routineWaits } from '../../c
 import { DAY_NAMES, DAY_KEYS, hourLabel, gridBounds, windowForDay } from '../format.js';
 import { columnItems, layoutDay, layoutRemainders } from '../layout.js';
 import { BASE_PXH_WEEK, DEFAULT_ZOOM, pxhFor, floorPxFor } from '../zoom.js';
+import { usePinchZoom } from '../usePinchZoom.js';
 import TaskCard from './TaskCard.jsx';
 import { DayNoteBar } from './DayNotes.jsx';
 import Icon from '../Icon.jsx';
@@ -111,6 +112,7 @@ export default function WeekGrid({
   sched, weekStart, today, onOpenTask, onToggleComplete, onOpenDay, onDayMenu, onOpenNotes,
   notesDay = null, interaction, truncations, notice,
   days = [0, 1, 2, 3, 4, 5, 6], compactHeads = false, zoom = DEFAULT_ZOOM,
+  onZoomPreview, onZoomCommit,
 }) {
   // ONE value, computed once, used by every site below INCLUDING `data-pxh`.
   const pxh = pxhFor(BASE_PXH_WEEK, zoom);
@@ -162,6 +164,12 @@ export default function WeekGrid({
     el.scrollTop = (mid * pxh) / prevPxh.current - el.clientHeight / 2;
     prevPxh.current = pxh;
   }, [pxh]);
+
+  // Pinch to zoom, on the scroll wrapper (GRID-ZOOM §5.2). On tablet this
+  // component is rendered twice — the weekdays and the weekend drawer — so both
+  // carry the gesture, and because the zoom itself lives in App they stay in
+  // step. They must: a drag can cross from Friday into the drawer.
+  usePinchZoom(wrapRef, { zoom, onPreview: onZoomPreview, onCommit: onZoomCommit });
 
   return (
     <>

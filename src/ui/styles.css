@@ -166,6 +166,25 @@ body {
    scrolls so the columns never lose their labels. */
 /* Grows to the window instead of a fixed slice of it; the 24h day scrolls
    inside, and the footer stays put. */
+/* ⚠️ `touch-action: pan-x pan-y` is the pinch-to-zoom contract (GRID-ZOOM §5.2),
+   and every word of it is chosen:
+
+   - BOTH pan axes, not `pan-y`. The phone's week overview scrolls SIDEWAYS
+     (`.grid { min-width: … }` in the phone media query), so `pan-y` alone would
+     make the overview unscrollable horizontally.
+   - It omits `pinch-zoom`, which is what hands the two-finger gesture to us
+     instead of to the browser's page zoom. Page zoom still works everywhere
+     outside the grid.
+   - It is NOT `none`. Sharp edge #16: `none` on the cards made a phone's grid
+     swallow every gesture and the day became impossible to scroll. One finger
+     must still scroll, and with these values it does.
+
+   The cards need it too, because touch-action is resolved on the element the
+   touch STARTS on — and on a busy day the grid is mostly cards, so a pinch that
+   began on one would otherwise page-zoom instead. */
+.gridwrap, .dvgrid { touch-action: pan-x pan-y; }
+.gridwrap .card, .dvgrid .card { touch-action: pan-x pan-y; }
+
 .gridwrap { overflow: auto; flex: 1; min-height: 0; overscroll-behavior: contain; }
 
 /* past-week carry banner */

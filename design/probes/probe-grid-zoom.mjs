@@ -15,25 +15,41 @@ const seg = (min, startHour) => ({
 });
 
 console.log('=== 1. HONESTY: what a block of each length renders as ===');
-console.log('   (apparent = how long it LOOKS, = height / pxh * 60)\n');
+console.log('   (apparent = how long it LOOKS, = height / pxh * 60)');
+console.log('   A block is HONEST once its true height clears the floor.\n');
 for (const base of [BASE_PXH_WEEK, BASE_PXH_DAY]) {
   console.log(`-- ${base === BASE_PXH_WEEK ? 'WEEK GRID' : 'DAY VIEW'} (base ${base}px/hr) --`);
-  console.log('  z     pxh   floor |  2m card  looks like |  15m card looks like |  60m card');
+  console.log('  z     pxh floor |  2m card   as |  5m card   as |  15m card  as |  60m card');
   for (const z of ZOOM_LEVELS) {
     const pxh = pxhFor(base, z);
     const floor = floorPxFor(z);
-    const laid = layoutDay([seg(2, 9), seg(15, 12), seg(60, 15)], 5, pxh, floor);
+    const laid = layoutDay([seg(2, 9), seg(5, 11), seg(15, 13), seg(60, 15)], 5, pxh, floor);
     const h = (i) => parseFloat(laid[i].style.height);
     const app = (i) => (h(i) / pxh) * 60;
+    const cell = (i) => `${h(i).toFixed(1).padStart(6)}px ${app(i).toFixed(1).padStart(5)}m`;
     console.log(
-      `  ${String(z).padEnd(4)}  ${String(pxh).padStart(3)}   ${String(floor).padStart(3)}   |`
-      + ` ${h(0).toFixed(1).padStart(6)}px ${app(0).toFixed(1).padStart(7)}m |`
-      + ` ${h(1).toFixed(1).padStart(6)}px ${app(1).toFixed(1).padStart(7)}m |`
-      + ` ${h(2).toFixed(1).padStart(6)}px`,
+      `  ${String(z).padEnd(4)}  ${String(pxh).padStart(3)}  ${String(floor).padStart(3)}  |`
+      + ` ${cell(0)} | ${cell(1)} | ${cell(2)} | ${h(3).toFixed(0).padStart(5)}px`,
     );
   }
   console.log('');
 }
+
+console.log('=== 1b. THE 5-MINUTE TASK: "we still can\'t see 5 minute tasks" ===');
+console.log('   The rung at which a block stops being drawn at the floor and');
+console.log('   starts telling the truth about its own length.\n');
+for (const dur of [2, 5, 10, 15]) {
+  const rungs = ZOOM_LEVELS.map((z) => {
+    const pxh = pxhFor(BASE_PXH_WEEK, z);
+    return { z, true: (dur / 60) * pxh, floor: floorPxFor(z) };
+  });
+  const first = rungs.find((r) => r.true >= r.floor);
+  console.log(`   ${String(dur).padStart(2)}m task -> honest from `
+    + `${first ? `${first.z}x (${first.true.toFixed(1)}px)` : 'never, at any rung'}`
+    + `   | at 4x: ${rungs[4].true.toFixed(1)}px vs floor ${rungs[4].floor}`
+    + `  | at 8x: ${rungs[rungs.length - 1].true.toFixed(1)}px`);
+}
+console.log('');
 
 console.log('=== 2. NO-OP AT 1x: both surfaces must be byte-identical to before ===');
 {
