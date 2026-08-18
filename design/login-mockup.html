@@ -205,18 +205,38 @@ img.px{image-rendering:pixelated;image-rendering:crisp-edges;display:block}
    one, never a diminished alternative — a guest is a real way to use this. And
    colour is not doing that work alone (§10): the words and the sprite say it. */
 .doors{display:grid;gap:var(--s3);margin-top:var(--s6)}
+/* ⚠️ SAME TWO-LAYER RULE AS THE PAPER, and for the same reason.
+   The scratchy edge is wanted — it is the spec's line language and it carries
+   the mood. What is NOT wanted is that scratch running over the label. So the
+   button's SURFACE (border, fill, drop shadow) is a filtered ::before, and the
+   sprite and words sit above it, crisp.
+   Texture on the surface, never on the type. */
 .door{
+  position:relative;isolation:isolate;
   display:flex;align-items:center;gap:var(--s4);width:100%;text-align:left;
   min-height:56px;                       /* comfortably past the 44px target */
   padding:var(--s3) var(--s4);cursor:pointer;font-family:var(--font-body);
+  border:0;background:none;              /* both moved to ::before */
+  transition:transform 150ms cubic-bezier(.4,0,.2,1);
+}
+.door::before{
+  content:"";position:absolute;inset:0;z-index:0;
   border:2px solid var(--ink);border-radius:14px;   /* rubber-hose corners */
   background:var(--paper-shade);
   box-shadow:0 4px 0 rgba(42,38,32,.9);
-  transition:transform 150ms cubic-bezier(.4,0,.2,1),box-shadow 150ms cubic-bezier(.4,0,.2,1);
+  filter:url(#scratch);
+  transition:box-shadow 150ms cubic-bezier(.4,0,.2,1);
 }
-.door:hover{transform:translateY(-2px);box-shadow:0 6px 0 rgba(42,38,32,.9)}
-.door:active{transform:translateY(3px);box-shadow:0 1px 0 rgba(42,38,32,.9)}
-.door:focus-visible{outline:3px solid var(--primary);outline-offset:3px}
+/* An absolutely-positioned ::before paints ABOVE in-flow inline content, so the
+   label needs to be lifted explicitly or the surface covers it. */
+.door > *{position:relative;z-index:1}
+.door:hover{transform:translateY(-2px)}
+.door:hover::before{box-shadow:0 6px 0 rgba(42,38,32,.9)}
+.door:active{transform:translateY(3px)}
+.door:active::before{box-shadow:0 1px 0 rgba(42,38,32,.9)}
+/* The focus ring stays CRISP and unscratched — it is an accessibility affordance
+   and legibility beats mood there, every time. */
+.door:focus-visible{outline:3px solid var(--primary);outline-offset:3px;border-radius:14px}
 .door img{width:44px;flex:none}
 /* The TITLE keeps Rye — it is a heading, three or four words, and the display
    face is doing what a display face is for. */
@@ -233,15 +253,22 @@ img.px{image-rendering:pixelated;image-rendering:crisp-edges;display:block}
   font-family:var(--font-body);font-size:13px;font-weight:600;line-height:1.5;
   color:#4A4335;margin-top:var(--s1);display:block;max-width:42ch;
 }
-.door.primary{background:var(--cta);border-color:#6f5312}
+/* the fill lives on the surface layer now, not the button */
+.door.primary::before{background:var(--cta);border-color:#6f5312}
 .door.primary .t{color:#33270a}
 .door.primary .s{color:#4A3809}          /* 6.2:1 on the gold */
 
+/* The small print goes BACK to the typewriter — two short centred lines is
+   label-length, which is where Special Elite belongs, and it is a good part of
+   the mood. It is the two-line EXPLANATION inside each door that stays in the
+   body face; that one is a real sentence and is where the face was costing
+   legibility. Set at 12px rather than the original 10.5, which is most of why
+   it was hard to read. */
 .smallprint{
-  margin:var(--s5) 0 0;font-family:var(--font-body);font-size:12px;font-weight:600;
-  line-height:1.55;color:#544C3D;text-align:center;
+  margin:var(--s5) 0 0;font-family:var(--font-type);font-size:12px;
+  line-height:1.7;letter-spacing:.015em;color:#544C3D;text-align:center;
 }
-.smallprint b{color:#7A3128;font-weight:700}   /* a warning WORD, not P-1 coral */
+.smallprint b{color:#7A3128;font-weight:400}   /* a warning WORD, not P-1 coral */
 
 /* ── responsive: this has to work on the phone it exists to sign in on ──── */
 @media (max-width:600px){
@@ -260,7 +287,9 @@ img.px{image-rendering:pixelated;image-rendering:crisp-edges;display:block}
 @media (prefers-reduced-motion:reduce){
   *{animation:none !important;transition:none !important}
   .grain{display:none}                    /* spec: grain removed */
-  .coast{filter:none}                     /* spec: clean lines, no wobble */
+  /* spec: "prefers-reduced-motion gets clean lines" — that is the line language
+     talking about the hand-wobble, so every irregular outline goes straight. */
+  .coast, .door::before{filter:none}
   .chart{clip-path:none;opacity:1}
 }
 </style>
@@ -278,6 +307,16 @@ img.px{image-rendering:pixelated;image-rendering:crisp-edges;display:block}
   <filter id="wobble">
     <feTurbulence type="fractalNoise" baseFrequency="0.021" numOctaves="2" seed="4" result="w"/>
     <feDisplacementMap in="SourceGraphic" in2="w" scale="3.2" xChannelSelector="R" yChannelSelector="G"/>
+  </filter>
+  <!-- The button outline's scratch. FRONTEND-SPEC asks for "2px --ink outlines,
+       slightly irregular (SVG with subtle hand-wobble filter)" — so this is the
+       house line language, not decoration.
+       HIGH frequency, LOW scale is the difference between scratchy and melted:
+       fine noise nibbles the edge, a big displacement would make it wobble like
+       a flag. Applied to the button's SURFACE layer only, never its label. -->
+  <filter id="scratch">
+    <feTurbulence type="fractalNoise" baseFrequency="0.075" numOctaves="3" seed="9" result="s"/>
+    <feDisplacementMap in="SourceGraphic" in2="s" scale="2.4" xChannelSelector="R" yChannelSelector="G"/>
   </filter>
   <filter id="filmgrain">
     <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" stitchTiles="stitch"/>
