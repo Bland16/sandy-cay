@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sandy Cay — the entry screen, three treatments</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rye&family=Special+Elite&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* Sandy Cay entry screen — mockup only, not wired.
+   Real tokens from src/ui/styles.css, real sprites from src/assets/icons.
+   Open from disk; the sprite paths are relative to design/. */
+:root{
+  --paper:#F1E9D8; --paper-shade:#E7DCC6; --ink:#2A2620; --ink-soft:#6E665A; --film:#141210;
+  --hair:#D2C6A9;
+  --primary:#2E8C99; --fixed:#5FB8B0; --flexible:#A9CDD1; --pinned:#C9A96E;
+  --rest:#7FBE8B; --warning:#E2685F; --cta:#E8B94D; --info:#8AA7C2;
+  --cab-bg:#4E3B2A; --cab-surface:#6B5138; --cab-trim:#8B6F52; --cab-text:#F5E9D9; --cab-accent:#FFD166;
+  --font-display:'Rye','Playfair Display',Georgia,serif;
+  --font-type:'Special Elite','Courier New',monospace;
+  --font-body:'Nunito',system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:#0e0d0b;color:var(--ink);font-family:var(--font-body)}
+
+/* Every sprite in here is PIXEL ART at ~60-100px native. Scaled up it must stay
+   crisp — smoothing turns it to mush, which is the whole reason the app refuses
+   to render these at badge size. */
+img.px{image-rendering:pixelated;image-rendering:crisp-edges;display:block}
+
+.label{
+  font-family:var(--font-type);font-size:11px;letter-spacing:.18em;text-transform:uppercase;
+  color:#8b8272;background:#0e0d0b;padding:26px 20px 10px;text-align:center;
+}
+.label b{color:var(--cta);font-weight:400}
+.screen{height:100vh;min-height:620px;position:relative;overflow:hidden;display:grid;place-items:center}
+
+/* ══════════════════════════════════════════════════════════════════
+   A — THE CHART TABLE
+   A map weighted down on dark wood. The two ways in are wax seals.
+   ══════════════════════════════════════════════════════════════════ */
+.a{background:
+  radial-gradient(120% 90% at 50% 0%, #3b2c1e 0%, #241a11 55%, #150f0a 100%);
+}
+/* planks */
+.a::before{content:"";position:absolute;inset:0;opacity:.5;
+  background:repeating-linear-gradient(90deg,transparent 0 78px,rgba(0,0,0,.45) 78px 80px);}
+.a .lamp{position:absolute;inset:0;background:radial-gradient(50% 42% at 50% 44%,rgba(255,209,102,.20),transparent 70%);pointer-events:none}
+
+.chart{
+  position:relative;width:min(560px,88vw);padding:44px 40px 34px;
+  background:
+    radial-gradient(90% 70% at 30% 20%, #F7F0E1 0%, var(--paper) 45%, #E4D7BC 100%);
+  color:var(--ink);
+  box-shadow:0 30px 70px rgba(0,0,0,.6), inset 0 0 60px rgba(160,130,80,.22);
+  filter:url(#deckle);
+  transform:rotate(-.5deg);
+}
+/* foxing — age spots, so the parchment isn't a flat rectangle of cream */
+.chart::after{content:"";position:absolute;inset:0;pointer-events:none;opacity:.5;
+  background:
+    radial-gradient(9px 7px at 12% 82%, rgba(140,100,50,.30), transparent 70%),
+    radial-gradient(14px 9px at 84% 20%, rgba(140,100,50,.22), transparent 70%),
+    radial-gradient(7px 6px at 68% 90%, rgba(140,100,50,.28), transparent 70%),
+    radial-gradient(11px 8px at 24% 12%, rgba(140,100,50,.18), transparent 70%);}
+/* the faint drawn coastline — this is a CHART, it should have a shore on it */
+.chart .coast{position:absolute;inset:0;opacity:.13;pointer-events:none}
+.chart .rose{position:absolute;right:16px;bottom:12px;width:96px;opacity:.5;transform:rotate(8deg)}
+
+.brand{text-align:center;position:relative}
+.brand h1{
+  font-family:var(--font-display);font-weight:400;margin:0;
+  font-size:clamp(38px,7vw,58px);line-height:1;color:#2b2119;
+  text-shadow:0 1px 0 rgba(255,255,255,.5);
+}
+.brand .rule{display:flex;align-items:center;gap:10px;margin:12px auto 4px;max-width:330px;color:#9c8f72}
+.brand .rule::before,.brand .rule::after{content:"";flex:1;height:1px;background:currentColor;opacity:.55}
+.brand .rule span{font-family:var(--font-type);font-size:10.5px;letter-spacing:.22em;text-transform:uppercase}
+
+/* the gull perches ON the top edge of the chart, feet on the paper */
+.gull{position:absolute;top:-52px;right:52px;width:64px;animation:bob 3.4s ease-in-out infinite;transform-origin:50% 100%}
+@keyframes bob{0%,100%{transform:translateY(0) rotate(-2deg)}50%{transform:translateY(-5px) rotate(1deg)}}
+
+.doors{display:grid;gap:14px;margin-top:26px}
+.door{
+  display:flex;align-items:center;gap:16px;width:100%;text-align:left;cursor:pointer;
+  font-family:var(--font-body);
+  padding:14px 18px;border-radius:10px;
+  border:2px solid var(--ink);background:var(--paper-shade);
+  box-shadow:0 4px 0 rgba(42,38,32,.85);transition:transform .12s,box-shadow .12s;
+}
+.door:hover{transform:translateY(-2px);box-shadow:0 6px 0 rgba(42,38,32,.85)}
+.door:active{transform:translateY(3px);box-shadow:0 1px 0 rgba(42,38,32,.85)}
+.door img{width:46px;flex:none}
+.door .t{font-family:var(--font-display);font-size:18px;line-height:1.1;color:#2b2119}
+.door .s{font-family:var(--font-type);font-size:11px;color:#6b6252;margin-top:4px;line-height:1.35}
+.door.primary{background:var(--cta);border-color:#7a5c17}
+.door.primary .t{color:#3a2c08}
+.door.primary .s{color:#6b551c}
+
+.smallprint{
+  margin-top:20px;font-family:var(--font-type);font-size:10.5px;line-height:1.5;
+  color:#7d7361;text-align:center;
+}
+.smallprint b{color:var(--warning);font-weight:400}
+
+/* ══════════════════════════════════════════════════════════════════
+   B — THE CHEST AT NIGHT
+   Sea, moon, a chest that opens on hover. Loudest of the three.
+   ══════════════════════════════════════════════════════════════════ */
+.b{background:linear-gradient(#0b1520 0%,#12283a 42%,#1c3d51 70%,#24596b 100%)}
+.b .moon{position:absolute;top:8%;left:50%;transform:translateX(-50%);width:120px;height:120px;border-radius:50%;
+  background:radial-gradient(circle at 38% 34%,#fff6dd,#f0dfae 60%,#d9c48a);
+  box-shadow:0 0 90px 30px rgba(255,236,180,.22)}
+.b .stars{position:absolute;inset:0;pointer-events:none;
+  background:
+    radial-gradient(1.5px 1.5px at 12% 18%, #fff, transparent),
+    radial-gradient(1.5px 1.5px at 78% 12%, #fff, transparent),
+    radial-gradient(1.2px 1.2px at 33% 8%, #ffe, transparent),
+    radial-gradient(1.6px 1.6px at 62% 26%, #fff, transparent),
+    radial-gradient(1.2px 1.2px at 88% 32%, #ffe, transparent),
+    radial-gradient(1.3px 1.3px at 22% 34%, #fff, transparent);
+  opacity:.85}
+/* layered swells */
+.b .sea{position:absolute;left:-10%;width:120%;height:190px;bottom:0;
+  background:radial-gradient(60% 100% at 50% 100%,rgba(94,184,176,.55),transparent 70%)}
+.b .swell{position:absolute;left:-25%;width:150%;bottom:0;height:150px;opacity:.85}
+.b .swell path{fill:#0e2a38}
+.b .swell.s2 path{fill:#0a1f2b}
+.b .swell.s1{animation:drift 14s linear infinite}
+.b .swell.s2{animation:drift 22s linear infinite reverse}
+@keyframes drift{from{transform:translateX(0)}to{transform:translateX(-33.33%)}}
+
+.stage{position:relative;text-align:center;z-index:2;padding:0 18px}
+.stage h1{font-family:var(--font-display);font-weight:400;color:#F5E9D9;margin:0 0 4px;
+  font-size:clamp(40px,8vw,64px);line-height:1;text-shadow:0 3px 0 rgba(0,0,0,.45)}
+.stage .tag{font-family:var(--font-type);font-size:11.5px;letter-spacing:.2em;text-transform:uppercase;color:#9fc6cf}
+.chest{width:190px;margin:22px auto 6px;filter:drop-shadow(0 16px 22px rgba(0,0,0,.55));transition:transform .25s}
+.stage:hover .chest{transform:translateY(-6px) scale(1.03)}
+.glow{position:absolute;left:50%;top:52%;transform:translate(-50%,-50%);width:220px;height:90px;
+  background:radial-gradient(closest-side,rgba(255,209,102,.55),transparent);filter:blur(8px);opacity:0;transition:opacity .25s}
+.stage:hover .glow{opacity:1}
+.b .gullfly{position:absolute;top:22%;left:14%;width:52px;animation:fly 18s linear infinite;opacity:.9}
+@keyframes fly{
+  0%{transform:translate(0,0) scaleX(1)}
+  45%{transform:translate(62vw,-40px) scaleX(1)}
+  50%{transform:translate(64vw,-40px) scaleX(-1)}
+  95%{transform:translate(2vw,18px) scaleX(-1)}
+  100%{transform:translate(0,0) scaleX(1)}
+}
+
+.planks{display:grid;gap:12px;margin:26px auto 0;width:min(420px,86vw)}
+.plank{
+  display:flex;align-items:center;gap:14px;cursor:pointer;text-align:left;
+  padding:13px 16px;border-radius:6px;border:none;
+  background:linear-gradient(#8B6F52,#6B5138);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.22), 0 5px 0 #3b2c20, 0 10px 18px rgba(0,0,0,.45);
+  color:var(--cab-text);transition:transform .12s,box-shadow .12s;
+}
+.plank:hover{transform:translateY(-2px);box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 7px 0 #3b2c20,0 12px 20px rgba(0,0,0,.45)}
+.plank:active{transform:translateY(4px);box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 1px 0 #3b2c20}
+.plank img{width:40px;flex:none}
+.plank .t{font-family:var(--font-display);font-size:17px}
+.plank .s{font-family:var(--font-type);font-size:10.5px;opacity:.82;margin-top:3px}
+.plank.gold{background:linear-gradient(#F0C75E,#D9A93C);color:#3a2c08}
+.plank.gold .s{color:#5c4712;opacity:1}
+
+/* ══════════════════════════════════════════════════════════════════
+   C — THE BOTTLE
+   Quietest. One object, one line, the choice underneath.
+   ══════════════════════════════════════════════════════════════════ */
+.c{background:
+   linear-gradient(#EFE6D2 0%, #E3D7BC 58%, #cbb894 100%);}
+.c .horizon{position:absolute;left:0;right:0;top:58%;height:1px;background:rgba(42,38,32,.18)}
+.c .sun{position:absolute;top:16%;left:50%;transform:translateX(-50%);width:220px;height:220px;border-radius:50%;
+  background:radial-gradient(circle,rgba(232,185,77,.35),transparent 62%)}
+.c .wrap{position:relative;text-align:center;z-index:2;width:min(460px,88vw)}
+.c .bottle{width:150px;margin:0 auto 10px;filter:drop-shadow(0 12px 14px rgba(42,38,32,.25));animation:rock 5s ease-in-out infinite;transform-origin:50% 90%}
+@keyframes rock{0%,100%{transform:rotate(-3deg)}50%{transform:rotate(3deg)}}
+.c h1{font-family:var(--font-display);font-weight:400;font-size:clamp(34px,6.5vw,50px);margin:0;color:#2b2119}
+.c .tag{font-family:var(--font-type);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#7d7361;margin-top:6px}
+.c .choice{display:flex;gap:10px;margin-top:26px;flex-wrap:wrap;justify-content:center}
+.c .btn{cursor:pointer;font-family:var(--font-display);font-size:15px;padding:12px 20px;border-radius:999px;
+  border:2px solid var(--ink);background:var(--paper);box-shadow:0 3px 0 var(--ink);transition:transform .12s,box-shadow .12s}
+.c .btn:hover{transform:translateY(-2px);box-shadow:0 5px 0 var(--ink)}
+.c .btn:active{transform:translateY(2px);box-shadow:0 1px 0 var(--ink)}
+.c .btn.gold{background:var(--cta)}
+.c .note{margin-top:16px;font-family:var(--font-type);font-size:10.5px;color:#7d7361;line-height:1.5}
+.c .gullsit{position:absolute;right:12%;top:47%;width:54px}
+
+@media (prefers-reduced-motion: reduce){
+  *{animation:none !important}
+}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <filter id="deckle">
+    <!-- torn parchment edge: displace the card's own alpha so the rectangle
+         stops being a rectangle. Cheap, and it sells "chart" over "div". -->
+    <feTurbulence type="fractalNoise" baseFrequency="0.028" numOctaves="4" seed="7" result="n"/>
+    <feDisplacementMap in="SourceGraphic" in2="n" scale="9" xChannelSelector="R" yChannelSelector="G"/>
+  </filter>
+</svg>
+
+<!-- ─────────────────────────── A ─────────────────────────── -->
+<div class="label">Treatment <b>A</b> — the chart table &nbsp;·&nbsp; parchment on wood, wax-seal doors</div>
+<section class="screen a">
+  <div class="lamp"></div>
+  <div class="chart">
+    <img class="px gull" src="../src/assets/icons/seagull.png" alt="">
+    <svg class="coast" viewBox="0 0 560 380" preserveAspectRatio="none" aria-hidden="true">
+      <path d="M20,300 C90,270 120,318 190,296 C250,277 268,236 330,244 C398,253 420,300 500,282"
+            fill="none" stroke="#3d2f1c" stroke-width="2" stroke-dasharray="1 7" stroke-linecap="round"/>
+      <path d="M60,340 C140,322 200,352 268,330 C340,306 400,344 520,320"
+            fill="none" stroke="#3d2f1c" stroke-width="1.5" stroke-dasharray="1 9" stroke-linecap="round"/>
+      <circle cx="330" cy="244" r="7" fill="none" stroke="#7a2b22" stroke-width="2.5"/>
+      <path d="M323,237 L337,251 M337,237 L323,251" stroke="#7a2b22" stroke-width="2.5"/>
+    </svg>
+    <img class="px rose" src="../src/assets/icons/compass.png" alt="">
+
+    <div class="brand">
+      <h1>Sandy&nbsp;Cay</h1>
+      <div class="rule"><span>make yer landing</span></div>
+    </div>
+
+    <div class="doors">
+      <button class="door primary">
+        <img class="px" src="../src/assets/icons/treasure-chest.png" alt="">
+        <span>
+          <span class="t">Bury it in the chest</span>
+          <span class="s">Sign in with Google · your week lives in your calendar,<br>and follows you to your phone</span>
+        </span>
+      </button>
+      <button class="door">
+        <img class="px" src="../src/assets/icons/message-bottle.png" alt="">
+        <span>
+          <span class="t">Sail without a flag</span>
+          <span class="s">Stay a guest · nothing leaves this device</span>
+        </span>
+      </button>
+    </div>
+
+    <div class="smallprint">
+      A guest's week is kept in this browser alone.<br>
+      <b>Export before you close the tab</b>, or the tide takes it.
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── B ─────────────────────────── -->
+<div class="label">Treatment <b>B</b> — the chest at night &nbsp;·&nbsp; loudest, most animated</div>
+<section class="screen b">
+  <div class="stars"></div>
+  <div class="moon"></div>
+  <svg class="swell s2" viewBox="0 0 1200 150" preserveAspectRatio="none" aria-hidden="true">
+    <path d="M0,70 C150,30 250,110 400,70 C550,30 650,110 800,70 C950,30 1050,110 1200,70 L1200,150 L0,150 Z"/>
+  </svg>
+  <svg class="swell s1" viewBox="0 0 1200 150" preserveAspectRatio="none" aria-hidden="true">
+    <path d="M0,95 C150,60 250,130 400,95 C550,60 650,130 800,95 C950,60 1050,130 1200,95 L1200,150 L0,150 Z"/>
+  </svg>
+  <img class="px gullfly" src="../src/assets/icons/seagull.png" alt="">
+  <div class="stage">
+    <h1>Sandy&nbsp;Cay</h1>
+    <div class="tag">what the tide brought in</div>
+    <div style="position:relative">
+      <div class="glow"></div>
+      <img class="px chest" src="../src/assets/icons/treasure-chest.png" alt="">
+    </div>
+    <div class="planks">
+      <button class="plank gold">
+        <!-- anchor, NOT key.png: the handoff lists key among the 8 sprites that
+             predate the green sheet and read off-palette beside it. Anchor is
+             on-sheet and says "moored" — which is what an account is. -->
+        <img class="px" src="../src/assets/icons/anchor.png" alt="">
+        <span>
+          <span class="t">Drop anchor with Google</span>
+          <span class="s">Your calendar keeps the charts</span>
+        </span>
+      </button>
+      <button class="plank">
+        <img class="px" src="../src/assets/icons/message-bottle.png" alt="">
+        <span>
+          <span class="t">Come aboard as crew</span>
+          <span class="s">Guest · this device only, export before you go</span>
+        </span>
+      </button>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── C ─────────────────────────── -->
+<div class="label">Treatment <b>C</b> — the bottle &nbsp;·&nbsp; quietest, one object and a choice</div>
+<section class="screen c">
+  <div class="sun"></div>
+  <div class="horizon"></div>
+  <img class="px gullsit" src="../src/assets/icons/seagull.png" alt="">
+  <div class="wrap">
+    <img class="px bottle" src="../src/assets/icons/message-bottle.png" alt="">
+    <h1>Sandy&nbsp;Cay</h1>
+    <div class="tag">a week that keeps itself</div>
+    <div class="choice">
+      <button class="btn gold">Sign in with Google</button>
+      <button class="btn">Stay a guest</button>
+    </div>
+    <div class="note">
+      Signed in, your week is written to your own Google Calendar and waits for you on any device.<br>
+      As a guest it lives in this browser only — export it before you close the tab.
+    </div>
+  </div>
+</section>
+
+</body>
+</html>
