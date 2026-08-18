@@ -123,27 +123,42 @@ img.px{image-rendering:pixelated;image-rendering:crisp-edges;display:block}
    Removed entirely under reduced motion, per spec. */
 .grain{opacity:.03;mix-blend-mode:overlay}
 
-/* ── the chart ──────────────────────────────────────────────────────────── */
+/* ── the chart ──────────────────────────────────────────────────────────────
+   ⚠️ THE PAPER IS FILTERED. THE WORDS ARE NOT. This is a two-layer split and
+   it is the whole reason the text is readable.
+
+   The first version put `filter:url(#deckle)` on .chart itself. An SVG filter
+   applies to an element AND ALL ITS DESCENDANTS, so the displacement map that
+   was meant to tear the paper's edge was also running over every glyph, every
+   button border and the title — smearing the type and giving the buttons torn
+   edges nobody asked for. It looked like a font problem and was not.
+
+   So: .parchment is a decorative sibling that carries the background, the
+   shadow, the foxing, the coastline and the compass, and takes the filter.
+   .content sits above it, unfiltered, crisp. */
 .chart{
   position:relative;z-index:2;
   width:min(580px,100%);
-  padding:var(--s7) var(--s6) var(--s5);
-  color:var(--ink);
+  transform:rotate(-.45deg);
+  animation:iris 220ms cubic-bezier(.4,0,.2,1) both;
+}
+.parchment{
+  position:absolute;inset:0;z-index:0;pointer-events:none;
   background:radial-gradient(88% 74% at 28% 18%,#F8F1E3 0%,var(--paper) 46%,#E2D5B8 100%);
   box-shadow:0 34px 80px rgba(0,0,0,.66),
              inset 0 2px 0 rgba(255,255,255,.25),
              inset 0 0 70px rgba(150,120,70,.20);
   filter:url(#deckle);
-  transform:rotate(-.45deg);
-  animation:iris 220ms cubic-bezier(.4,0,.2,1) both;
 }
+.content{position:relative;z-index:1;padding:var(--s7) var(--s6) var(--s5);color:var(--ink)}
+
 /* The app's own modal-open motion (iris wipe, 220ms), not a new one. */
 @keyframes iris{
   from{clip-path:circle(0% at 50% 46%);opacity:0}
   to  {clip-path:circle(150% at 50% 46%);opacity:1}
 }
 /* foxing — age spots, so the parchment is not a flat cream rectangle */
-.chart::after{
+.parchment::after{
   content:"";position:absolute;inset:0;pointer-events:none;opacity:.5;
   background:
     radial-gradient(10px 7px at 11% 84%,rgba(140,100,50,.30),transparent 70%),
@@ -151,6 +166,10 @@ img.px{image-rendering:pixelated;image-rendering:crisp-edges;display:block}
     radial-gradient(8px 6px at 70% 92%,rgba(140,100,50,.26),transparent 70%),
     radial-gradient(12px 8px at 22% 10%,rgba(140,100,50,.18),transparent 70%);
 }
+/* Both live INSIDE .parchment now. Previously they were positioned children of
+   .chart while the doors were static flow — and a positioned element paints
+   above a static one, so the coastline was drawing dashes straight across the
+   guest button and the compass sat on top of the small print. */
 .coast{position:absolute;inset:0;opacity:.14;pointer-events:none}
 .rose{position:absolute;right:var(--s4);bottom:var(--s3);width:92px;opacity:.42;transform:rotate(8deg)}
 
@@ -173,9 +192,12 @@ img.px{image-rendering:pixelated;image-rendering:crisp-edges;display:block}
 }
 .rule{display:flex;align-items:center;gap:var(--s3);margin:var(--s3) auto 0;max-width:340px;color:#9b8e71}
 .rule::before,.rule::after{content:"";flex:1;height:1px;background:currentColor;opacity:.6}
+/* Special Elite EARNS its place here: four tracked-out uppercase words, which
+   is exactly the label job styles.css uses it for. Darkened from #7c7159,
+   which measured 3.98 and missed AA for text this size. */
 .rule span{
-  font-family:var(--font-type);font-size:10.5px;letter-spacing:.24em;
-  text-transform:uppercase;white-space:nowrap;color:#7c7159;
+  font-family:var(--font-type);font-size:11px;letter-spacing:.24em;
+  text-transform:uppercase;white-space:nowrap;color:#665C46;
 }
 
 /* ── the two doors ─────────────────────────────────────────────────────────
@@ -196,21 +218,37 @@ img.px{image-rendering:pixelated;image-rendering:crisp-edges;display:block}
 .door:active{transform:translateY(3px);box-shadow:0 1px 0 rgba(42,38,32,.9)}
 .door:focus-visible{outline:3px solid var(--primary);outline-offset:3px}
 .door img{width:44px;flex:none}
+/* The TITLE keeps Rye — it is a heading, three or four words, and the display
+   face is doing what a display face is for. */
 .door .t{font-family:var(--font-display);font-size:17.5px;line-height:1.12;color:#241c14;display:block}
-.door .s{font-family:var(--font-type);font-size:11px;line-height:1.4;color:#5f5747;margin-top:var(--s1);display:block}
+/* ⚠️ The EXPLANATION is body copy, so it is set in the body face.
+   It was Special Elite — a distressed typewriter face whose whole character is
+   broken, uneven strokes. That is charm on a three-word label and a tax on a
+   two-line sentence, especially at 11px. Nunito at 13/1.5 is the same family
+   the app already uses for every button and description (styles.css uses
+   --font-type only for short labels: hour marks, tags, 8-9px captions).
+   Contrast was never the problem — it measured 4.88 and 5.25, both AA — so the
+   colours only tighten a little rather than change. */
+.door .s{
+  font-family:var(--font-body);font-size:13px;font-weight:600;line-height:1.5;
+  color:#4A4335;margin-top:var(--s1);display:block;max-width:42ch;
+}
 .door.primary{background:var(--cta);border-color:#6f5312}
 .door.primary .t{color:#33270a}
-.door.primary .s{color:#5b4711}          /* AA on the gold */
+.door.primary .s{color:#4A3809}          /* 6.2:1 on the gold */
 
 .smallprint{
-  margin:var(--s5) 0 0;font-family:var(--font-type);font-size:10.5px;line-height:1.55;
-  color:#6f6654;text-align:center;
+  margin:var(--s5) 0 0;font-family:var(--font-body);font-size:12px;font-weight:600;
+  line-height:1.55;color:#544C3D;text-align:center;
 }
-.smallprint b{color:#8a3c33;font-weight:400}   /* a warning WORD, not P-1 coral */
+.smallprint b{color:#7A3128;font-weight:700}   /* a warning WORD, not P-1 coral */
 
 /* ── responsive: this has to work on the phone it exists to sign in on ──── */
 @media (max-width:600px){
-  .chart{padding:var(--s6) var(--s4) var(--s5);transform:none}
+  /* padding lives on .content now that the paper is its own layer — setting it
+     on .chart here would have quietly kept the desktop padding on a phone */
+  .content{padding:var(--s6) var(--s4) var(--s5)}
+  .chart{transform:none}
   .gull{right:18px;top:-46px;width:56px}
   .rose{width:70px;opacity:.34}
   .door{gap:var(--s3)}
@@ -257,20 +295,26 @@ img.px{image-rendering:pixelated;image-rendering:crisp-edges;display:block}
   <svg class="layer grain" data-depth="0" aria-hidden="true"><rect width="100%" height="100%" filter="url(#filmgrain)"/></svg>
 
   <div class="chart">
+    <!-- Decorative layer. Everything in here is filtered and inert; nothing in
+         here is text. See the .parchment note in the stylesheet. -->
+    <div class="parchment" aria-hidden="true">
+      <svg class="coast" viewBox="0 0 580 400" preserveAspectRatio="none" filter="url(#wobble)">
+        <path d="M20,306 C96,274 128,326 198,302 C258,281 276,238 340,246 C412,256 436,306 522,286"
+              fill="none" stroke="#3d2f1c" stroke-width="2" stroke-dasharray="1 7" stroke-linecap="round"/>
+        <path d="M58,352 C142,332 206,364 276,340 C352,314 414,354 540,328"
+              fill="none" stroke="#3d2f1c" stroke-width="1.5" stroke-dasharray="1 9" stroke-linecap="round"/>
+        <!-- INK, not coral: P-1 reserves --warning for scheduling physics. -->
+        <circle cx="340" cy="246" r="8" fill="none" stroke="#2A2620" stroke-width="2.5"/>
+        <path d="M332,238 L348,254 M348,238 L332,254" stroke="#2A2620" stroke-width="2.5" stroke-linecap="round"/>
+      </svg>
+      <img class="px rose" src="../src/assets/icons/compass.png" alt="">
+    </div>
+
+    <!-- The gull sits outside .parchment so it stays crisp: it is pixel art,
+         and a displacement map is exactly what pixel art must not go through. -->
     <img class="px gull" src="../src/assets/icons/seagull.png" alt="" aria-hidden="true">
 
-    <svg class="coast" viewBox="0 0 580 400" preserveAspectRatio="none" aria-hidden="true" filter="url(#wobble)">
-      <path d="M20,306 C96,274 128,326 198,302 C258,281 276,238 340,246 C412,256 436,306 522,286"
-            fill="none" stroke="#3d2f1c" stroke-width="2" stroke-dasharray="1 7" stroke-linecap="round"/>
-      <path d="M58,352 C142,332 206,364 276,340 C352,314 414,354 540,328"
-            fill="none" stroke="#3d2f1c" stroke-width="1.5" stroke-dasharray="1 9" stroke-linecap="round"/>
-      <!-- INK, not coral: P-1 reserves --warning for scheduling physics. -->
-      <circle cx="340" cy="246" r="8" fill="none" stroke="#2A2620" stroke-width="2.5"/>
-      <path d="M332,238 L348,254 M348,238 L332,254" stroke="#2A2620" stroke-width="2.5" stroke-linecap="round"/>
-    </svg>
-
-    <img class="px rose" src="../src/assets/icons/compass.png" alt="" aria-hidden="true">
-
+    <div class="content">
     <div class="brand">
       <h1>Sandy&nbsp;Cay</h1>
       <div class="rule"><span>make yer landing</span></div>
@@ -299,6 +343,7 @@ img.px{image-rendering:pixelated;image-rendering:crisp-edges;display:block}
       A guest&rsquo;s week is kept in this browser alone.<br>
       <b>Export before you close the tab</b>, or the tide takes it.
     </p>
+    </div><!-- /.content -->
   </div>
 </section>
 
