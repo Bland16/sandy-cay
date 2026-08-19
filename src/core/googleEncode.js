@@ -421,12 +421,27 @@ export function decodeEvent(ev) {
     return { ok: false, id, error: 'payload is not valid JSON' };
   }
 
-  const task = { ...rest, id: priv[`${NS}.id`], title: ev.summary ?? rest.title ?? 'Untitled' };
+  const task = {
+    ...rest,
+    // Restored explicitly: it is stripped on the way out (SKIP) because it is
+    // constant, but a decoded task missing it does not match the local one, and
+    // any difference makes the sync push it straight back.
+    schemaVersion: ENCODING_VERSION,
+    id: priv[`${NS}.id`],
+    title: ev.summary ?? rest.title ?? 'Untitled',
+  };
   // Times come from the EVENT, not the payload — they are not in the payload at
   // all (NATIVE), so a hand edit in Google Calendar is what lands here. That is
   // GS-4: your own hand outranks the scheduler (R-1).
   if (ev.start && ev.start.dateTime) task.startTime = new Date(ev.start.dateTime).getTime();
   if (ev.end && ev.end.dateTime) task.endTime = new Date(ev.end.dateTime).getTime();
+
+  // ⚠️ EXCEPT on a split part, where the event's start is THIS GROUP'S first
+  // occurrence and not the task's own start. Taking it from the event there
+  // rewrote the task's time on every pull, and the next sync pushed the change
+  // back — a repeating task never settling.
+  if (priv[`${NS}.t0`] !== undefined) task.startTime = Number(priv[`${NS}.t0`]);
+  if (priv[`${NS}.t1`] !== undefined) task.endTime = Number(priv[`${NS}.t1`]);
 
   return {
     ok: true,
@@ -491,6 +506,21 @@ export function encodeTaskParts(task, opts = {}) {
     const priv = body.extendedProperties.private;
     priv[`${NS}.part`] = String(i);
     priv[`${NS}.parts`] = String(groups.length);
+    // ⚠️ THE TASK'S OWN TIMES, carried because this part's start is NOT the
+    // task's start — it is this group's first occurrence, which is a different
+    // day and time for every part.
+    //
+    // Without these, decoding a part overwrote the task's startTime with the
+    // part's anchor. The adopted task then differed from the local one, so the
+    // next sync pushed it back, which changed the events, which looked like a
+    // remote edit... a repeating task took five passes to settle instead of
+    // one, and the app sat on "syncing" the whole time.
+    //
+    // The cost, stated: dragging ONE PART of a split task in Google Calendar no
+    // longer moves the task. It cannot meaningfully — "part 2 of 3" has no
+    // single time in the model, only a window that must be edited as a window.
+    if (json.startTime != null) priv[`${NS}.t0`] = String(json.startTime);
+    if (json.endTime != null) priv[`${NS}.t1`] = String(json.endTime);
     body.description = `${body.description} · part ${i + 1} of ${groups.length}`;
     return body;
   });

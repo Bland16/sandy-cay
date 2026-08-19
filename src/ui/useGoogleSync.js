@@ -154,7 +154,13 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, now 
         stateRef.current = { ...stateRef.current, libHash: libNow };
       }
 
-      stateRef.current = advanceState(stateRef.current, applied, t);
+      // ⚠️ AFTER the writes, not before. `t` above is when we started, and
+      // Google stamps `updated` on everything we just wrote — so recording `t`
+      // as the sync point meant the NEXT pass saw OUR OWN WRITES as a remote
+      // edit and adopted them, which called mutate, which bumped the version,
+      // which scheduled another sync. Every sync bought a second one, and the
+      // app sat on "syncing" for two or three debounce cycles instead of one.
+      stateRef.current = advanceState(stateRef.current, applied, now());
       stateRef.current.libHash = libNow;
       saveSyncState(stateRef.current);
       setStatus('idle');

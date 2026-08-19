@@ -341,6 +341,111 @@ describe('a task split across several events (the gym)', () => {
   });
 });
 
+describe('⚠️ syncing SETTLES — reported as "syncing for a very long time"', () => {
+  // Every pass that is not "nothing to do" adopts or writes, which bumps the
+  // app's version, which schedules ANOTHER debounced sync five seconds later.
+  // So a round trip that takes five passes to converge is twenty-five seconds
+  // of the app saying "syncing", and one that never converges says it forever.
+  //
+  // Two causes, both fixed, both invisible to a single-pass test:
+  //   - the sync point was recorded BEFORE the writes, so the next pass saw our
+  //     own writes as somebody else's edit and adopted them.
+  //   - a split part's event start is THAT GROUP'S first occurrence, not the
+  //     task's start, so decoding it rewrote the task's time every pull.
+  const settleIn = async (localTasks) => {
+    const api = fakeGoogle();
+    let state = emptyState();
+    let local = localTasks;
+    for (let i = 1; i <= 6; i += 1) {
+      const remote = await pull(api, 'cal');
+      const plan = planSync(local, remote.tasks, state, { unreadable: remote.unreadable });
+      const applied = await applyPlan(api, 'cal', plan, {});
+      if (plan.adopt.length) {
+        const sc = new Schedule({ config: defaultConfig, tasks: local });
+        for (const a of plan.adopt) sc.upsertTaskFromJSON(a);
+        local = sc.toJSON().tasks;
+      }
+      state = advanceState(state, applied, api._now());   // AFTER the writes
+      const quiet = !plan.create.length && !plan.update.length && !plan.adopt.length
+        && !plan.deleteLocal.length && !plan.deleteRemote.length && !plan.conflicts.length;
+      if (quiet) return i;
+    }
+    return Infinity;
+  };
+
+  it('a plain task settles on the second pass', async () => {
+    expect(await settleIn(sched().toJSON().tasks)).toBe(2);
+  });
+
+  it('a SPLIT repeating task settles just as fast', async () => {
+    const gym = Task.fromJSON({
+      id: 'gym-0001',
+      title: 'Gym',
+      startTime: new Date(2026, 8, 7, 16, 15).getTime(),
+      endTime: new Date(2026, 8, 7, 17, 15).getTime(),
+      recurrence: {
+        anchorDate: null,
+        exceptions: [],
+        periods: [{
+          windows: [
+            { day: 'mon', start: '16:15', end: '17:15' },
+            { day: 'wed', start: '19:00', end: '20:00' },
+            { day: 'sat', start: '14:00', end: '15:00' },
+          ],
+          interval: 1,
+          effectiveFrom: null,
+          effectiveUntil: null,
+        }],
+      },
+    }).toJSON();
+    expect(await settleIn([gym])).toBe(2);
+  });
+
+  it('a decoded task is IDENTICAL to the local one, SPLIT OR NOT', async () => {
+    // ⚠️ THE PROPERTY BOTH FIXES PROTECT, and it must cover the split case —
+    // that is where it broke. A split part's event start is that GROUP'S first
+    // occurrence, so decoding it rewrote the task's own startTime; and
+    // `schemaVersion` is stripped on the way out and was not restored. Either
+    // difference makes an adopted task disagree with the local one, and the
+    // next sync pushes it straight back.
+    //
+    // The convergence tests above cannot catch this: once the sync point is
+    // recorded correctly, `remoteChanged` is false and the decoded content is
+    // never compared at all. It only surfaces when Google genuinely changed —
+    // or on another device's first pull, where EVERYTHING is adopted.
+    const api = fakeGoogle();
+    const gym = Task.fromJSON({
+      id: 'gym-0001',
+      title: 'Gym',
+      startTime: new Date(2026, 8, 7, 16, 15).getTime(),
+      endTime: new Date(2026, 8, 7, 17, 15).getTime(),
+      recurrence: {
+        anchorDate: null,
+        exceptions: [],
+        periods: [{
+          windows: [
+            { day: 'mon', start: '16:15', end: '17:15' },
+            { day: 'wed', start: '19:00', end: '20:00' },
+            { day: 'sat', start: '14:00', end: '15:00' },
+          ],
+          interval: 1,
+          effectiveFrom: null,
+          effectiveUntil: null,
+        }],
+      },
+    }).toJSON();
+
+    const local = [...sched().toJSON().tasks, gym];
+    await applyPlan(api, 'cal', planSync(local, [], emptyState()), {});
+    const back = await pull(api, 'cal');
+    expect(back.tasks).toHaveLength(local.length);
+    for (const r of back.tasks) {
+      const original = local.find((t) => t.id === r.task.id);
+      expect(r.task).toEqual(original);
+    }
+  });
+});
+
 describe('the library', () => {
   it('round-trips through the calendar', async () => {
     const api = fakeGoogle();
