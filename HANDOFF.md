@@ -1,5 +1,20 @@
 # Sandy Cay — handoff
 
+## ⛔ STOP AND HAND OFF AT 98% CONTEXT
+
+**Do not work past 98% of your context window.** At 98%, stop taking on
+anything new and spend what is left finishing cleanly:
+
+1. Commit whatever is done, by explicit path.
+2. Push the branch.
+3. **Update this file** — what shipped, what is half-built, what the next
+   person must not assume.
+
+A session that runs out mid-change leaves the worst possible state: uncommitted
+work nobody can see, and a handoff describing a world that no longer exists.
+Finishing the write-up is part of the task, not what you do with what is left
+over.
+
 ## ▶ SESSION 9 (2026-08-18/19) — READ THIS FIRST, THE REST IS OLDER
 
 **`main` is live and now actually WORKS.** It was serving the raw repo root —
@@ -13,42 +28,66 @@ bundle. **A green deploy run was never evidence the site worked**; check that
 **`main` moved from session 6 to session 9 in one merge** (100 commits,
 6e11306 → 38d1da8, fast-forward). Sessions 7, 8 and 9 are all live.
 
-**987 tests green. Branch `session9-zoom-and-google-storage` holds the sync work
-(not on `main`).**
+**1014 tests green. Branch `session9-zoom-and-google-storage` is 16 commits
+AHEAD of `main` and holds the whole sync. `main` has only the entry screen.**
 
 ### What shipped
 
 | | |
 |---|---|
 | **Grid zoom** (`design/GRID-ZOOM.md`) | 7 rungs to 8×, keyboard + pinch. The top two rungs exist because 4× is NOT enough to see a 5-minute task — it renders 11.3px against a 12px floor |
-| **Entry screen** (`design/GOOGLE-AS-STORAGE.md` §5) | Pirate chart-table, guest or Google, changeable from the Cabana |
-| **Google as storage** | P0–P3 built: one event per task, a hidden library event, planner + executor + wiring. **Never run against a real account** |
+| **Entry screen → calendar picker → app** | Three steps. Guest keeps everything local and is proven never to touch the network; Google needs a calendar chosen before anything is written |
+| **Google as storage** | P0–P3 built and **exercised against a real account on localhost**. One event per task, a hidden library event, planner + executor + wiring |
 
-### ⚠️ The lesson of this session, and it is not the same as session 6's
+### ⚠️ SEVEN bugs came out of ONE afternoon of real use. The suite was green for every one.
 
-Session 6's was "render the panel to believe it". This one is narrower and
-nastier: **the thing under test was fine and everything AROUND it was broken.**
+This is the number to sit with. 992 tests passed while the sync had never once
+fired. Listed by shape, because the shapes recur:
 
-Three bugs, all invisible to a suite that was green at the time:
+| what looked fine | what was actually true |
+|---|---|
+| the round trip, tested exhaustively | **nothing ever TRIGGERED it** — a default-parameter arrow rebuilt every render, so the debounce effect cancelled its own timer |
+| the checksum caught corruption | **it then DELETED the task** — unreadable was indistinguishable from absent, and absent means "deleted elsewhere" |
+| adopting a task worked | it **dropped ten fields** to `UPDATE_WHITELIST`, which is right for a form and catastrophic for a store |
+| repeating tasks encoded correctly | **no RRULE was ever emitted** — it was opt-in and no caller opted in, so Google showed one instance |
+| the derived RRULE was correct | Google **rejects** one whose BYDAY excludes DTSTART, so the event never appeared at all |
+| a sync completed | it took **five passes to settle**, each a 5s debounce, because it kept seeing its own writes as remote edits |
+| a footlocker restore | was **undone** — restored ids were still in the sync record, so they read as deleted-elsewhere and were removed |
 
-- the sync **never fired** — a default-parameter arrow function changed a
-  callback's identity every render, so the debounce effect cancelled its own
-  timer. Every sync test called the planner directly; none re-rendered.
-- a **corrupt event deleted the local task** — unreadable was indistinguishable
-  from absent, and absent means "deleted elsewhere".
-- **adopting a task dropped ten fields** to `UPDATE_WHITELIST`.
+**The through-line: the thing under test was fine and everything AROUND it was
+broken.** What triggers it. What happens after a guard fires. Which door a write
+goes through. Whether it converges. Whether anything ever called the option.
 
-**So: test the trigger, not just the mechanism. And when a guard detects damage,
-ask what the code does NEXT with that information.**
+**Three habits that actually caught these**, none of which is "add a test":
+- **Probe the output, not the diff.** One fix read correctly and did nothing —
+  `rrule` defaulted to `null`, so the `=== undefined` branch was unreachable.
+- **Ask what happens NEXT with a detection.** Every guard here had a second
+  half that was wrong.
+- **Test repetition.** Convergence is invisible to any single-pass test, and
+  every sync test was single-pass.
+
+### Two defences worth keeping
+
+- **`isBulkDelete`** stops any sync about to remove most of the schedule,
+  writing nothing. It does not depend on predicting the cause — it would have
+  caught the restore bug without anyone knowing why.
+- **Per-task decisions.** `planSync` records what it decided and why for every
+  task; `syncLog.js` prints it, off by default (Cabana checkbox, `?syncdebug`,
+  or `sandycay.sync.debug`). Every bug above was diagnosed by reconstructing
+  that reasoning by hand.
 
 ### If you pick this up
 
-1. **Run the sync against a THROWAWAY calendar.** Everything so far is a fake
-   Google. Point it at a real calendar first to watch the GS-5 guard refuse.
-2. `design/GOOGLE-AS-STORAGE.md` §7 — GS-10 (a repeat rule edited in Google is
-   not read back) and GS-11 (day notes should be all-day events, not library
-   rows) are still open and both gate further work.
-3. P4, the export reminder, is unbuilt.
+1. **`main` is 16 commits behind and the sync is NOT live.** Merging is a
+   release and the user's call.
+2. **Known limits, both deliberate:** dragging ONE PART of a split task in
+   Google does not move it (a part has no single time in the model), and a
+   repeat rule edited in Google is not read back (GS-10).
+3. `design/GOOGLE-AS-STORAGE.md` §7 — GS-10 and GS-11 (day notes should be
+   all-day events, not library rows) are open.
+4. P4, the export reminder, is unbuilt.
+5. **The first push is sequential** — one request per event, so ~15–30s for a
+   real schedule. Batching is a real improvement, but measure it first.
 
 
 **Updated:** 2026-08-13, session 8. **`main` is the trunk and is live on Pages**
