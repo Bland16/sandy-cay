@@ -224,6 +224,45 @@ export function insertEvent(token, calendarId, body) {
 // blanket `auth/calendar` scope, and that's a lot of power to hold for a
 // convenience. Make the calendar in Google; point us at it.
 
+/**
+ * Update an event in place (design/GOOGLE-AS-STORAGE.md P3).
+ *
+ * PATCH, not PUT: a PUT replaces the whole event, so any field this app does not
+ * send — a colour the user set, a reminder they added, an attendee — would be
+ * wiped on every save. PATCH merges.
+ */
+export function patchEvent(token, calendarId, eventId, body) {
+  return call(token, `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * EVERY event on a calendar, paged.
+ *
+ * ⚠️ `listRawEvents` is not usable as a store read: it is bounded by a time
+ * window and capped at 250 with no paging. A store has to see the library event
+ * parked in 1970 and every task in the term, and silently stopping at 250 would
+ * look exactly like "the rest were deleted" to the planner — which would then
+ * propose deleting them for real.
+ *
+ * `showDeleted` is off: a cancelled event is gone, and the planner treats absent
+ * as absent. Deletions still propagate, via the record of what was last synced.
+ */
+export async function listAllEvents(token, calendarId, { pageSize = 250 } = {}) {
+  const out = [];
+  let pageToken;
+  do {
+    const q = new URLSearchParams({ singleEvents: 'false', maxResults: String(pageSize) });
+    if (pageToken) q.set('pageToken', pageToken);
+    const data = await call(token, `/calendars/${encodeURIComponent(calendarId)}/events?${q}`);
+    for (const e of data.items || []) if (e.status !== 'cancelled') out.push(e);
+    pageToken = data.nextPageToken;
+  } while (pageToken);
+  return out;
+}
+
 export function deleteEvent(token, calendarId, eventId) {
   return call(token, `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`, {
     method: 'DELETE',

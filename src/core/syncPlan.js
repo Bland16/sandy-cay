@@ -150,6 +150,13 @@ export function planSync(local, remote, state = emptyState()) {
 export function advanceState(state, applied, now) {
   const entries = { ...state.entries };
   for (const { task, eventId } of applied.synced || []) {
+    // ⚠️ `eventId` here is DIAGNOSTIC ONLY — nothing reads it back, and it must
+    // not be treated as authoritative. `planSync` always takes the id from the
+    // freshly-pulled remote event (`r.googleEventId`), because that is the one
+    // Google actually has; a stored copy could be stale after the event was
+    // recreated or moved between calendars. Kept because it makes a broken
+    // store readable by hand, and recorded here so nobody "fixes" a bug by
+    // trusting it. Found by mutation: corrupting it changes no behaviour.
     entries[task.id] = { hash: taskHash(task), eventId: eventId || null, dirtyAt: 0 };
   }
   for (const id of applied.forgotten || []) delete entries[id];
