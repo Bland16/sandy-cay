@@ -46,7 +46,7 @@ describe('the ambiguous cases — identical snapshots, opposite answers', () => 
   it('remote-only but PREVIOUSLY synced means it was deleted here -> delete there', () => {
     const p = planSync([], [remote(a, T1)], synced([a], T0));
     expect(p.deleteRemote).toHaveLength(1);
-    expect(p.deleteRemote[0].eventId).toBe('ev-a');
+    expect(p.deleteRemote[0].eventIds).toEqual(['ev-a']);
     expect(p.adopt).toHaveLength(0);
   });
 });
@@ -103,7 +103,7 @@ describe('both sides present', () => {
   it('pushes a local-only edit', () => {
     const p = planSync([edited], [remote(a, T0 - 10)], synced([a], T0));
     expect(p.update).toHaveLength(1);
-    expect(p.update[0].eventId).toBe('ev-a');
+    expect(p.update[0].eventIds).toEqual(['ev-a']);
     expect(p.adopt).toHaveLength(0);
   });
 

@@ -238,6 +238,61 @@ export function safeRRULE(json) {
   return { rule, reason: null };
 }
 
+const DAY_INDEX = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+
+/**
+ * Split a recurring task's windows into groups that share a TIME.
+ *
+ * A gym at Mon 16:15, Wed 19:00 and Sat 14:00 is three groups. Each becomes its
+ * own Google event with its own RRULE, because an RRULE carries exactly one
+ * time and one event therefore cannot say all three.
+ *
+ * Returns `[]` for anything that does not need splitting, so the ordinary path
+ * is untouched — one task, one event, exactly as before.
+ */
+export function timeGroups(json) {
+  const rec = json.recurrence;
+  if (!rec) return [];
+  const period = (rec.periods || []).find((p) => !p.effectiveUntil) || (rec.periods || [])[0];
+  const windows = (period && period.windows) || [];
+  if (windows.length < 2) return [];
+
+  const byTime = new Map();
+  for (const w of windows) {
+    const key = `${w.start}-${w.end}`;
+    if (!byTime.has(key)) byTime.set(key, { start: w.start, end: w.end, days: [] });
+    byTime.get(key).days.push(w.day);
+  }
+  // One group means every window already shares a time — no split needed.
+  return byTime.size < 2 ? [] : [...byTime.values()];
+}
+
+const hhmm = (s) => {
+  const [h, m] = String(s || '00:00').split(':').map(Number);
+  return { h: h || 0, m: m || 0 };
+};
+
+/**
+ * The first date on or after `from` that falls on one of `days`, at `time`.
+ *
+ * ⚠️ This is what stops Google refusing the event. It rejects an RRULE whose
+ * BYDAY excludes DTSTART, so each split part must START on one of its own days
+ * — the parent task's `startTime` belongs to whichever window came first and is
+ * the wrong anchor for every other group.
+ */
+export function firstOccurrence(days, time, from) {
+  const wanted = days.map((d) => DAY_INDEX[d]).filter((n) => n !== undefined).sort((a, b) => a - b);
+  if (!wanted.length) return null;
+  const { h, m } = hhmm(time);
+  const d = new Date(from);
+  d.setHours(h, m, 0, 0);
+  for (let i = 0; i < 7; i += 1) {
+    if (wanted.includes(d.getDay()) && d.getTime() >= new Date(from).setHours(0, 0, 0, 0)) return new Date(d);
+    d.setDate(d.getDate() + 1);
+  }
+  return null;
+}
+
 /** The short readable line in the event's notes. WRITTEN, NEVER READ — see below. */
 export function humanSummary(task, kind) {
   switch (kind) {
@@ -384,4 +439,59 @@ export function decodeEvent(ev) {
 /** The query that finds one task's event again, per Google's list filter. */
 export function idQuery(taskId) {
   return `${NS}.id=${taskId}`;
+}
+
+const DAY_CODE = { sun: 'SU', mon: 'MO', tue: 'TU', wed: 'WE', thu: 'TH', fri: 'FR', sat: 'SA' };
+
+/**
+ * A task → the event(s) that represent it in Google.
+ *
+ * ONE event for anything ordinary. SEVERAL when a repeating task keeps
+ * different times on different days, because an RRULE carries exactly one time
+ * — a gym at Mon 16:15, Wed 19:00 and Sat 14:00 needs three.
+ *
+ * ⚠️ EVERY PART CARRIES THE FULL PAYLOAD, not just the first. It costs ~500
+ * bytes each and it means ANY surviving part can rebuild the whole task. If
+ * only part 0 held it, losing that one event — a hand delete in Google, a
+ * failed write — would strand the rest as unreadable fragments.
+ *
+ * Regrouping on the way back needs only `sc.id`, which is identical across the
+ * parts; `sc.part` and `sc.parts` say which piece this is and how many there
+ * should be, so a missing one is DETECTABLE rather than silently halving a
+ * routine.
+ */
+export function encodeTaskParts(task, opts = {}) {
+  const json = task.toJSON ? task.toJSON() : { ...task };
+  const groups = timeGroups(json);
+  if (groups.length === 0) return [encodeTask(task, opts)];
+
+  const anchor = json.startTime ? new Date(json.startTime) : new Date();
+  const rec = json.recurrence;
+  const period = (rec.periods || []).find((p) => !p.effectiveUntil) || (rec.periods || [])[0];
+  const interval = (period && period.interval) || 1;
+
+  return groups.map((g, i) => {
+    // Each part starts on one of ITS OWN days, which is what keeps Google from
+    // rejecting the rule.
+    const from = period && period.effectiveFrom ? new Date(period.effectiveFrom) : anchor;
+    const start = firstOccurrence(g.days, g.start, from) || anchor;
+    const end = new Date(start);
+    const e = hhmm(g.end);
+    end.setHours(e.h, e.m, 0, 0);
+    if (end <= start) end.setDate(end.getDate() + 1);
+
+    const byday = g.days.map((d) => DAY_CODE[d]).filter(Boolean).join(',');
+    const parts = [`FREQ=WEEKLY${interval > 1 ? `;INTERVAL=${interval}` : ''}`];
+    if (byday) parts.push(`BYDAY=${byday}`);
+
+    const body = encodeTask(
+      { ...json, startTime: start.getTime(), endTime: end.getTime() },
+      { ...opts, rrule: `RRULE:${parts.join(';')}` },
+    );
+    const priv = body.extendedProperties.private;
+    priv[`${NS}.part`] = String(i);
+    priv[`${NS}.parts`] = String(groups.length);
+    body.description = `${body.description} · part ${i + 1} of ${groups.length}`;
+    return body;
+  });
 }

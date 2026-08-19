@@ -14,7 +14,7 @@
 // The API is INJECTED rather than imported, so the whole of this can be driven
 // by a fake Google in tests. Nothing here needs an account to prove.
 
-import { encodeTask, decodeEvent } from '../core/googleEncode.js';
+import { encodeTaskParts, decodeEvent } from '../core/googleEncode.js';
 import { encodeLibrary, decodeLibrary } from '../core/googleLibrary.js';
 import {
   listAllEvents, insertEvent, patchEvent, deleteEvent,
@@ -68,23 +68,52 @@ export async function inspectCalendar(api, calendarId) {
  */
 export async function pull(api, calendarId) {
   const events = await api.listAll(calendarId);
-  const tasks = [];
+  // ⚠️ Keyed by TASK id, not event id. A repeating task whose windows keep
+  // different times on different days is SEVERAL events (see
+  // `encodeTaskParts`), and they must come back as ONE task or the app would
+  // grow a duplicate for every part. They all share `sc.id`; each carries the
+  // full payload, so any surviving part rebuilds the whole thing.
+  const byTaskId = new Map();
   const dropped = [];
   for (const ev of events) {
     if (!isOurs(ev)) continue;
     const p = ev.extendedProperties.private;
     if (p['sc.kind'] === 'library') continue;      // handled below
     const r = decodeEvent(ev);
-    if (r.ok) tasks.push({ task: r.task, googleEventId: ev.id, updated: Date.parse(ev.updated || 0) || 0 });
+    if (r.ok) {
+      const seen = byTaskId.get(r.task.id);
+      const updated = Date.parse(ev.updated || 0) || 0;
+      if (seen) {
+        seen.googleEventIds.push(ev.id);
+        // The NEWEST part decides whether the task counts as changed remotely —
+        // editing any one of them is an edit to the task.
+        if (updated > seen.updated) { seen.updated = updated; seen.task = r.task; }
+      } else {
+        byTaskId.set(r.task.id, {
+          task: r.task,
+          googleEventIds: [ev.id],
+          updated,
+          expectedParts: Number(p['sc.parts']) || 1,
+        });
+      }
+    }
     // ⚠️ `taskId` matters more than the event id here. The planner must be told
     // WHICH TASK is unreadable, or it sees the task as absent from Google and
     // deletes the local copy — corruption turned into data loss by the very
     // check that caught it. See `planSync`'s `unreadable`.
     else dropped.push({ id: ev.id, taskId: r.id || null, summary: ev.summary, error: r.error });
   }
+  const tasks = [...byTaskId.values()];
+  // A task whose parts do not all show up. Reported rather than silently
+  // treated as a smaller routine — half a gym week is not a gym week.
+  const incomplete = tasks
+    .filter((t) => t.googleEventIds.length < t.expectedParts)
+    .map((t) => ({ id: t.task.id, title: t.task.title, found: t.googleEventIds.length, expected: t.expectedParts }));
+
   const lib = decodeLibrary(events);
   return {
     tasks,
+    incomplete,
     library: lib.ok ? lib.library : null,
     libraryError: lib.ok || lib.empty ? null : lib.error,
     dropped,
@@ -108,30 +137,60 @@ export async function applyPlan(api, calendarId, plan, { commitmentIds, timeZone
   const forgotten = [];
   const failed = [];
 
+  const bodiesFor = (task) => encodeTaskParts(task, { commitmentIds, timeZone });
+
   for (const task of plan.create) {
     try {
-      const ev = await api.insert(calendarId, encodeTask(task, { commitmentIds, timeZone }));
-      // ⚠️ Only on a confirmed id. Without one there is nothing to update next
-      // time, and recording it would strand the task as un-updatable.
-      if (ev && ev.id) synced.push({ task, eventId: ev.id });
-      else failed.push({ id: task.id, op: 'create', error: 'Google returned no event id' });
+      // One task can be SEVERAL events — a repeating task with different times
+      // on different days is one event per time.
+      const bodies = bodiesFor(task);
+      const ids = [];
+      for (const body of bodies) {
+        const ev = await api.insert(calendarId, body);
+        if (ev && ev.id) ids.push(ev.id);
+      }
+      // ⚠️ ALL parts or none. A task recorded as synced with only some of its
+      // events written would never be retried, and the calendar would keep a
+      // permanently half-written routine.
+      if (ids.length === bodies.length) synced.push({ task, eventId: ids[0], eventIds: ids });
+      else failed.push({ id: task.id, op: 'create', error: `wrote ${ids.length} of ${bodies.length} parts` });
     } catch (err) {
       failed.push({ id: task.id, op: 'create', error: err?.message || String(err) });
     }
   }
 
-  for (const { task, eventId } of plan.update) {
+  for (const { task, eventIds = [] } of plan.update) {
     try {
-      await api.patch(calendarId, eventId, encodeTask(task, { commitmentIds, timeZone }));
-      synced.push({ task, eventId });
+      const bodies = bodiesFor(task);
+      if (bodies.length === eventIds.length) {
+        // Same shape — PATCH in place, which preserves anything the user added
+        // to the event in Google and keeps the ids stable.
+        for (let i = 0; i < bodies.length; i += 1) {
+          await api.patch(calendarId, eventIds[i], bodies[i]);
+        }
+        synced.push({ task, eventId: eventIds[0], eventIds });
+      } else {
+        // The number of times changed — a window was added or removed — so the
+        // parts no longer line up. Replace the set. The old events go LAST, so
+        // a failure part-way leaves duplicates (visible, fixable) rather than
+        // nothing (silent loss).
+        const ids = [];
+        for (const body of bodies) {
+          const ev = await api.insert(calendarId, body);
+          if (ev && ev.id) ids.push(ev.id);
+        }
+        if (ids.length !== bodies.length) throw new Error(`wrote ${ids.length} of ${bodies.length} parts`);
+        for (const old of eventIds) await api.remove(calendarId, old).catch(() => {});
+        synced.push({ task, eventId: ids[0], eventIds: ids });
+      }
     } catch (err) {
       failed.push({ id: task.id, op: 'update', error: err?.message || String(err) });
     }
   }
 
-  for (const { id, eventId } of plan.deleteRemote) {
+  for (const { id, eventIds = [] } of plan.deleteRemote) {
     try {
-      await api.remove(calendarId, eventId);
+      for (const eventId of eventIds) await api.remove(calendarId, eventId);
       forgotten.push(id);
     } catch (err) {
       failed.push({ id, op: 'delete', error: err?.message || String(err) });

@@ -85,6 +85,16 @@ export function markDirty(state, localTasks, now) {
  *                from Google's own `updated` field on the event
  * @param state   `{ lastSyncAt, entries: { id: { hash, eventId, dirtyAt } } }`
  */
+/**
+ * The Google event ids for one task. A task is usually one event, but a
+ * repeating task with different times on different days is one event PER TIME
+ * (see `encodeTaskParts`), so this is always a list.
+ */
+function eventIdsOf(r) {
+  if (Array.isArray(r.googleEventIds)) return r.googleEventIds;
+  return r.googleEventId ? [r.googleEventId] : [];
+}
+
 export function planSync(local, remote, state = emptyState(), { unreadable } = {}) {
   const entries = state.entries || {};
   const lastSyncAt = state.lastSyncAt || 0;
@@ -127,7 +137,10 @@ export function planSync(local, remote, state = emptyState(), { unreadable } = {
     const remoteChanged = (r.updated || 0) > lastSyncAt;
 
     if (!localChanged && !remoteChanged) { plan.unchanged.push(id); continue; }
-    if (localChanged && !remoteChanged) { plan.update.push({ task, eventId: r.googleEventId }); continue; }
+    // ⚠️ eventIdS. One task can be several Google events — a repeating task with
+    // different times on different days is one event per time — so an update
+    // has to know about all of them, not just the first one seen.
+    if (localChanged && !remoteChanged) { plan.update.push({ task, eventIds: eventIdsOf(r) }); continue; }
     if (!localChanged && remoteChanged) { plan.adopt.push(r.task); continue; }
 
     // Both moved. GS-7: the newer edit wins, and it is SAID rather than done
@@ -137,14 +150,14 @@ export function planSync(local, remote, state = emptyState(), { unreadable } = {
     const remoteAt = r.updated || 0;
     const winner = localAt >= remoteAt ? 'local' : 'remote';
     plan.conflicts.push({ id, title: task.title, winner, localAt, remoteAt });
-    if (winner === 'local') plan.update.push({ task, eventId: r.googleEventId });
+    if (winner === 'local') plan.update.push({ task, eventIds: eventIdsOf(r) });
     else plan.adopt.push(r.task);
   }
 
   for (const [id, r] of remoteById) {
     if (localById.has(id)) continue;
     // Mirror of the ambiguity above, the other way round.
-    if (entries[id]) plan.deleteRemote.push({ id, eventId: r.googleEventId });
+    if (entries[id]) plan.deleteRemote.push({ id, eventIds: eventIdsOf(r) });
     else plan.adopt.push(r.task);
   }
 

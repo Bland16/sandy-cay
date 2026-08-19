@@ -6,7 +6,7 @@
 // end-to-end round trip AND the failure handling, which is the part that
 // silently corrupts a store if it is wrong.
 import { describe, it, expect } from 'vitest';
-import { Schedule, defaultConfig, seed } from '../src/core/index.js';
+import { Schedule, defaultConfig, seed, Task } from '../src/core/index.js';
 import { planSync, advanceState, emptyState } from '../src/core/syncPlan.js';
 import { inspectCalendar, pull, applyPlan, pushLibrary } from '../src/ui/googleSync.js';
 import { libraryFrom } from '../src/core/googleLibrary.js';
@@ -111,8 +111,10 @@ describe('the round trip, through a fake Google', () => {
     const back = await pull(api, 'cal');
     expect(back.dropped).toHaveLength(0);
     expect(back.tasks.map((t) => t.task.title).sort()).toEqual(['Orientation', 'Read for seminar']);
-    // Google's id, not ours — ours are not legal Google event ids.
-    expect(back.tasks[0].googleEventId).toMatch(/^ev\d+$/);
+    // Google's ids, not ours — ours are not legal Google event ids. It is a
+    // LIST because one task can be several events (see encodeTaskParts).
+    expect(back.tasks[0].googleEventIds).toHaveLength(1);
+    expect(back.tasks[0].googleEventIds[0]).toMatch(/^ev\d+$/);
   });
 
   it('is idempotent — a second sync writes nothing', async () => {
@@ -231,6 +233,111 @@ describe('⚠️ partial failure — the obligation the planner handed over', ()
     const applied = await applyPlan(api, 'cal', planSync(sched().toJSON().tasks, [], emptyState()), {});
     expect(applied.synced).toHaveLength(0);
     expect(applied.failed).toHaveLength(2);
+  });
+});
+
+describe('a task split across several events (the gym)', () => {
+  // Mon 16:15, Wed 19:00, Sat 14:00 — three times, so three Google events,
+  // because an RRULE carries exactly one time.
+  const gymTask = () => Task.fromJSON({
+    id: 'gym-0001',
+    title: 'Gym',
+    startTime: new Date(2026, 8, 7, 16, 15).getTime(),
+    endTime: new Date(2026, 8, 7, 17, 15).getTime(),
+    recurrence: {
+      anchorDate: null,
+      exceptions: [],
+      periods: [{
+        windows: [
+          { day: 'mon', start: '16:15', end: '17:15' },
+          { day: 'wed', start: '19:00', end: '20:00' },
+          { day: 'sat', start: '14:00', end: '15:00' },
+        ],
+        interval: 1,
+        effectiveFrom: null,
+        effectiveUntil: null,
+      }],
+    },
+  }).toJSON();
+
+  it('writes three events and reads back ONE task', async () => {
+    const api = fakeGoogle();
+    const local = [gymTask()];
+    const applied = await applyPlan(api, 'cal', planSync(local, [], emptyState()), {});
+    expect(applied.failed).toHaveLength(0);
+    expect(api._events.size).toBe(3);
+
+    const back = await pull(api, 'cal');
+    // ONE task, not three — otherwise the app would grow a duplicate per part.
+    expect(back.tasks).toHaveLength(1);
+    expect(back.tasks[0].task.id).toBe('gym-0001');
+    expect(back.tasks[0].googleEventIds).toHaveLength(3);
+    expect(back.incomplete).toHaveLength(0);
+  });
+
+  it('keeps the three real times, which is the whole point', async () => {
+    const api = fakeGoogle();
+    await applyPlan(api, 'cal', planSync([gymTask()], [], emptyState()), {});
+    const times = [...api._events.values()]
+      .map((e) => new Date(e.start.dateTime))
+      .map((d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`)
+      .sort();
+    expect(times).toEqual(['14:00', '16:15', '19:00']);
+  });
+
+  it('every part carries a rule Google will accept', async () => {
+    // Google rejects an RRULE whose BYDAY excludes DTSTART — that is how a
+    // repeating task vanished from the calendar entirely.
+    const api = fakeGoogle();
+    await applyPlan(api, 'cal', planSync([gymTask()], [], emptyState()), {});
+    const code = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
+    for (const e of api._events.values()) {
+      const day = code[new Date(e.start.dateTime).getDay()];
+      const byday = /BYDAY=([^;]+)/.exec(e.recurrence[0])[1].split(',');
+      expect(byday).toContain(day);
+    }
+  });
+
+  it('an edit patches the three in place rather than duplicating them', async () => {
+    const api = fakeGoogle();
+    let state = emptyState();
+    let applied = await applyPlan(api, 'cal', planSync([gymTask()], [], state), {});
+    state = advanceState(state, applied, api._now());
+    expect(api._events.size).toBe(3);
+
+    const edited = { ...gymTask(), title: 'Gym (evenings)' };
+    const plan = planSync([edited], (await pull(api, 'cal')).tasks, state);
+    expect(plan.update).toHaveLength(1);
+    expect(plan.update[0].eventIds).toHaveLength(3);
+    applied = await applyPlan(api, 'cal', plan, {});
+    expect(applied.failed).toHaveLength(0);
+    expect(api._events.size).toBe(3);                       // still three
+    const back = await pull(api, 'cal');
+    expect(back.tasks[0].task.title).toBe('Gym (evenings)');
+  });
+
+  it('deleting the task removes ALL of its events', async () => {
+    const api = fakeGoogle();
+    let state = emptyState();
+    const applied = await applyPlan(api, 'cal', planSync([gymTask()], [], state), {});
+    state = advanceState(state, applied, api._now());
+    const plan = planSync([], (await pull(api, 'cal')).tasks, state);
+    expect(plan.deleteRemote[0].eventIds).toHaveLength(3);
+    await applyPlan(api, 'cal', plan, {});
+    expect(api._events.size).toBe(0);                       // no orphans left
+  });
+
+  it('reports a task whose parts do not all come back', async () => {
+    // Half a gym week is not a gym week. `sc.parts` is what makes that visible
+    // instead of silently looking like a smaller routine.
+    const api = fakeGoogle();
+    await applyPlan(api, 'cal', planSync([gymTask()], [], emptyState()), {});
+    const [firstId] = [...api._events.keys()];
+    api._events.delete(firstId);                            // deleted by hand
+
+    const back = await pull(api, 'cal');
+    expect(back.incomplete).toHaveLength(1);
+    expect(back.incomplete[0]).toMatchObject({ id: 'gym-0001', found: 2, expected: 3 });
   });
 });
 
