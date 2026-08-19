@@ -22,7 +22,8 @@
 // as good as the caller — App gates on session === 'google'.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { planSync, markDirty, advanceState, emptyState, describePlan } from '../core/syncPlan.js';
+import { planSync, markDirty, advanceState, emptyState, describePlan, taskHash } from '../core/syncPlan.js';
+import { libraryFrom } from '../core/googleLibrary.js';
 import { makeApi, pull, applyPlan, pushLibrary, inspectCalendar } from './googleSync.js';
 import { getAccessToken, readClientId } from './google.js';
 
@@ -71,7 +72,17 @@ export function applyLocal(sched, plan) {
  *                  signal that starts the debounce
  * @param showToast say what happened
  */
-export function useGoogleSync({ enabled, sched, mutate, version, showToast, now = () => Date.now() }) {
+/**
+ * ⚠️ HOISTED, not a default parameter. `now = () => Date.now()` in the argument
+ * list builds a NEW function on every render, which changes `runSync`'s
+ * identity, which re-runs the debounce effect, whose cleanup then cancels the
+ * pending timer — so the sync never fired. Nothing errored; it simply never
+ * saved. Found by a test that re-renders; every other sync test called the
+ * planner directly and passed regardless.
+ */
+const wallClock = () => Date.now();
+
+export function useGoogleSync({ enabled, sched, mutate, version, showToast, now = wallClock }) {
   const [calendarId, setCalendarId] = useState(loadCalendarId);
   const [status, setStatus] = useState('idle'); // idle | syncing | error | off
   const [lastError, setLastError] = useState(null);
@@ -124,9 +135,20 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, now 
         mutate((s) => applyLocal(s, plan));
       }
 
-      await pushLibrary(api, calendarId, sched.toJSON());
+      // ⚠️ Only when it actually CHANGED. `pushLibrary` deletes and recreates
+      // its events, so doing it every pass meant a delete plus an insert every
+      // five seconds of editing — pure quota burn for a blob that changes when
+      // you add a bucket, not when you drag a card. It also churned the library
+      // event's id constantly, which makes a store harder to inspect by hand.
+      const json = sched.toJSON();
+      const libNow = taskHash(libraryFrom(json));
+      if (libNow !== stateRef.current.libHash) {
+        await pushLibrary(api, calendarId, json);
+        stateRef.current = { ...stateRef.current, libHash: libNow };
+      }
 
       stateRef.current = advanceState(stateRef.current, applied, t);
+      stateRef.current.libHash = libNow;
       saveSyncState(stateRef.current);
       setStatus('idle');
 
@@ -154,24 +176,41 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, now 
     }
   }, [enabled, calendarId, sched, mutate, showToast, token, now]);
 
+  // ⚠️ The effects below must NOT depend on `runSync`'s identity. It is a
+  // useCallback over several values, so it changes whenever any of them does —
+  // and an effect that schedules a timer, keyed on a callback, cancels its own
+  // pending work on the next unrelated re-render. A ref holding the latest
+  // function gives the effects a stable dependency list and always calls the
+  // current implementation.
+  const runRef = useRef(runSync);
+  runRef.current = runSync;
+
   // Pull once when the app opens signed in (GS-3: Google is truth).
   const opened = useRef(false);
   useEffect(() => {
     if (!enabled || !calendarId || opened.current) return;
     opened.current = true;
-    runSync();
-  }, [enabled, calendarId, runSync]);
+    runRef.current();
+  }, [enabled, calendarId]);
 
   // GS-6: debounce. Every engine change restarts the clock, so a burst of
   // dragging writes once, when it stops.
+  //
+  // ⚠️ NO CLEANUP THAT CLEARS THE TIMER. The pending sync must survive every
+  // re-render between the change and the deadline — a toast, a hover, a panel
+  // opening. It is cancelled in exactly one place: the top of this effect, when
+  // a NEWER change restarts the clock. Unmount is handled separately below.
   useEffect(() => {
-    if (!enabled || !calendarId) return undefined;
-    if (version === seenVersion.current) return undefined;
+    if (!enabled || !calendarId) return;
+    if (version === seenVersion.current) return;
     seenVersion.current = version;
     if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => { runSync(); }, DEBOUNCE_MS);
-    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
-  }, [version, enabled, calendarId, runSync]);
+    timerRef.current = setTimeout(() => { runRef.current(); }, DEBOUNCE_MS);
+  }, [version, enabled, calendarId]);
+
+  // Unmount only — a pending write is abandoned when the app goes away, not
+  // when it merely redraws.
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
 
   /** GS-5. Refuses a calendar holding anything this app did not write. */
   const chooseCalendar = useCallback(async (id) => {
