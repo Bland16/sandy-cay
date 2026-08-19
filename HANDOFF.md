@@ -1,5 +1,56 @@
 # Sandy Cay — handoff
 
+## ▶ SESSION 9 (2026-08-18/19) — READ THIS FIRST, THE REST IS OLDER
+
+**`main` is live and now actually WORKS.** It was serving the raw repo root —
+`index.html` pointing at `/src/main.jsx`, `package.json` fetchable, the app
+unable to start — because Pages was set to *Deploy from a branch* while the
+workflow uploaded a `dist` artifact nothing served. The user switched
+**Settings → Pages → Source → GitHub Actions** and it now serves the hashed
+bundle. **A green deploy run was never evidence the site worked**; check that
+`/package.json` 404s and the page references `/assets/index-*.js`.
+
+**`main` moved from session 6 to session 9 in one merge** (100 commits,
+6e11306 → 38d1da8, fast-forward). Sessions 7, 8 and 9 are all live.
+
+**987 tests green. Branch `session9-zoom-and-google-storage` holds the sync work
+(not on `main`).**
+
+### What shipped
+
+| | |
+|---|---|
+| **Grid zoom** (`design/GRID-ZOOM.md`) | 7 rungs to 8×, keyboard + pinch. The top two rungs exist because 4× is NOT enough to see a 5-minute task — it renders 11.3px against a 12px floor |
+| **Entry screen** (`design/GOOGLE-AS-STORAGE.md` §5) | Pirate chart-table, guest or Google, changeable from the Cabana |
+| **Google as storage** | P0–P3 built: one event per task, a hidden library event, planner + executor + wiring. **Never run against a real account** |
+
+### ⚠️ The lesson of this session, and it is not the same as session 6's
+
+Session 6's was "render the panel to believe it". This one is narrower and
+nastier: **the thing under test was fine and everything AROUND it was broken.**
+
+Three bugs, all invisible to a suite that was green at the time:
+
+- the sync **never fired** — a default-parameter arrow function changed a
+  callback's identity every render, so the debounce effect cancelled its own
+  timer. Every sync test called the planner directly; none re-rendered.
+- a **corrupt event deleted the local task** — unreadable was indistinguishable
+  from absent, and absent means "deleted elsewhere".
+- **adopting a task dropped ten fields** to `UPDATE_WHITELIST`.
+
+**So: test the trigger, not just the mechanism. And when a guard detects damage,
+ask what the code does NEXT with that information.**
+
+### If you pick this up
+
+1. **Run the sync against a THROWAWAY calendar.** Everything so far is a fake
+   Google. Point it at a real calendar first to watch the GS-5 guard refuse.
+2. `design/GOOGLE-AS-STORAGE.md` §7 — GS-10 (a repeat rule edited in Google is
+   not read back) and GS-11 (day notes should be all-day events, not library
+   rows) are still open and both gate further work.
+3. P4, the export reminder, is unbuilt.
+
+
 **Updated:** 2026-08-13, session 8. **`main` is the trunk and is live on Pages**
 (https://bland16.github.io/sandy-cay/). **573 tests green** — measured, not
 quoted; the "569" this file carried since session 6 was stale.

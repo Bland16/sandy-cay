@@ -171,10 +171,39 @@ warning rather than relying on it.
 | P | What | Provable by |
 |---|---|---|
 | **P0** | ✅ **BUILT 2026-08-18** — `src/core/googleEncode.js`, `tests/google-encode.test.js`, `design/probes/probe-google-encode.mjs`. 26 tests, 13 mutations bite | see below |
-| **P1** | The library event — chunk/unchunk, multi-event overflow | Round-trip a full term-scale state; assert a truncated chunk is DETECTED |
-| **P2** | The entry screen + guest mode | The user's eye on the mockup; jsdom can prove the two doors and that guest never calls the network |
-| **P3** | Pull on open · write-back · `syncToken` · `showDeleted` · per-event delete | Against a **throwaway calendar**, never the real one |
-| **P4** | The export reminder | Manual |
+| **P1** | ✅ **BUILT** — `googleLibrary.js`. Term-scale library measures **16.1 kB**, half of one event (the 12.4 kB estimate above missed property keys and the JSON wrapper), so it splits across N events from the start | 16 tests |
+| **P2** | ✅ **BUILT** — `LandingScreen.jsx`, `session.js`. Everyone sees it until they choose; changeable from the Cabana; guest proven never to touch the network | 12 tests |
+| **P3** | ✅ **BUILT, NEVER RUN FOR REAL** — `core/syncPlan.js` (decisions), `ui/googleSync.js` (execution), `ui/useGoogleSync.js` (wiring), driven end to end by a fake Google | 60 tests |
+| **P4** | The export reminder | Manual — still to do |
+
+### ⚠️ P3 is built but has NEVER touched a real Google account
+
+Everything is proven against an in-memory fake. **The first real run wants a
+throwaway calendar**, because the GS-5 guard has never actually refused a real
+calendar — and a guard that has never run is not evidence.
+
+**Three bugs were found by reviewing P3 rather than by testing it**, and all
+three were invisible to a green suite. They are recorded because the *shape*
+recurs, not for the history:
+
+1. **The sync never fired.** `now = () => Date.now()` as a default parameter
+   rebuilt a function every render, changing `runSync`, re-running the debounce
+   effect, whose cleanup cancelled the pending timer. Every sync test called the
+   planner and executor DIRECTLY, so not one exercised the trigger. Nothing
+   would ever have saved and nothing would have said so.
+2. **A corrupt event deleted the local task.** An event failing its checksum is
+   dropped from `remote`, so the task looks absent, so it reads as "deleted on
+   the other device". The check that exists to CATCH corruption was the thing
+   that completed it. `unreadable` now threads from `decodeEvent` → `pull` →
+   `planSync`, and those tasks are left completely alone.
+3. **Adopting a task lost ten fields.** `updateTask` drops everything absent
+   from `UPDATE_WHITELIST` — `load`, `routineId`, `parentId`, `chunking`,
+   `history` and more. Correct for a form, catastrophic for a store. Restores go
+   through `Schedule#upsertTaskFromJSON`.
+
+**The lesson, in one line:** the round trip was tested exhaustively and the
+things *around* it — what triggers it, what happens when a read fails, which
+door a write goes through — were not tested at all.
 
 **P0 and P1 need no Google account at all** and are where the risk actually
 lives. Do them first.
@@ -187,7 +216,7 @@ lives. Do them first.
 | **GS-6** | **Write cadence.** Every change would burn Google's quota. Debounced? On blur? Explicit save? |
 | **GS-7** | **Conflict.** GS-4 says a hand edit wins. But if the same task changed in *both* places while offline, which wins — newest `updated`, or ask? |
 | **GS-8** | **Guest → signed-in.** A guest builds a week, then signs in. Upload it, adopt what is in Google, or ask? |
-| **GS-9** | Does the ~1h token expiring mid-session need a visible re-auth, or silent retry then a toast? |
+| **GS-9** | ✅ **Defaulted and built:** retried silently once, then said out loud. Change it if the silent retry ever hides something worth knowing |
 | **GS-10** | ⚠️ **Opened by P0.** A hand edit to a single event's TIME is honoured (times live only on the event). A hand edit to its **repeat rule** is not — recurrence lives in the payload, because RRULE is strictly poorer than this app's model and storage has to be lossless. So the two hand edits behave differently. Accept the asymmetry and say so in the UI, or try to read RRULE changes back? **Gates P3.** |
 
 ## 8. Explicitly not proposed
