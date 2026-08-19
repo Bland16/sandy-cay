@@ -586,6 +586,16 @@ export default function App() {
                never be a way to lose it. */
             onChangeSession={() => {
               clearSession();
+              // ⚠️ The CALENDAR goes too. Changing how you sign in without this
+              // cleared the session but kept the stored calendar, so signing
+              // back in with Google skipped the picker and silently reused the
+              // old one — you could never re-choose it without clearing browser
+              // storage. Forgetting it means the picker asks again, which is
+              // the whole point of coming back through this door.
+              //
+              // The SCHEDULE is untouched: changing where your week lives must
+              // never be a way to lose it.
+              sync.forget();
               setSession(null);
               setSignInError(null);
               setView('week');

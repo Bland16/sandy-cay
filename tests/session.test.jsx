@@ -249,6 +249,26 @@ describe('the choice is not a one-way door', () => {
     expect(screen.getByText('Monday thing')).toBeTruthy();
   });
 
+  it('⚠️ changing how you sign in also lets you re-choose the calendar', () => {
+    // It used to clear the session but KEEP the stored calendar, so signing
+    // back in with Google skipped the picker and silently reused the old one —
+    // there was no way to re-choose it short of clearing browser storage.
+    seedSchedule();
+    window.localStorage.setItem(SESSION_KEY, SESSION.GOOGLE);
+    window.localStorage.setItem('sandycay.sync.calendar', JSON.stringify('cal-1'));
+    render(<App />);
+    expect(inApp()).toBe(true);            // straight in, calendar already set
+
+    fireEvent.click(screen.getByTitle(/cabana/i) || screen.getByText(/cabana/i));
+    fireEvent.click(screen.getByText(/Change how you sign in/i).closest('button'));
+
+    expect(onLanding()).toBe(true);
+    // The calendar is forgotten, so the picker will ask again.
+    expect(window.localStorage.getItem('sandycay.sync.calendar')).toBe('null');
+    // ...and the schedule is untouched.
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBeTruthy();
+  });
+
   it('names which way you are signed in', () => {
     seedSchedule();
     window.localStorage.setItem(SESSION_KEY, SESSION.GUEST);
