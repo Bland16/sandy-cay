@@ -576,7 +576,16 @@ export default function App() {
             mutate={mutate}
             weekStart={weekStart}
             onBack={() => setView('week')}
-            onReplace={replace}
+            /* ⚠️ A RESTORE MUST FORGET WHAT WAS SYNCED, and not doing so undid
+               the restore completely. The sync record says "these ids were
+               pushed to Google"; a restore brings those ids back while Google
+               may no longer have the events, and the planner reads that as
+               "deleted on another device" and deletes every restored task.
+               Clearing the record makes them new, so they are pushed up. */
+            onReplace={(blob) => {
+              replace(blob);
+              sync.resetState();
+            }}
             onReset={reset}
             showToast={showToast}
             session={session}

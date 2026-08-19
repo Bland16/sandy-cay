@@ -22,7 +22,9 @@
 // as good as the caller — App gates on session === 'google'.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { planSync, markDirty, advanceState, emptyState, describePlan, taskHash } from '../core/syncPlan.js';
+import {
+  planSync, markDirty, advanceState, emptyState, describePlan, taskHash, isBulkDelete,
+} from '../core/syncPlan.js';
 import { libraryFrom } from '../core/googleLibrary.js';
 import { makeApi, pull, applyPlan, pushLibrary, inspectCalendar } from './googleSync.js';
 import { getAccessToken, readClientId } from './google.js';
@@ -126,12 +128,31 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, now 
       }
 
       const t = now();
-      stateRef.current = markDirty(stateRef.current, sched.toJSON().tasks, t);
+      const localTasks = sched.toJSON().tasks;
+      stateRef.current = markDirty(stateRef.current, localTasks, t);
       // `unreadable` is not optional bookkeeping: without it a corrupt event
       // reads as an absent one and this deletes the local task. See planSync.
-      const plan = planSync(sched.toJSON().tasks, remote.tasks, stateRef.current, {
+      const plan = planSync(localTasks, remote.tasks, stateRef.current, {
         unreadable: remote.unreadable,
       });
+
+      // ⚠️ STOP BEFORE EMPTYING THE SCHEDULE. A sync that would delete most of
+      // your tasks at once is far likelier to be a bug than an intention — it
+      // is what a stale sync record, a re-made calendar and a half-finished
+      // restore all look like from here, and one of those really did wipe a
+      // restored schedule. Nothing is written or deleted on this pass; the
+      // record is left untouched so the next pass can still do the right thing
+      // once the cause is dealt with.
+      if (isBulkDelete(plan, localTasks.length)) {
+        setStatus('error');
+        const msg = `Sync stopped: it was about to remove ${plan.deleteLocal.length} of your `
+          + `${localTasks.length} tasks because they are missing from the calendar. `
+          + 'Nothing was changed. If you just restored a backup, use "Use a different calendar" '
+          + 'in the Cabana to start the calendar fresh.';
+        setLastError(msg);
+        showToast('Sync stopped — it would have deleted most of your tasks');
+        return plan;
+      }
 
       const applied = await applyPlan(api, calendarId, plan, {
         commitmentIds: new Set((sched.commitments || []).map((c) => c.id)),
@@ -247,6 +268,26 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, now 
     return check;
   }, [token]);
 
+  /**
+   * Forget what was last synced, but keep the calendar.
+   *
+   * ⚠️ A FOOTLOCKER RESTORE MUST CALL THIS, and not calling it destroyed the
+   * restore. The sync record says "these task ids were pushed to Google". After
+   * a restore brings those ids back while Google no longer has the events —
+   * a re-made calendar, events cleared by hand — the planner reads
+   * present-here-plus-absent-there-plus-synced-before as "deleted on another
+   * device" and deletes every restored task. Which is exactly what a restore
+   * was trying to undo.
+   *
+   * Clearing the record makes the restored tasks NEW, so they are pushed up
+   * instead of deleted. A restore is an assertion about what is true now, and
+   * the history of what used to be synced is not evidence against it.
+   */
+  const resetState = useCallback(() => {
+    stateRef.current = emptyState();
+    saveSyncState(stateRef.current);
+  }, []);
+
   const forget = useCallback(() => {
     saveCalendarId(null);
     setCalendarId(null);
@@ -255,6 +296,6 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, now 
   }, []);
 
   return {
-    calendarId, status, lastError, syncNow: runSync, chooseCalendar, forget,
+    calendarId, status, lastError, syncNow: runSync, chooseCalendar, forget, resetState,
   };
 }

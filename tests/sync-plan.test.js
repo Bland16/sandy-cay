@@ -5,7 +5,7 @@
 // cases with their reasoning.
 import { describe, it, expect } from 'vitest';
 import {
-  planSync, markDirty, advanceState, emptyState, taskHash, describePlan,
+  planSync, markDirty, advanceState, emptyState, taskHash, describePlan, isBulkDelete,
 } from '../src/core/syncPlan.js';
 
 const task = (id, title = id) => ({ id, title });
@@ -84,6 +84,49 @@ describe('⚠️ a corrupt remote event must never delete the local task', () =>
   it('accepts an array as well as a Set', () => {
     const plan = planSync([a], [], synced([a], T0), { unreadable: ['a'] });
     expect(plan.deleteLocal).toHaveLength(0);
+  });
+});
+
+describe('⚠️ the bulk-delete guard — a restore was silently undone', () => {
+  // WHAT HAPPENED: importing a footlocker while signed in brought back task ids
+  // the sync remembered pushing. Google no longer had those events, so every
+  // one read as "deleted on another device" and the sync deleted the lot. The
+  // schedule emptied itself in front of the user.
+  //
+  // Two defences: a restore now clears the sync record (so the tasks are NEW),
+  // and this guard stops any sync that is about to remove most of a schedule,
+  // whatever the cause.
+  const many = (n) => Array.from({ length: n }, (_, i) => task(`t${i}`, `Task ${i}`));
+
+  it('a restore whose ids are all remembered would delete EVERYTHING', () => {
+    const local = many(8);
+    const plan = planSync(local, [], synced(local, T0));
+    expect(plan.deleteLocal).toHaveLength(8);
+    expect(isBulkDelete(plan, local.length)).toBe(true);
+  });
+
+  it('clearing the record instead pushes the restored tasks up', () => {
+    const local = many(8);
+    const plan = planSync(local, [], emptyState());
+    expect(plan.deleteLocal).toHaveLength(0);
+    expect(plan.create).toHaveLength(8);
+  });
+
+  it('does NOT cry wolf over ordinary deletions', () => {
+    // Removing a task or two on your phone is exactly what this feature is for.
+    const local = many(20);
+    const gone = local.slice(0, 2);
+    const plan = planSync(local, local.slice(2).map((t) => remote(t, T0 - 10)), synced(gone, T0));
+    expect(plan.deleteLocal).toHaveLength(2);
+    expect(isBulkDelete(plan, local.length)).toBe(false);
+  });
+
+  it('uses a floor AND a share — three of four is alarming, three of two hundred is a Tuesday', () => {
+    const p = (n) => ({ deleteLocal: Array.from({ length: n }, (_, i) => `x${i}`) });
+    expect(isBulkDelete(p(2), 4)).toBe(false);    // under the floor
+    expect(isBulkDelete(p(3), 4)).toBe(true);     // over both
+    expect(isBulkDelete(p(3), 200)).toBe(false);  // over the floor, tiny share
+    expect(isBulkDelete(p(100), 200)).toBe(true);
   });
 });
 

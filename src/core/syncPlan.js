@@ -188,6 +188,33 @@ export function advanceState(state, applied, now) {
   return { lastSyncAt: now, entries };
 }
 
+/**
+ * Is this plan about to delete so much of your schedule that it is more likely
+ * a bug than an intention?
+ *
+ * ⚠️ WRITTEN AFTER A RESTORE WAS SILENTLY UNDONE. Importing a footlocker while
+ * signed in brought back task ids the sync remembered pushing; Google no longer
+ * had those events, so every one read as "deleted on another device" and the
+ * sync deleted the lot. The user watched their schedule empty itself.
+ *
+ * Deleting one or two tasks is ordinary — you removed them on your phone.
+ * Deleting MOST OF THE SCHEDULE at once is not something a person does one task
+ * at a time on another device, and it is exactly what several different bugs
+ * all look like from here. So it stops and says so instead.
+ *
+ * Deliberately a floor AND a proportion: three of four tasks is alarming, three
+ * of two hundred is a Tuesday.
+ */
+export const BULK_DELETE_FLOOR = 3;
+export const BULK_DELETE_SHARE = 0.5;
+
+export function isBulkDelete(plan, localCount) {
+  const n = plan.deleteLocal.length;
+  if (n < BULK_DELETE_FLOOR) return false;
+  if (!localCount) return true;
+  return n / localCount >= BULK_DELETE_SHARE;
+}
+
 /** A one-line summary for the toast. Says what happened, never just "synced". */
 export function describePlan(plan) {
   const bits = [];
