@@ -89,6 +89,16 @@ export function logApplied(applied) {
     console.table(applied.synced.map((s) => ({
       task: s.task?.title, id: s.task?.id, events: (s.eventIds || [s.eventId]).join(', '),
     })));
+    // ⚠️ THE RULE AND THE START, because a confirmed write can still be wrong.
+    // Google accepts a recurring master whose rule expands to NO instances — an
+    // `UNTIL` that has already passed, a bound before the start — and then the
+    // event is real to the API, comes back on the next pull, and appears nowhere
+    // in the calendar or in search. The counts say "1 confirmed, 0 failed" and
+    // the screen stays empty. These two fields are the only difference.
+    const parts = applied.synced.flatMap((s) => (s.wrote || []).map((w, i) => ({
+      task: s.task?.title, part: (s.wrote.length > 1 ? `${i + 1}/${s.wrote.length}` : ''), ...w,
+    })));
+    if (parts.length) console.table(parts);
   }
   // ⚠️ Failures are console.error, not part of the collapsed group — a write
   // that did not land is the thing you opened the console to find.

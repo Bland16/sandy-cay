@@ -123,6 +123,25 @@ export async function pull(api, calendarId) {
 }
 
 /**
+ * What was actually PUT ON THE WIRE, for the debug log — not for any decision.
+ *
+ * ⚠️ This exists because a write can succeed and still be wrong in a way no
+ * count can show. A recurring master whose rule expands to NO instances is
+ * accepted by Google, comes back on the next pull, and is invisible in the
+ * calendar and in search — "1 confirmed, 0 failed" and nothing on screen. The
+ * only thing that separates that from a working write is the rule and the start
+ * we sent, so the log carries them.
+ */
+function describeBodies(bodies) {
+  return bodies.map((b) => ({
+    start: b.start && b.start.dateTime,
+    tz: b.start && b.start.timeZone,
+    rrule: (b.recurrence || [])[0] || null,
+    norrule: (b.extendedProperties.private || {})['sc.norrule'] || null,
+  }));
+}
+
+/**
  * Carry out a plan's REMOTE half.
  *
  * `plan.adopt` and `plan.deleteLocal` are local operations and are deliberately
@@ -152,7 +171,7 @@ export async function applyPlan(api, calendarId, plan, { commitmentIds, timeZone
       // ⚠️ ALL parts or none. A task recorded as synced with only some of its
       // events written would never be retried, and the calendar would keep a
       // permanently half-written routine.
-      if (ids.length === bodies.length) synced.push({ task, eventId: ids[0], eventIds: ids });
+      if (ids.length === bodies.length) synced.push({ task, eventId: ids[0], eventIds: ids, wrote: describeBodies(bodies) });
       else failed.push({ id: task.id, op: 'create', error: `wrote ${ids.length} of ${bodies.length} parts` });
     } catch (err) {
       failed.push({ id: task.id, op: 'create', error: err?.message || String(err) });
@@ -168,7 +187,7 @@ export async function applyPlan(api, calendarId, plan, { commitmentIds, timeZone
         for (let i = 0; i < bodies.length; i += 1) {
           await api.patch(calendarId, eventIds[i], bodies[i]);
         }
-        synced.push({ task, eventId: eventIds[0], eventIds });
+        synced.push({ task, eventId: eventIds[0], eventIds, wrote: describeBodies(bodies) });
       } else {
         // The number of times changed — a window was added or removed — so the
         // parts no longer line up. Replace the set. The old events go LAST, so
@@ -181,7 +200,7 @@ export async function applyPlan(api, calendarId, plan, { commitmentIds, timeZone
         }
         if (ids.length !== bodies.length) throw new Error(`wrote ${ids.length} of ${bodies.length} parts`);
         for (const old of eventIds) await api.remove(calendarId, old).catch(() => {});
-        synced.push({ task, eventId: ids[0], eventIds: ids });
+        synced.push({ task, eventId: ids[0], eventIds: ids, wrote: describeBodies(bodies) });
       }
     } catch (err) {
       failed.push({ id: task.id, op: 'update', error: err?.message || String(err) });
