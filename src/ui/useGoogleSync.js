@@ -87,17 +87,20 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, now 
   const [status, setStatus] = useState('idle'); // idle | syncing | error | off
   const [lastError, setLastError] = useState(null);
   const stateRef = useRef(loadSyncState());
-  const tokenRef = useRef(null);
   const runningRef = useRef(false);
   const timerRef = useRef(null);
   // The first render must not be read as "something changed".
   const seenVersion = useRef(version);
 
-  const token = useCallback(async ({ force = false } = {}) => {
-    if (tokenRef.current && !force) return tokenRef.current;
-    tokenRef.current = await getAccessToken(readClientId());
-    return tokenRef.current;
-  }, []);
+  // ⚠️ ONE cache, in google.js, shared with sign-in and the calendar picker.
+  // A second copy here would go stale independently and would defeat the whole
+  // point — the picker needs the token obtained by the sign-in CLICK, because
+  // its own request happens in an effect where a popup is blocked. `force` is
+  // the 401 path: the held token was rejected, so ask again for real.
+  const token = useCallback(
+    ({ force = false } = {}) => getAccessToken(readClientId(), { force }),
+    [],
+  );
 
   /**
    * One full pass: pull, plan, apply both halves, record ONLY what Google

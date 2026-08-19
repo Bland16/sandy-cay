@@ -190,6 +190,24 @@ describe('step two: which calendar is the storage (GS-5)', () => {
     expect(inApp()).toBe(true);
   });
 
+  it('⚠️ asks for a CLICK rather than popping up from an effect', () => {
+    // THE BUG THIS PINS, seen on a real browser: the picker requested a token
+    // in its mount effect, so Google opened a popup with no user gesture behind
+    // it and the browser closed it instantly. The screen showed "Popup window
+    // closed" and an empty list, with no way forward.
+    //
+    // With no token held, the picker must offer a button instead — a click is
+    // the only context a popup reliably survives. jsdom has no Google, so
+    // `cachedAccessToken()` is always null here, which is exactly this case.
+    seedSchedule();
+    window.localStorage.setItem(SESSION_KEY, SESSION.GOOGLE);
+    render(<App />);
+    expect(screen.getByText(/Show me my calendars/i)).toBeTruthy();
+    // and it must NOT have tried to reach Google on its own
+    expect(screen.queryByText(/Popup window closed/i)).toBe(null);
+    expect(document.querySelector('.cp-list')).toBe(null);
+  });
+
   it('is never a dead end — Go back returns to the entry screen', () => {
     // If no calendar works out, the guest door is still a real way to use this.
     seedSchedule();

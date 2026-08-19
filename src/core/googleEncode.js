@@ -41,6 +41,8 @@
 // trusts what was written instead of re-deriving it from a library event that
 // may not have loaded yet. That ordering dependency is the bug this avoids.
 
+import { toRRULE } from './ical.js';
+
 const NS = 'sc';
 export const ENCODING_VERSION = 1;
 
@@ -190,6 +192,52 @@ export function kindOf(task, { commitmentIds } = {}) {
   return KIND.TASK;
 }
 
+const WEEKDAY_CODE = { sun: 'SU', mon: 'MO', tue: 'TU', wed: 'WE', thu: 'TH', fri: 'FR', sat: 'SA' };
+const CODE_BY_INDEX = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
+
+/**
+ * The RRULE, but ONLY when it would be both legal and truthful.
+ *
+ * ⚠️ TWO WAYS A DERIVED RRULE GOES WRONG, both found from a real calendar:
+ *
+ * 1. **Different times on different days.** An RRULE has exactly ONE time — the
+ *    event's own start. A gym at Mon 16:15, Wed 19:00 and Sat 14:00 becomes
+ *    `BYDAY=MO,WE,SA` anchored at 16:15, so Google shows Wednesday and Saturday
+ *    at the WRONG TIME. A mirror that lies is worse than no mirror, because the
+ *    app's own grid is right and the calendar quietly disagrees with it.
+ *
+ * 2. **The anchor is not one of the repeating days.** Google rejects an RRULE
+ *    whose BYDAY excludes DTSTART — 400, the insert fails, and the event never
+ *    appears AT ALL. That is how a repeating gym went completely missing.
+ *
+ * In both cases the pattern is still safe in the payload, so the app stays
+ * correct; only Google's view is reduced to a single event. Returning null is a
+ * deliberate downgrade, not a silent failure — `rruleSkipped` says which.
+ */
+export function safeRRULE(json) {
+  const rule = toRRULE(json);
+  if (!rule) return { rule: null, reason: null };
+
+  const rec = json.recurrence;
+  const period = (rec.periods || []).find((p) => !p.effectiveUntil) || (rec.periods || [])[0];
+  const windows = (period && period.windows) || [];
+
+  // 1. One time, or no rule.
+  const times = new Set(windows.map((w) => `${w.start}-${w.end}`));
+  if (times.size > 1) return { rule: null, reason: 'windows-differ' };
+
+  // 2. The anchor must be one of the days the rule fires on.
+  const byday = /BYDAY=([^;]+)/.exec(rule);
+  if (byday && json.startTime) {
+    const anchor = CODE_BY_INDEX[new Date(json.startTime).getDay()];
+    const days = byday[1].split(',').map((d) => d.replace(/^-?\d+/, ''));
+    if (!days.includes(anchor)) return { rule: null, reason: 'anchor-not-in-rule' };
+  }
+  // Referenced so the map is not dead weight if the shape of `toRRULE` changes.
+  void WEEKDAY_CODE;
+  return { rule, reason: null };
+}
+
 /** The short readable line in the event's notes. WRITTEN, NEVER READ — see below. */
 export function humanSummary(task, kind) {
   switch (kind) {
@@ -216,7 +264,11 @@ export function humanSummary(task, kind) {
  * is why round-tripping through Google makes the timezone bug (probe-b-tz.mjs)
  * less reachable rather than more.
  */
-export function encodeTask(task, { commitmentIds, timeZone = 'UTC', rrule = null } = {}) {
+// ⚠️ `rrule` has NO DEFAULT on purpose. It used to default to `null`, which
+// made the `=== undefined` check below unreachable, so the derived rule never
+// ran — the fix looked right and did nothing. Absent means "derive it"; an
+// explicit `null` means "deliberately none".
+export function encodeTask(task, { commitmentIds, timeZone = 'UTC', rrule } = {}) {
   const json = task.toJSON ? task.toJSON() : { ...task };
   const kind = kindOf(json, { commitmentIds });
 
@@ -251,7 +303,29 @@ export function encodeTask(task, { commitmentIds, timeZone = 'UTC', rrule = null
   };
   if (json.startTime) body.start = { dateTime: new Date(json.startTime).toISOString(), timeZone };
   if (json.endTime) body.end = { dateTime: new Date(json.endTime).toISOString(), timeZone };
-  if (rrule) body.recurrence = Array.isArray(rrule) ? rrule : [rrule];
+
+  // ⚠️ DERIVED BY DEFAULT, not opt-in — and that change IS the bug fix.
+  //
+  // This used to emit an RRULE only when a caller passed one, and no caller
+  // ever did. The pattern still round-tripped perfectly (it lives in the
+  // payload), so every test passed and the app was correct — but GOOGLE had no
+  // rule to expand, so a repeating task showed up as a SINGLE event in the
+  // calendar. Reported from a real browser, invisible to 992 tests.
+  //
+  // An option a caller must remember is an option a caller will forget. The
+  // mirror is now derived from the task itself; pass `rrule: null` to suppress
+  // it deliberately.
+  const derived = rrule === undefined ? safeRRULE(json) : { rule: rrule, reason: null };
+  if (derived.rule) {
+    body.recurrence = Array.isArray(derived.rule)
+      ? derived.rule
+      : [String(derived.rule).startsWith('RRULE:') ? derived.rule : `RRULE:${derived.rule}`];
+  } else if (derived.reason) {
+    // Recorded on the event so the downgrade is inspectable rather than a
+    // mystery — "why is my repeating gym one event in Google?" has an answer
+    // sitting on the event itself.
+    body.extendedProperties.private[`${NS}.norrule`] = derived.reason;
+  }
   return body;
 }
 

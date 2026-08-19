@@ -15,32 +15,47 @@
 // create a calendar for you — that needs the broad `auth/calendar` scope
 // google.js deliberately never asks for — so it tells you to make one instead.
 import { useCallback, useEffect, useState } from 'react';
-import { listCalendars, getAccessToken, readClientId } from '../google.js';
+import { listCalendars, getAccessToken, readClientId, cachedAccessToken } from '../google.js';
 import chest from '../../assets/icons/treasure-chest.png';
 import bottle from '../../assets/icons/message-bottle.png';
 
 export default function CalendarPicker({ onPick, onBack, busyLabel = null }) {
   const [cals, setCals] = useState(null);
   const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(true);
+  // ⚠️ Only auto-load if a token is ALREADY held. Asking Google for one from an
+  // effect opens a popup with no user gesture behind it, and the browser closes
+  // it instantly — which showed up on this very screen as "Popup window closed"
+  // and an empty list. So: token in hand, load silently; no token, ask for a
+  // CLICK, because a click is the only context a popup survives.
+  const [needsClick, setNeedsClick] = useState(() => !cachedAccessToken());
+  const [loading, setLoading] = useState(() => !!cachedAccessToken());
   const [picking, setPicking] = useState(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async ({ interactive = false } = {}) => {
     setLoading(true);
     setError(null);
     try {
-      const all = await listCalendars(await getAccessToken(readClientId()));
+      // `interactive` means a click is behind this, so a popup is allowed.
+      const token = interactive
+        ? await getAccessToken(readClientId())
+        : cachedAccessToken();
+      if (!token) { setNeedsClick(true); setLoading(false); return; }
+      const all = await listCalendars(token);
       // Only ones we could actually write to — offering the rest is offering a
       // choice that fails later, which is worse than not offering it.
       setCals(all.filter((c) => c.canWrite));
+      setNeedsClick(false);
     } catch (e) {
       setError(e?.message || 'Could not reach Google.');
+      setNeedsClick(true);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (cachedAccessToken()) load();
+  }, [load]);
 
   const choose = async (cal) => {
     setError(null);
@@ -79,13 +94,27 @@ export default function CalendarPicker({ onPick, onBack, busyLabel = null }) {
 
           {loading && <p className="cp-note">Asking Google…</p>}
 
-          {!loading && cals && cals.length === 0 && (
+          {/* The click that a popup needs. Reaching this screen fresh — a
+              reload, or a token that has expired — must not silently fail. */}
+          {!loading && needsClick && (
+            <div className="cp-actions">
+              <button className="lz-door lz-primary cp-connect" type="button" onClick={() => load({ interactive: true })}>
+                <img className="lz-px" src={chest} alt="" aria-hidden="true" />
+                <span>
+                  <span className="lz-t">Show me my calendars</span>
+                  <span className="lz-s">Opens Google to confirm it&rsquo;s you</span>
+                </span>
+              </button>
+            </div>
+          )}
+
+          {!loading && !needsClick && cals && cals.length === 0 && (
             <p className="cp-note">
               No calendars you can write to. Make one in Google Calendar, then refresh.
             </p>
           )}
 
-          {!loading && cals && cals.length > 0 && (
+          {!loading && !needsClick && cals && cals.length > 0 && (
             <div className="cp-list">
               {cals.map((c) => (
                 <button
@@ -107,7 +136,12 @@ export default function CalendarPicker({ onPick, onBack, busyLabel = null }) {
           )}
 
           <div className="cp-actions">
-            <button className="cp-alt" type="button" onClick={load} disabled={loading}>
+            <button
+              className="cp-alt"
+              type="button"
+              onClick={() => load({ interactive: true })}
+              disabled={loading}
+            >
               Made a new one? Refresh
             </button>
             {/* Never a dead end: if none of this works, the guest door is still

@@ -162,7 +162,40 @@ describe('reconstruction through the REAL Task constructor', () => {
     }
   });
 
-  it('an RRULE, when asked for, is a DISPLAY MIRROR and not the truth', () => {
+  it('⚠️ emits an RRULE by DEFAULT, so Google shows the whole series', () => {
+    // THE BUG, reported from a real browser: a repeating task appeared in
+    // Google Calendar as a SINGLE event. The pattern round-tripped perfectly
+    // (it lives in the payload), so the app was right and every test passed —
+    // but Google had no rule to expand.
+    //
+    // The cause was an OPT-IN design: `encodeTask` emitted a rule only if a
+    // caller passed one, and no caller did. An option a caller must remember is
+    // an option a caller will forget, so it is derived now.
+    const s = seed();
+    const t = s.tasks.find((x) => x.recurrence);
+    expect(t).toBeTruthy();
+    const ev = encodeTask(t, {});
+    expect(ev.recurrence).toBeTruthy();
+    expect(ev.recurrence[0]).toMatch(/^RRULE:FREQ=/);
+  });
+
+  it('gives a NON-repeating task no rule at all', () => {
+    const s = seed();
+    const one = s.tasks.find((x) => !x.recurrence);
+    expect(encodeTask(one, {}).recurrence).toBeUndefined();
+  });
+
+  it('an explicit null suppresses the rule; absent means derive it', () => {
+    // The distinction the first version of this fix got wrong: `rrule` had a
+    // DEFAULT of null, which made the derive branch unreachable, so the fix
+    // looked correct and did nothing.
+    const s = seed();
+    const t = s.tasks.find((x) => x.recurrence);
+    expect(encodeTask(t, { rrule: null }).recurrence).toBeUndefined();
+    expect(encodeTask(t, {}).recurrence).toBeTruthy();
+  });
+
+  it('the RRULE is a DISPLAY MIRROR and never the truth', () => {
     const s = seed();
     const t = s.tasks.find((x) => x.recurrence);
     const ev = encodeTask(t, { rrule: 'RRULE:FREQ=WEEKLY;BYDAY=MO' });

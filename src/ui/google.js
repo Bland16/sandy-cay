@@ -68,10 +68,45 @@ export function loadGis() {
 }
 
 /**
+ * The live token, held in memory for as long as Google says it is good for.
+ *
+ * ⚠️ THIS CACHE IS NOT AN OPTIMISATION, it is what makes the sign-in flow work
+ * at all. Signing in asks for a token FROM A CLICK, which is the only context a
+ * browser reliably allows a popup in. The calendar picker then mounts and needs
+ * a token too — from an effect, where a popup is blocked. Without a cache the
+ * second request either flashes a second popup or is refused outright, and the
+ * picker shows "Consent was cancelled" for no reason the user can see.
+ *
+ * Expiry is tracked rather than assumed: serving a stale token forever would
+ * turn a one-hour session into a permanent 401 loop. Sixty seconds of slack, so
+ * a token cannot expire between the check and the request landing.
+ */
+let tokenCache = null; // { token, expiresAt }
+const EXPIRY_SLACK_MS = 60_000;
+
+/** The cached token if it is still good, else null. Never triggers a popup. */
+export function cachedAccessToken() {
+  if (!tokenCache) return null;
+  return Date.now() < tokenCache.expiresAt - EXPIRY_SLACK_MS ? tokenCache.token : null;
+}
+
+export function clearAccessToken() {
+  tokenCache = null;
+}
+
+/**
  * Ask Google for an access token. Opens the consent popup the first time.
+ *
+ * Pass `force` to bypass the cache — that is the 401 path, where the token we
+ * hold has been rejected and asking again is the only way forward.
+ *
  * @returns {Promise<string>} access token (in memory only, ~1h)
  */
-export async function getAccessToken(clientId, { prompt = '' } = {}) {
+export async function getAccessToken(clientId, { prompt = '', force = false } = {}) {
+  if (!force) {
+    const live = cachedAccessToken();
+    if (live) return live;
+  }
   const google = await loadGis();
   return new Promise((resolve, reject) => {
     const client = google.accounts.oauth2.initTokenClient({
@@ -79,8 +114,13 @@ export async function getAccessToken(clientId, { prompt = '' } = {}) {
       scope: SCOPE,
       prompt,
       callback: (res) => {
-        if (res && res.access_token) resolve(res.access_token);
-        else reject(new Error(res?.error_description || 'Google declined the request.'));
+        if (res && res.access_token) {
+          // `expires_in` is seconds and Google may omit it; an hour is its
+          // documented default and is the safe assumption either way.
+          const ttl = (Number(res.expires_in) || 3600) * 1000;
+          tokenCache = { token: res.access_token, expiresAt: Date.now() + ttl };
+          resolve(res.access_token);
+        } else reject(new Error(res?.error_description || 'Google declined the request.'));
       },
       error_callback: (err) => reject(new Error(err?.message || 'Consent was cancelled.')),
     });
