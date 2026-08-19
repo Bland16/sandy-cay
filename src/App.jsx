@@ -16,6 +16,7 @@ import { loadSession, saveSession, clearSession, SESSION } from './ui/session.js
 import { getAccessToken, readClientId } from './ui/google.js';
 import { useGoogleSync } from './ui/useGoogleSync.js';
 import LandingScreen from './ui/components/LandingScreen.jsx';
+import CalendarPicker from './ui/components/CalendarPicker.jsx';
 import { useCardInteraction } from './ui/useCardInteraction.js';
 import { MIN_DURATION_MIN } from './ui/interaction.js';
 import { backfillCandidates, backfillGap, protectGap, protectSomeRecovery, worthOffering } from './ui/gapActions.js';
@@ -479,6 +480,27 @@ export default function App() {
         busy={signingIn}
         error={signInError}
         onChoose={chooseSession}
+      />
+    );
+  }
+
+  // Step two of signing in: WHERE the account lives. Nothing can sync until
+  // this is answered, and a signed-in app that silently saves nothing until you
+  // find a panel in the Cabana is worse than one that asks.
+  //
+  // Being a gate rather than a one-off wizard is what makes "Use a different
+  // calendar" work: the Cabana clears the stored id and you land back here, so
+  // there is only ONE picker in the codebase.
+  if (session === SESSION.GOOGLE && !sync.calendarId) {
+    return (
+      <CalendarPicker
+        onPick={sync.chooseCalendar}
+        /* Never a dead end — the guest door is still a real way to use this. */
+        onBack={() => {
+          clearSession();
+          setSession(null);
+          setSignInError(null);
+        }}
       />
     );
   }

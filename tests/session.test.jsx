@@ -159,6 +159,56 @@ describe('the Google door', () => {
   });
 });
 
+describe('step two: which calendar is the storage (GS-5)', () => {
+  const onPicker = () => !!document.querySelector('.cp-list, .cp-lead');
+
+  it('a signed-in session with no calendar lands on the picker, not the app', () => {
+    // Nothing can sync until this is answered, so being dropped into the app
+    // would mean silently saving nothing until you found a panel in the Cabana.
+    seedSchedule();
+    window.localStorage.setItem(SESSION_KEY, SESSION.GOOGLE);
+    render(<App />);
+    expect(onPicker()).toBe(true);
+    expect(inApp()).toBe(false);
+    expect(screen.getByText(/Where to bury it/i)).toBeTruthy();
+  });
+
+  it('says an empty calendar is wanted, and that it cannot make one', () => {
+    seedSchedule();
+    window.localStorage.setItem(SESSION_KEY, SESSION.GOOGLE);
+    render(<App />);
+    expect(screen.getByText(/can.t create one for you/i)).toBeTruthy();
+    expect(screen.getByText(/refuse a calendar that already has other events/i)).toBeTruthy();
+  });
+
+  it('goes straight to the app once a calendar is stored', () => {
+    seedSchedule();
+    window.localStorage.setItem(SESSION_KEY, SESSION.GOOGLE);
+    window.localStorage.setItem('sandycay.sync.calendar', JSON.stringify('cal-1'));
+    render(<App />);
+    expect(onPicker()).toBe(false);
+    expect(inApp()).toBe(true);
+  });
+
+  it('is never a dead end — Go back returns to the entry screen', () => {
+    // If no calendar works out, the guest door is still a real way to use this.
+    seedSchedule();
+    window.localStorage.setItem(SESSION_KEY, SESSION.GOOGLE);
+    render(<App />);
+    fireEvent.click(screen.getByText(/Go back/i).closest('button'));
+    expect(onLanding()).toBe(true);
+    expect(loadSession()).toBe(null);
+  });
+
+  it('a GUEST never sees the picker', () => {
+    seedSchedule();
+    window.localStorage.setItem(SESSION_KEY, SESSION.GUEST);
+    render(<App />);
+    expect(onPicker()).toBe(false);
+    expect(inApp()).toBe(true);
+  });
+});
+
 describe('the choice is not a one-way door', () => {
   it('can be changed from the Cabana, WITHOUT losing the schedule', () => {
     // Without this, switching from guest to Google would mean clearing browser
