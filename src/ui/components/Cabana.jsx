@@ -7,6 +7,7 @@ import { exportState, summarizeImport, planBlockerConversion, convertBlockersToD
 import { fmtDur } from '../format.js';
 import Icon from '../Icon.jsx';
 import CalendarCard from './CalendarCard.jsx';
+import { SESSION } from '../session.js';
 import TagManager from './TagManager.jsx';
 import EnergyCard from './EnergyCard.jsx';
 import ZonesEditor from './ZonesEditor.jsx';
@@ -15,7 +16,7 @@ import RoutinesEditor from './RoutinesEditor.jsx';
 
 const WEIGHT_KEYS = [['proximity', 'Proximity'], ['balance', 'Balance'], ['stability', 'Stability'], ['preference', 'Preference (learned)'], ['buffer', 'Finish early']];
 
-export default function Cabana({ sched, mutate, weekStart, onBack, onReplace, onReset, showToast }) {
+export default function Cabana({ sched, mutate, weekStart, onBack, onReplace, onReset, showToast, session = null, onChangeSession }) {
   const fileRef = useRef(null);
   const [, force] = useState(0);
   const bump = () => force((n) => n + 1);
@@ -132,6 +133,31 @@ export default function Cabana({ sched, mutate, weekStart, onBack, onReplace, on
 
         {/* Energy — today's deterministic budget across the load axes. */}
         <EnergyCard sched={sched} />
+
+        {/* How this browser is signed in, and the way back to the entry screen.
+            The choice is NOT one-way (GS-3): without this, switching from guest
+            to Google would mean clearing browser storage, which is a terrible
+            answer to "actually, I do want this on my phone". */}
+        {session && (
+          <div className="cabcard">
+            <div className="cabsign">Your landing</div>
+            <p>
+              {session === SESSION.GOOGLE
+                ? 'Signed in with Google — your week is meant to live in your own calendar.'
+                : 'Sailing without a flag — this week lives in this browser alone, and nothing is sent anywhere.'}
+            </p>
+            {session === SESSION.GUEST && (
+              <p className="cabhint">
+                Export from the Footlocker below before you close the tab, or the tide takes it.
+              </p>
+            )}
+            <div className="chest">
+              <button className="btn2 ghost" onClick={onChangeSession}>
+                <Icon name="compass" /> Change how you sign in
+              </button>
+            </div>
+          </div>
+        )}
 
         <CalendarCard sched={sched} weekStart={weekStart} mutate={mutate} showToast={showToast} />
 

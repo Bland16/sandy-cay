@@ -28,6 +28,27 @@ const SCOPE = [
 ].join(' ');
 const API = 'https://www.googleapis.com/calendar/v3';
 
+export const CLIENT_ID_KEY = 'sandy-cay:google-client-id';
+
+// An OAuth *Client ID* is a public identifier, not a secret — a static site has
+// nowhere to hide one, which is exactly why this uses the token flow. It's
+// origin-restricted (localhost:5173 + bland16.github.io), so it is only usable
+// from this app. Pre-filled for convenience; override it in the Cabana field to
+// point at your own Cloud project.
+//
+// ⚠️ Lives HERE, not in CalendarCard, because the entry screen needs it too and
+// a second copy is a second thing to drift. Moved 2026-08-18 when sign-in
+// stopped being a Cabana-only concern.
+export const DEFAULT_CLIENT_ID = '128479595220-bssj6ecsf0mu3jcg359oe0qfki3jerfc.apps.googleusercontent.com';
+
+export function readClientId() {
+  try { return globalThis.localStorage.getItem(CLIENT_ID_KEY) || DEFAULT_CLIENT_ID; } catch { return DEFAULT_CLIENT_ID; }
+}
+
+export function writeClientId(v) {
+  try { globalThis.localStorage.setItem(CLIENT_ID_KEY, String(v).trim()); } catch { /* session only */ }
+}
+
 let gisPromise = null;
 
 /** Load Google Identity Services once. */

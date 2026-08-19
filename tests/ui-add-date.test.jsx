@@ -26,6 +26,7 @@ const WEDNESDAY = new Date(2026, 6, 15, 9, 0, 0); // Wed 15 Jul 2026, 09:00
 
 beforeEach(() => {
   window.localStorage.clear();
+  window.localStorage.setItem('sandycay.session', 'guest');
   // shouldAdvanceTime keeps async work alive while letting us step the save
   // debounce on demand — the same setup ui-report.test.jsx uses.
   vi.useFakeTimers({ shouldAdvanceTime: true });

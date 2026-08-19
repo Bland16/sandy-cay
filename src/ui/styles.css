@@ -1573,3 +1573,185 @@ button:focus-visible, .dhopen:focus-visible, .card:focus-visible, .slot:focus-vi
      default of dropping backgrounds. */
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   THE ENTRY SCREEN (design/GOOGLE-AS-STORAGE.md §5, mockup treatment A)
+
+   Prefixed `lz-` throughout: this is a full-page world with its own rules, and
+   it must neither leak into the app's chrome nor inherit from it.
+
+   Three rules from FRONTEND-SPEC are load-bearing here, not decoration:
+     1. "function is color" — the table is near-INK so the gold door is the only
+        saturated thing on screen.
+     2. "no flicker effects, ever" (photosensitivity). Everything moves slowly
+        and monotonically: parallax, a lamp that sways, dust that drifts.
+     3. grain is STATIC, 3%, above backgrounds and never over text — so it sits
+        below the chart, and is removed entirely under reduced motion.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.lz {
+  position: relative; min-height: 100svh; overflow: hidden;
+  display: grid; place-items: center; padding: 24px 16px;
+  /* the table: warmth pulled down toward ink (see rule 1) */
+  --tbl-hi: #33302a; --tbl-mid: #22201c; --tbl-lo: #141311;
+  background: var(--tbl-lo);
+}
+.lz-defs { position: absolute; }
+.lz-layer { position: absolute; inset: -6%; pointer-events: none; will-change: transform; }
+.lz-wood { background: linear-gradient(180deg, var(--tbl-hi) 0%, var(--tbl-mid) 52%, var(--tbl-lo) 100%); }
+.lz-wood::after {
+  content: ""; position: absolute; inset: 0; opacity: .55;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 118px, rgba(0,0,0,.55) 118px 121px),
+    repeating-linear-gradient(0deg, transparent 0 3px, rgba(255,255,255,.012) 3px 4px);
+}
+/* The lamp SWAYS. It does not flicker — see rule 2. */
+.lz-lamp {
+  background: radial-gradient(46% 40% at 50% 42%, rgba(255,214,140,.26), rgba(255,201,120,.10) 42%, transparent 72%);
+  animation: lz-sway 26s ease-in-out infinite;
+}
+@keyframes lz-sway {
+  0%, 100% { transform: translate3d(-14px, -6px, 0) scale(1); }
+  50% { transform: translate3d(14px, 8px, 0) scale(1.045); }
+}
+.lz-motes { inset: 0; }
+.lz-mote {
+  position: absolute; width: 3px; height: 3px; border-radius: 50%;
+  background: rgba(255,228,175,.85); filter: blur(.4px); opacity: 0;
+  animation: lz-rise linear infinite;
+}
+/* One gentle fade per cycle over 11-23s: drift, not a flicker. */
+@keyframes lz-rise {
+  0% { transform: translateY(0) translateX(0); opacity: 0; }
+  18% { opacity: .55; }
+  76% { opacity: .35; }
+  100% { transform: translateY(-190px) translateX(26px); opacity: 0; }
+}
+.lz-vignette { background: radial-gradient(78% 70% at 50% 46%, transparent 42%, rgba(0,0,0,.62) 100%); }
+.lz-grainfx { opacity: .03; mix-blend-mode: overlay; }
+
+/* Pixel art at ~60-100px native. The "art turns to mud" rule is about ELEVEN
+   pixels; crisp upscaling is the opposite case and is why these work here. */
+.lz-px { image-rendering: pixelated; display: block; }
+
+.lz-chart {
+  position: relative; z-index: 2; width: min(580px, 100%);
+  transform: rotate(-.45deg);
+  animation: lz-iris 220ms cubic-bezier(.4, 0, .2, 1) both;
+}
+/* The app's own modal-open motion, reused rather than invented. */
+@keyframes lz-iris {
+  from { clip-path: circle(0% at 50% 46%); opacity: 0; }
+  to { clip-path: circle(150% at 50% 46%); opacity: 1; }
+}
+/* ⚠️ THE PAPER IS FILTERED, THE WORDS ARE NOT. An SVG filter applies to an
+   element AND ALL ITS DESCENDANTS — putting this on .lz-chart smears every
+   glyph and tears the button borders. Keep it on the decorative layer. */
+.lz-parchment {
+  position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background: radial-gradient(88% 74% at 28% 18%, #F8F1E3 0%, var(--paper) 46%, #E2D5B8 100%);
+  box-shadow: 0 34px 80px rgba(0,0,0,.66), inset 0 2px 0 rgba(255,255,255,.25), inset 0 0 70px rgba(150,120,70,.20);
+  filter: url(#lz-deckle);
+}
+.lz-parchment::after {
+  content: ""; position: absolute; inset: 0; opacity: .5;
+  background:
+    radial-gradient(10px 7px at 11% 84%, rgba(140,100,50,.30), transparent 70%),
+    radial-gradient(15px 9px at 86% 17%, rgba(140,100,50,.22), transparent 70%),
+    radial-gradient(8px 6px at 70% 92%, rgba(140,100,50,.26), transparent 70%),
+    radial-gradient(12px 8px at 22% 10%, rgba(140,100,50,.18), transparent 70%);
+}
+.lz-content { position: relative; z-index: 1; padding: 48px 32px 24px; color: var(--ink); }
+.lz-coast { position: absolute; inset: 0; opacity: .14; }
+.lz-rose { position: absolute; right: 16px; bottom: 12px; width: 92px; opacity: .42; transform: rotate(8deg); }
+.lz-gull {
+  position: absolute; top: -54px; right: 56px; width: 66px; z-index: 1;
+  animation: lz-bob 5.2s ease-in-out infinite; transform-origin: 50% 100%;
+  filter: drop-shadow(0 6px 6px rgba(0, 0, 0, .45));
+}
+@keyframes lz-bob {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  50% { transform: translateY(-6px) rotate(1.5deg); }
+}
+
+.lz-brand { text-align: center; position: relative; }
+.lz-brand h1 {
+  font-family: var(--font-display); font-weight: 400; margin: 0;
+  font-size: clamp(40px, 7.6vw, 60px); line-height: .98; color: #241c14;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, .55);
+}
+.lz-rule { display: flex; align-items: center; gap: 12px; margin: 12px auto 0; max-width: 340px; color: #9b8e71; }
+.lz-rule::before, .lz-rule::after { content: ""; flex: 1; height: 1px; background: currentColor; opacity: .6; }
+/* Special Elite earns its place here: four tracked-out uppercase words, which
+   is the label job styles.css uses it for everywhere else. */
+.lz-rule span {
+  font-family: var(--font-type); font-size: 11px; letter-spacing: .24em;
+  text-transform: uppercase; white-space: nowrap; color: #665C46;
+}
+
+/* Same two-layer rule as the paper: the scratchy edge is the spec's line
+   language and carries the mood, but it must not run over the label. */
+.lz-doors { display: grid; gap: 12px; margin-top: 32px; }
+.lz-door {
+  position: relative; isolation: isolate;
+  display: flex; align-items: center; gap: 16px; width: 100%; text-align: left;
+  min-height: 56px; padding: 12px 16px; cursor: pointer;
+  font-family: var(--font-body); border: 0; background: none;
+  transition: transform 150ms cubic-bezier(.4, 0, .2, 1);
+}
+.lz-door::before {
+  content: ""; position: absolute; inset: 0; z-index: 0;
+  border: 2px solid var(--ink); border-radius: 14px;
+  background: var(--paper-shade); box-shadow: 0 4px 0 rgba(42, 38, 32, .9);
+  filter: url(#lz-scratch);
+  transition: box-shadow 150ms cubic-bezier(.4, 0, .2, 1);
+}
+/* An absolutely-positioned ::before paints above in-flow inline content, so the
+   label has to be lifted or the surface covers it. */
+.lz-door > * { position: relative; z-index: 1; }
+.lz-door:hover:not(:disabled) { transform: translateY(-2px); }
+.lz-door:hover:not(:disabled)::before { box-shadow: 0 6px 0 rgba(42, 38, 32, .9); }
+.lz-door:active:not(:disabled) { transform: translateY(3px); }
+.lz-door:active:not(:disabled)::before { box-shadow: 0 1px 0 rgba(42, 38, 32, .9); }
+/* The focus ring stays CRISP and unscratched: legibility beats mood on an
+   accessibility affordance, every time. */
+.lz-door:focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; border-radius: 14px; }
+.lz-door:disabled { cursor: progress; opacity: .72; }
+.lz-door img { width: 44px; flex: none; }
+.lz-t { font-family: var(--font-display); font-size: 17.5px; line-height: 1.12; color: #241c14; display: block; }
+/* Body copy in the BODY face. Special Elite is a distressed typewriter face —
+   charm on a three-word label, a tax on a sentence. */
+.lz-s {
+  font-family: var(--font-body); font-size: 13px; font-weight: 600; line-height: 1.5;
+  color: #4A4335; margin-top: 4px; display: block; max-width: 42ch;
+}
+.lz-primary::before { background: var(--cta); border-color: #6f5312; }
+.lz-primary .lz-t { color: #33270a; }
+.lz-primary .lz-s { color: #4A3809; }
+
+.lz-error {
+  margin: 16px 0 0; padding: 10px 12px; border: 2px solid var(--warning); border-radius: 10px;
+  background: rgba(226, 104, 95, .10); font-family: var(--font-body); font-size: 12.5px;
+  font-weight: 700; color: #7a2f28; text-align: center;
+}
+.lz-smallprint {
+  margin: 24px 0 0; font-family: var(--font-type); font-size: 12px;
+  line-height: 1.7; letter-spacing: .015em; color: #544C3D; text-align: center;
+}
+.lz-smallprint b { color: #7A3128; font-weight: 400; }
+
+@media (max-width: 600px) {
+  .lz-content { padding: 32px 16px 24px; }
+  .lz-chart { transform: none; }
+  .lz-gull { right: 18px; top: -46px; width: 56px; }
+  .lz-rose { width: 70px; opacity: .34; }
+  .lz-door img { width: 38px; }
+  .lz-t { font-size: 16px; }
+}
+@media (max-height: 600px) { .lz-gull { display: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .lz, .lz * { animation: none !important; transition: none !important; }
+  .lz-grainfx { display: none; }
+  /* spec: reduced motion gets clean lines — that is the hand-wobble talking */
+  .lz-coast, .lz-door::before { filter: none; }
+  .lz-chart { clip-path: none; opacity: 1; }
+}

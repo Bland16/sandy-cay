@@ -12,11 +12,12 @@ import App from '../src/App.jsx';
 import { seed, weekStart, addDays, dateKey } from '../src/core/index.js';
 import { STORAGE_KEY } from '../src/ui/useEngine.js';
 
-beforeEach(() => window.localStorage.clear());
+beforeEach(() => { window.localStorage.clear(); window.localStorage.setItem('sandycay.session', 'guest'); });
 afterEach(cleanup);
 
 /** Boot with the demo week already persisted, as a returning user would have. */
 const withSavedWeek = () => {
+  window.localStorage.setItem('sandycay.session', 'guest');
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(seed(new Date()).toJSON()));
 };
 

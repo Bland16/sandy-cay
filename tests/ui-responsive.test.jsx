@@ -56,6 +56,7 @@ const seedWeek = () => {
   s.addFixed({ title: 'Today thing', startTime: at(WED_INDEX, 14), endTime: at(WED_INDEX, 15) });
   s.addFixed({ title: 'Saturday thing', startTime: at(5, 11), endTime: at(5, 12) });
   s.markWeekSeen(NOW); // no rollover banner in the way
+  window.localStorage.setItem('sandycay.session', 'guest');
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(s.toJSON()));
   return s;
 };

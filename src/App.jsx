@@ -12,6 +12,9 @@ import {
 import { useEngine } from './ui/useEngine.js';
 import { useViewport, readViewport } from './ui/useViewport.js';
 import { loadZoom, saveZoom, zoomIn, zoomOut, DEFAULT_ZOOM } from './ui/zoom.js';
+import { loadSession, saveSession, clearSession, SESSION } from './ui/session.js';
+import { getAccessToken, readClientId } from './ui/google.js';
+import LandingScreen from './ui/components/LandingScreen.jsx';
 import { useCardInteraction } from './ui/useCardInteraction.js';
 import { MIN_DURATION_MIN } from './ui/interaction.js';
 import { backfillCandidates, backfillGap, protectGap, protectSomeRecovery, worthOffering } from './ui/gapActions.js';
@@ -71,6 +74,37 @@ export default function App() {
   // pixels per hour is the honest fix. Read from localStorage on first render
   // rather than in an effect, for the same reason the viewport is: settling on
   // the stored zoom a frame later is a visible flash of the wrong grid.
+  // Guest or signed in (design/GOOGLE-AS-STORAGE.md GS-3). `null` until chosen,
+  // which is what puts the entry screen up. Read on first render rather than in
+  // an effect: settling a frame later would flash the wrong screen.
+  const [session, setSession] = useState(loadSession);
+  const [signingIn, setSigningIn] = useState(false);
+  const [signInError, setSignInError] = useState(null);
+
+  const chooseSession = useCallback(async (choice) => {
+    if (choice === SESSION.GUEST) {
+      saveSession(SESSION.GUEST);
+      setSession(SESSION.GUEST);
+      return;
+    }
+    // Google. The consent popup has to be opened by THIS click — a token
+    // request that happens later, off the back of an effect, is a popup the
+    // browser blocks.
+    setSigningIn(true);
+    setSignInError(null);
+    try {
+      await getAccessToken(readClientId());
+      saveSession(SESSION.GOOGLE);
+      setSession(SESSION.GOOGLE);
+    } catch (err) {
+      // ⚠️ SAY IT. A door that silently does nothing is the disabled-button
+      // bug this project has already had once.
+      setSignInError(err?.message || 'Google would not let us in. Try again, or come aboard as a guest.');
+    } finally {
+      setSigningIn(false);
+    }
+  }, []);
+
   const [zoom, setZoom] = useState(loadZoom);
   // The transient value a pinch is currently at. `zoom` stays a RUNG at all
   // times — this is the only thing that is allowed to be 2.37×, it lives only
@@ -419,6 +453,24 @@ export default function App() {
     />
   ) : null;
 
+  // ⚠️ THE GATE. Rendered BEFORE the app, and after every hook above, because
+  // hooks cannot be called conditionally — an early return placed higher would
+  // change the hook count between renders and React would tear the tree down.
+  //
+  // `session === null` means nobody has chosen yet, which is the only state
+  // that shows this. Choosing "guest" keeps every task already in this browser:
+  // the entry screen is a question about where the schedule LIVES, never a wall
+  // between a user and data they already have.
+  if (session === null) {
+    return (
+      <LandingScreen
+        busy={signingIn}
+        error={signInError}
+        onChoose={chooseSession}
+      />
+    );
+  }
+
   return (
     <div className="stage">
       <header className="masthead">
@@ -493,6 +545,16 @@ export default function App() {
             onReplace={replace}
             onReset={reset}
             showToast={showToast}
+            session={session}
+            /* Forgets the choice and drops back to the entry screen. It does
+               NOT touch the schedule — changing where your week lives must
+               never be a way to lose it. */
+            onChangeSession={() => {
+              clearSession();
+              setSession(null);
+              setSignInError(null);
+              setView('week');
+            }}
           />
         ) : (
           <div className={`body${isPhone ? ' phone' : ''}`}>

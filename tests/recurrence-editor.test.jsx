@@ -17,7 +17,7 @@ import {
   isWeekdayPattern, toWeekdayWindows, buildRecurrence, emptyRecurrence, WEEKDAY_KEYS,
 } from '../src/ui/recurrenceModel.js';
 
-beforeEach(() => window.localStorage.clear());
+beforeEach(() => { window.localStorage.clear(); window.localStorage.setItem('sandycay.session', 'guest'); });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 const MON_13 = new Date(2026, 6, 13, 0, 0, 0, 0); // the week the user adds it in
@@ -207,6 +207,7 @@ describe('a bounded zone is not painted outside its run', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true, now: new Date(2026, 6, 15, 10) }); // Wed of the run
     const s = new Schedule({ config: defaultConfig });
     workZone(s);
+    window.localStorage.setItem('sandycay.session', 'guest');
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(s.toJSON()));
 
     render(<App />);

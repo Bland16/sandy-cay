@@ -29,7 +29,7 @@ afterEach(() => { cleanup(); vi.useRealTimers(); });
 const thisWeek = () => weekStartOf(NOW);
 const on = (ws, o, h, m = 0) => { const d = addDays(ws, o); d.setHours(h, m, 0, 0); return d; };
 
-const persist = (s) => window.localStorage.setItem(STORAGE_KEY, JSON.stringify(s.toJSON()));
+const persist = (s) => { window.localStorage.setItem('sandycay.session', 'guest'); window.localStorage.setItem(STORAGE_KEY, JSON.stringify(s.toJSON())); };
 
 /** Every card on the grid, as "Mon 17:00–19:00". */
 const cards = () => [...document.querySelectorAll('.day .card')].map((c) => {

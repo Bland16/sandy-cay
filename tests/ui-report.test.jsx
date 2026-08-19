@@ -12,10 +12,10 @@ import { Schedule, Task, defaultConfig, weekStart as weekStartOf, addDays, dateK
 import { STORAGE_KEY } from '../src/ui/useEngine.js';
 import { buildWrapReport, applySuggestion, weekRangeLabel } from '../src/ui/report.js';
 
-beforeEach(() => window.localStorage.clear());
+beforeEach(() => { window.localStorage.clear(); window.localStorage.setItem('sandycay.session', 'guest'); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
-const persist = (sched) => window.localStorage.setItem(STORAGE_KEY, JSON.stringify(sched.toJSON()));
+const persist = (sched) => { window.localStorage.setItem('sandycay.session', 'guest'); window.localStorage.setItem(STORAGE_KEY, JSON.stringify(sched.toJSON())); };
 
 /** Saves are debounced 1.5s (useEngine), so reading localStorage straight after
  *  an interaction reads the state from BEFORE it. Drive the timer rather than

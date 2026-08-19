@@ -49,6 +49,7 @@ beforeEach(() => {
   // same way a returning user would: persisted state. bootWith() overwrites
   // this for tests that state their own week.
   window.localStorage.clear();
+  window.localStorage.setItem('sandycay.session', 'guest');
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(seed(new Date()).toJSON()));
   resetIds();
   origRect = Element.prototype.getBoundingClientRect;
@@ -104,6 +105,7 @@ function dragBody(card, toX, toY) {
 function bootWith(build) {
   const s = new Schedule({ config: defaultConfig });
   build(s);
+  window.localStorage.setItem('sandycay.session', 'guest');
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(s.toJSON()));
   return s;
 }

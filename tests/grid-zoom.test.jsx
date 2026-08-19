@@ -34,6 +34,7 @@ const seedWeek = () => {
   // A two-minute touchpoint — the block this whole feature exists for.
   s.addFixed({ title: 'Load the machine', startTime: at(2, 8), endTime: at(2, 8, 2) });
   s.markWeekSeen(NOW);
+  window.localStorage.setItem('sandycay.session', 'guest');
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(s.toJSON()));
   return s;
 };

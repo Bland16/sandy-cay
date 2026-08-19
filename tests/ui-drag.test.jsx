@@ -56,6 +56,7 @@ beforeEach(() => {
   // seed week, so they hand it to the app the way a returning user would: via
   // persisted state.
   window.localStorage.clear();
+  window.localStorage.setItem('sandycay.session', 'guest');
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(seed(new Date()).toJSON()));
   origRect = Element.prototype.getBoundingClientRect;
   Element.prototype.getBoundingClientRect = function stub() {

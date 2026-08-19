@@ -63,6 +63,7 @@ const seedNotes = () => {
     },
   });
   s.markWeekSeen(NOW); // no rollover banner in the way
+  window.localStorage.setItem('sandycay.session', 'guest');
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(s.toJSON()));
   return s;
 };

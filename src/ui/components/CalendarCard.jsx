@@ -7,23 +7,17 @@
 // Neither is a sync engine: push sends, pull reads. Nothing reconciles.
 import { useRef, useState } from 'react';
 import { addDays, toICS, parseICS, importEvents, toRRULE } from '../../core/index.js';
-import { getAccessToken, listCalendars, fetchEvents, taskToGoogleEvent, insertEvent, clearRange } from '../google.js';
+import {
+  getAccessToken, listCalendars, fetchEvents, taskToGoogleEvent, insertEvent, clearRange,
+  readClientId, writeClientId,
+} from '../google.js';
 import Icon from '../Icon.jsx';
-
-const CLIENT_ID_KEY = 'sandy-cay:google-client-id';
-
-// An OAuth *Client ID* is a public identifier, not a secret — a static site has
-// nowhere to hide one, which is exactly why this uses the token flow. It's
-// origin-restricted (localhost:5173 + bland16.github.io), so it is only usable
-// from this app. Pre-filled for convenience; override it in the field to point
-// at your own Cloud project.
-const DEFAULT_CLIENT_ID = '128479595220-bssj6ecsf0mu3jcg359oe0qfki3jerfc.apps.googleusercontent.com';
 
 export default function CalendarCard({ sched, weekStart, mutate, showToast }) {
   const fileRef = useRef(null);
-  const [clientId, setClientId] = useState(() => {
-    try { return window.localStorage.getItem(CLIENT_ID_KEY) || DEFAULT_CLIENT_ID; } catch { return DEFAULT_CLIENT_ID; }
-  });
+  // The client id moved to google.js when the entry screen started needing it
+  // too — one home, so the two cannot drift.
+  const [clientId, setClientId] = useState(readClientId);
   const [cals, setCals] = useState(null);
   const [picked, setPicked] = useState([]);
   const [target, setTarget] = useState(''); // where Export → Google writes
@@ -32,7 +26,7 @@ export default function CalendarCard({ sched, weekStart, mutate, showToast }) {
 
   const saveClientId = (v) => {
     setClientId(v);
-    try { window.localStorage.setItem(CLIENT_ID_KEY, v.trim()); } catch { /* session only */ }
+    writeClientId(v);
   };
 
   const download = (name, text, mime) => {

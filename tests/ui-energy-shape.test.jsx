@@ -35,6 +35,7 @@ const seed = ({ loaded = true } = {}) => {
   s.tasks.push(new Task({ title: 'CHEM', tags: ['study'], type: 'fixed', startTime: at(0, 9), endTime: at(0, 12) }));
   s.tasks.push(new Task({ title: 'Gym', tags: ['gym'], type: 'fixed', startTime: at(1, 17), endTime: at(1, 19) }));
   s.markWeekSeen(new Date());
+  window.localStorage.setItem('sandycay.session', 'guest');
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(s.toJSON()));
   return s;
 };

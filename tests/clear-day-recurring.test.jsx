@@ -42,6 +42,7 @@ const seed = () => {
   s.addFixed({ title: 'Dentist', startTime: at(3, 14), endTime: at(3, 15) });
   s.addFlexible({ title: 'Read novel', durationMin: 60, startTime: at(3, 16), endTime: at(3, 17) });
   s.markWeekSeen(NOW);
+  window.localStorage.setItem('sandycay.session', 'guest');
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(s.toJSON()));
 };
 
