@@ -25,6 +25,8 @@ export { chooseConflictStrategy, strategyCosts, resolveDropConflicts } from './c
 export { rippleShift } from './ripple.js';
 export { evacuateDay, blockRange } from './evacuate.js';
 export { isFullDayBlocker, planBlockerConversion, convertBlockersToDayNotes } from './blockersToNotes.js';
+export { planLibraryMerge, applyLibraryMerge } from './libraryMerge.js';
+export { applyLibrary, diffLibrary, libraryFrom, LIBRARY_KEYS } from './googleLibrary.js';
 export { carryOver, letThemGo } from './carryOver.js';
 export { checkRollover, commitRollover, weekAfter, weekKeyOf } from './rollover.js';
 export { autoSchedule, freeCapacityBefore } from './autoSchedule.js';

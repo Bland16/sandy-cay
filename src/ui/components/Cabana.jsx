@@ -3,7 +3,10 @@
 // Tag roles (protected tags), Footlocker (export/import), Insights
 // (getTagBreakdown + learned weights read), Retrain.
 import { useRef, useState } from 'react';
-import { exportState, summarizeImport, planBlockerConversion, convertBlockersToDayNotes } from '../../core/index.js';
+import {
+  exportState, summarizeImport, planBlockerConversion, convertBlockersToDayNotes,
+  planLibraryMerge, applyLibraryMerge, applyLibrary,
+} from '../../core/index.js';
 import { fmtDur } from '../format.js';
 import Icon from '../Icon.jsx';
 import CalendarCard from './CalendarCard.jsx';
@@ -42,6 +45,8 @@ export default function Cabana({
   session = null, onChangeSession, sync = null,
 }) {
   const fileRef = useRef(null);
+  const mergeRef = useRef(null);
+  const setupRef = useRef(null);
   const [, force] = useState(0);
   const bump = () => force((n) => n + 1);
 
@@ -83,6 +88,58 @@ export default function Cabana({
     };
     reader.readAsText(file);
   };
+
+  // ── The two OTHER doors into a footlocker file ────────────────────────
+  //
+  // A file cannot say whether you meant "restore my old setup" or "top up what
+  // I have", so both exist and each states what it does BEFORE it does it.
+  // Neither touches your tasks; the plain Import above is the one that does.
+  const readBlob = (e, then) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';                       // so picking the same file twice works
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try { then(JSON.parse(reader.result)); } catch { showToast('That file was not valid JSON'); }
+    };
+    reader.readAsText(file);
+  };
+
+  const doMerge = (e) => readBlob(e, (blob) => {
+    const plan = planLibraryMerge(sched, blob);
+    if (!plan.valid) { showToast(plan.reason); return; }
+    if (!plan.activityCount && !plan.bucketCount) {
+      showToast(plan.skippedCount ? `Nothing new — you already have all ${plan.skippedCount}` : 'That file has no activities');
+      return;
+    }
+    // Specific enough to DECLINE. "Import activities?" is not a question
+    // anybody can answer; the counts and the skip are.
+    const msg = `Add ${plan.activityCount} activit${plan.activityCount === 1 ? 'y' : 'ies'}`
+      + `${plan.bucketCount ? ` and ${plan.bucketCount} bucket${plan.bucketCount === 1 ? '' : 's'} they need` : ''}?`
+      + `${plan.skippedCount ? ` ${plan.skippedCount} you already have will be skipped.` : ''}`
+      + ' Nothing you have is changed or removed.';
+    if (!window.confirm(msg)) return;
+    const r = mutate((s) => applyLibraryMerge(s, blob));
+    showToast(`Added ${r.activitiesAdded} activit${r.activitiesAdded === 1 ? 'y' : 'ies'}`
+      + `${r.bucketsAdded ? ` · ${r.bucketsAdded} new bucket${r.bucketsAdded === 1 ? '' : 's'}` : ''}`);
+    bump();
+  });
+
+  const doRestoreSetup = (e) => readBlob(e, (blob) => {
+    const sum = summarizeImport(blob);
+    if (!sum.valid) { showToast(sum.reason); return; }
+    // ⚠️ This one DOES discard. Say so, and say what survives, because the
+    // difference from the button beside it is the whole reason both exist.
+    const n = (count, one, many) => `${count} ${count === 1 ? one : many}`;
+    const msg = `Replace your buckets, activities, zones and settings with this file's`
+      + ` (${n(sum.bucketCount, 'bucket', 'buckets')}, ${n(sum.activityCount, 'activity', 'activities')},`
+      + ` ${n(sum.zoneCount, 'zone', 'zones')})?`
+      + ' Your tasks are kept. Anything you have made since is discarded.';
+    if (!window.confirm(msg)) return;
+    const r = mutate((s) => applyLibrary(s, blob));
+    showToast(`Restored ${r.applied.length} collections · your week is untouched`);
+    bump();
+  });
 
   const retrain = () => { const n = mutate((s) => s.retrain()); showToast(`Retrained on ${n} ratings`); bump(); };
 
@@ -276,6 +333,25 @@ export default function Cabana({
             <button className="btn2 ghost" onClick={() => fileRef.current && fileRef.current.click()}><Icon name="key" /> Import</button>
             <input ref={fileRef} type="file" accept="application/json" style={{ display: 'none' }} onChange={doImport} />
           </div>
+          {/* Two narrower doors into the same file. Named by what they DO, not
+              by what they are, because "partial import" tells you nothing about
+              whether you are about to lose this term's buckets. */}
+          <div className="chest" style={{ marginTop: 8 }}>
+            <button className="btn2 ghost" onClick={() => mergeRef.current && mergeRef.current.click()}>
+              Add missing activities
+            </button>
+            <input ref={mergeRef} type="file" accept="application/json" style={{ display: 'none' }} onChange={doMerge} />
+            <button className="btn2 ghost" onClick={() => setupRef.current && setupRef.current.click()}>
+              Restore setup only
+            </button>
+            <input ref={setupRef} type="file" accept="application/json" style={{ display: 'none' }} onChange={doRestoreSetup} />
+          </div>
+          <p className="insight" style={{ opacity: 0.75 }}>
+            <b>Import</b> replaces everything, your week included. <b>Add missing activities</b>
+            {' '}only ever adds — it skips anything you already have by name and leaves your
+            buckets alone. <b>Restore setup only</b> takes that file&rsquo;s buckets, activities,
+            zones and settings but <b>keeps your tasks</b>.
+          </p>
           {blockerPlan.taskIds.length > 0 && (
             <>
               <p className="insight" style={{ marginTop: 10 }}>
