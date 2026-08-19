@@ -308,4 +308,31 @@ describe('reading a calendar that has junk in it', () => {
     expect(back.dropped[0].error).toMatch(/checksum/);
     expect(back.tasks).toHaveLength(1); // the healthy one still comes through
   });
+
+  it('names WHICH TASK is unreadable, not just which event', async () => {
+    // ⚠️ The event id is useless to the planner. It needs the TASK id, or it
+    // sees the task as absent from Google and deletes the local copy —
+    // corruption finished off by the check that caught it. `sc.id` is its own
+    // property, so it survives a wrecked payload.
+    const api = fakeGoogle();
+    const s = sched();
+    await applyPlan(api, 'cal', planSync(s.toJSON().tasks, [], emptyState()), {});
+    const [id] = [...api._events.keys()];
+    const wrecked = api._events.get(id);
+    const taskId = wrecked.extendedProperties.private['sc.id'];
+    wrecked.extendedProperties.private['sc.json.0'] = 'wrecked';
+
+    const back = await pull(api, 'cal');
+    expect(back.dropped[0].taskId).toBe(taskId);
+    expect(back.unreadable.has(taskId)).toBe(true);
+
+    // And end to end: the planner leaves it alone rather than deleting it.
+    const state = {
+      lastSyncAt: Date.now(),
+      entries: Object.fromEntries(s.toJSON().tasks.map((t) => [t.id, { hash: 'x', eventId: null, dirtyAt: 0 }])),
+    };
+    const plan = planSync(s.toJSON().tasks, back.tasks, state, { unreadable: back.unreadable });
+    expect(plan.deleteLocal).not.toContain(taskId);
+    expect(plan.blocked).toContain(taskId);
+  });
 });

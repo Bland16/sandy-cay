@@ -267,21 +267,29 @@ export function decodeEvent(ev) {
   if (!priv || priv[`${NS}.id`] === undefined) {
     return { ok: false, notOurs: true, error: 'not written by this app' };
   }
+  // ⚠️ THE TASK ID IS REPORTED EVEN WHEN THE READ FAILS, and it is load-bearing.
+  // `sc.id` is its own property, so it survives a corrupt or truncated payload.
+  // Without it the caller only knows "some event broke", and the planner then
+  // sees the task as ABSENT from Google — which it reads as "deleted on the
+  // other device" and propagates by deleting your local copy. The checksum that
+  // detects the corruption would be the thing that destroys the data.
+  const id = priv[`${NS}.id`];
+
   const v = Number(priv[`${NS}.v`]);
   if (!Number.isInteger(v) || v > ENCODING_VERSION) {
     // Written by a NEWER version than this build understands. Refusing beats
     // guessing: a partial read that silently drops the fields it did not know
     // about would then be written back, destroying them for the newer client.
-    return { ok: false, error: `encoding version ${priv[`${NS}.v`]} is newer than ${ENCODING_VERSION}` };
+    return { ok: false, id, error: `encoding version ${priv[`${NS}.v`]} is newer than ${ENCODING_VERSION}` };
   }
   const payload = unpackPayload(priv);
-  if (!payload.ok) return { ok: false, error: payload.error };
+  if (!payload.ok) return { ok: false, id, error: payload.error };
 
   let rest;
   try {
     rest = JSON.parse(payload.value);
   } catch {
-    return { ok: false, error: 'payload is not valid JSON' };
+    return { ok: false, id, error: 'payload is not valid JSON' };
   }
 
   const task = { ...rest, id: priv[`${NS}.id`], title: ev.summary ?? rest.title ?? 'Untitled' };

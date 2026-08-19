@@ -124,7 +124,11 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, now 
 
       const t = now();
       stateRef.current = markDirty(stateRef.current, sched.toJSON().tasks, t);
-      const plan = planSync(sched.toJSON().tasks, remote.tasks, stateRef.current);
+      // `unreadable` is not optional bookkeeping: without it a corrupt event
+      // reads as an absent one and this deletes the local task. See planSync.
+      const plan = planSync(sched.toJSON().tasks, remote.tasks, stateRef.current, {
+        unreadable: remote.unreadable,
+      });
 
       const applied = await applyPlan(api, calendarId, plan, {
         commitmentIds: new Set((sched.commitments || []).map((c) => c.id)),
@@ -161,7 +165,10 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, now 
         showToast(`${applied.failed.length} didn't save — will retry`);
       }
       if (remote.dropped.length) {
-        showToast(`${remote.dropped.length} event(s) in the calendar could not be read`);
+        // Said plainly, including that nothing was touched — a user who sees
+        // "could not be read" and no further word would reasonably assume the
+        // worst had already happened.
+        showToast(`${remote.dropped.length} event(s) could not be read — those tasks were left untouched`);
       }
       const summary = describePlan(plan);
       if (summary !== 'nothing to do') showToast(`Synced · ${summary}`);

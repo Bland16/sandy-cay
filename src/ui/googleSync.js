@@ -76,7 +76,11 @@ export async function pull(api, calendarId) {
     if (p['sc.kind'] === 'library') continue;      // handled below
     const r = decodeEvent(ev);
     if (r.ok) tasks.push({ task: r.task, googleEventId: ev.id, updated: Date.parse(ev.updated || 0) || 0 });
-    else dropped.push({ id: ev.id, summary: ev.summary, error: r.error });
+    // ⚠️ `taskId` matters more than the event id here. The planner must be told
+    // WHICH TASK is unreadable, or it sees the task as absent from Google and
+    // deletes the local copy — corruption turned into data loss by the very
+    // check that caught it. See `planSync`'s `unreadable`.
+    else dropped.push({ id: ev.id, taskId: r.id || null, summary: ev.summary, error: r.error });
   }
   const lib = decodeLibrary(events);
   return {
@@ -84,6 +88,8 @@ export async function pull(api, calendarId) {
     library: lib.ok ? lib.library : null,
     libraryError: lib.ok || lib.empty ? null : lib.error,
     dropped,
+    /** Task ids that exist in Google but could not be read. */
+    unreadable: new Set(dropped.map((d) => d.taskId).filter(Boolean)),
   };
 }
 

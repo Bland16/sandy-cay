@@ -51,6 +51,42 @@ describe('the ambiguous cases — identical snapshots, opposite answers', () => 
   });
 });
 
+describe('⚠️ a corrupt remote event must never delete the local task', () => {
+  // THE WORST BUG IN THIS FILE'S HISTORY, and the shape of it is what to
+  // remember: an event that cannot be READ is dropped from `remote`, which
+  // makes the task look ABSENT, which reads as "deleted on the other device",
+  // which deletes your copy. The checksum that exists to CATCH corruption
+  // becomes the thing that completes it.
+  const a = task('a', 'Orientation');
+
+  it('leaves the task completely alone when its event is unreadable', () => {
+    const plan = planSync([a], [], synced([a], T0), { unreadable: new Set(['a']) });
+    expect(plan.deleteLocal).toHaveLength(0);
+    expect(plan.create).toHaveLength(0);
+    expect(plan.update).toHaveLength(0);
+    expect(plan.adopt).toHaveLength(0);
+    expect(plan.blocked).toEqual(['a']);
+  });
+
+  it('would delete it WITHOUT that signal — the bug, pinned', () => {
+    // Kept deliberately: it documents why `unreadable` has to be threaded all
+    // the way from decodeEvent through pull to here, and fails loudly if
+    // someone decides the parameter is optional noise.
+    const plan = planSync([a], [], synced([a], T0));
+    expect(plan.deleteLocal).toEqual(['a']);
+  });
+
+  it('does not block a task that is genuinely gone', () => {
+    const plan = planSync([a], [], synced([a], T0), { unreadable: new Set(['something-else']) });
+    expect(plan.deleteLocal).toEqual(['a']);
+  });
+
+  it('accepts an array as well as a Set', () => {
+    const plan = planSync([a], [], synced([a], T0), { unreadable: ['a'] });
+    expect(plan.deleteLocal).toHaveLength(0);
+  });
+});
+
 describe('both sides present', () => {
   const a = task('a', 'Orientation');
   const edited = task('a', 'Orientation, moved');

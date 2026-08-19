@@ -85,9 +85,18 @@ export function markDirty(state, localTasks, now) {
  *                from Google's own `updated` field on the event
  * @param state   `{ lastSyncAt, entries: { id: { hash, eventId, dirtyAt } } }`
  */
-export function planSync(local, remote, state = emptyState()) {
+export function planSync(local, remote, state = emptyState(), { unreadable } = {}) {
   const entries = state.entries || {};
   const lastSyncAt = state.lastSyncAt || 0;
+  // ⚠️ Tasks whose remote event EXISTS but could not be decoded. They must be
+  // left completely alone: they are not absent, they are unreadable, and the
+  // two look identical from `remote` alone.
+  //
+  // Without this, corruption becomes DATA LOSS — the event fails its checksum,
+  // so it is dropped from `remote`, so the task looks deleted-on-the-other-
+  // device, so this deletes your local copy. The guard that detects the damage
+  // would be the thing that finishes it.
+  const blocked = unreadable instanceof Set ? unreadable : new Set(unreadable || []);
 
   const localById = new Map(local.map((t) => [t.id, t]));
   const remoteById = new Map();
@@ -96,12 +105,15 @@ export function planSync(local, remote, state = emptyState()) {
   }
 
   const plan = {
-    create: [], update: [], deleteRemote: [], adopt: [], deleteLocal: [], conflicts: [], unchanged: [],
+    create: [], update: [], deleteRemote: [], adopt: [], deleteLocal: [], conflicts: [], unchanged: [], blocked: [],
   };
 
   for (const [id, task] of localById) {
     const r = remoteById.get(id);
     const known = entries[id];
+
+    // Unreadable, not absent. Touch nothing until a human has looked.
+    if (blocked.has(id)) { plan.blocked.push(id); continue; }
 
     if (!r) {
       // ⚠️ THE AMBIGUOUS CASE. Seen before means it was deleted on the other
