@@ -38,6 +38,12 @@ vi.mock('../src/ui/googleSync.js', () => ({
   inspectCalendar: vi.fn(async () => ({
     safe: true, foreign: 0, ours: 0, total: 0, foreignSample: [],
   })),
+  // GS-11: day notes and blocked days go through the same executor with their
+  // own encoder, so the mock has to offer them. Without these, reading the
+  // export throws inside runSync and the failure LOOKS like "the library was
+  // never pushed".
+  encodeNoteParts: (n) => [n],
+  encodeBlockedParts: (b) => [b],
 }));
 
 const { useGoogleSync, SYNC_CALENDAR_KEY, freshLibraryHash } = await import('../src/ui/useGoogleSync.js');

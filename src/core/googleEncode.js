@@ -44,7 +44,8 @@
 import { toRRULE } from './ical.js';
 import { reviveRecurrence } from './recurrenceSerde.js';
 
-const NS = 'sc';
+/** The property namespace, exported so every encoder shares ONE definition. */
+export const NS = 'sc';
 export const ENCODING_VERSION = 1;
 
 /** Well under Google's 1024-byte ceiling, so the encoding has headroom. */

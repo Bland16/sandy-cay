@@ -26,8 +26,10 @@ import {
   planSync, markDirty, advanceState, emptyState, describePlan, taskHash, isBulkDelete,
 } from '../core/syncPlan.js';
 import { libraryFrom, diffLibrary, applyLibrary } from '../core/googleLibrary.js';
-import { Schedule, defaultConfig, seedStarterBuckets } from '../core/index.js';
-import { makeApi, pull, applyPlan, pushLibrary, inspectCalendar } from './googleSync.js';
+import { Schedule, defaultConfig, seedStarterBuckets, dateFromKey } from '../core/index.js';
+import {
+  makeApi, pull, applyPlan, pushLibrary, inspectCalendar, encodeNoteParts, encodeBlockedParts,
+} from './googleSync.js';
 import { getAccessToken, readClientId } from './google.js';
 import { logPull, logPlan, logApplied, logStopped } from './syncLog.js';
 
@@ -87,6 +89,40 @@ export function applyLocal(sched, plan) {
   for (const id of plan.deleteLocal) { if (sched.removeTask(id)) removed += 1; }
   return { adopted, removed };
 }
+
+/** GS-11. The same, for day notes — through the STORE's door, not the form's. */
+export function applyLocalNotes(sched, plan) {
+  let adopted = 0;
+  let removed = 0;
+  for (const note of plan.adopt) { sched.upsertDayNoteFromJSON(note); adopted += 1; }
+  for (const id of plan.deleteLocal) { if (sched.removeDayNote(id)) removed += 1; }
+  return { adopted, removed };
+}
+
+/**
+ * GS-11. And for blocked days, which are bare date strings rather than objects.
+ *
+ * `blockDay` / `unblockDay` are the only doors — `blockedDays` is kept sorted
+ * and deduped by them, and writing the array directly would quietly break the
+ * `includes` lookups that `isDayBlocked` and placement depend on.
+ */
+export function applyLocalBlocked(sched, plan) {
+  let adopted = 0;
+  let removed = 0;
+  // ⚠️ `blockDay`/`unblockDay` take a DATE; the store speaks in 'YYYY-MM-DD'.
+  // `dateFromKey` is the conversion, and it is the one sharp edge #4 exists for
+  // — `new Date('2026-12-24')` is UTC midnight and lands on the 23rd for anyone
+  // west of Greenwich, which would block the wrong day.
+  for (const b of plan.adopt) { if (sched.blockDay(dateFromKey(b.day))) adopted += 1; }
+  for (const id of plan.deleteLocal) {
+    const day = String(id).replace(/^blocked-/, '');
+    if (sched.unblockDay(dateFromKey(day))) removed += 1;
+  }
+  return { adopted, removed };
+}
+
+/** A blocked day as the planner sees it: something with an id and a hash. */
+export const blockedRecord = (day) => ({ id: `blocked-${day}`, day });
 
 /**
  * @param enabled   only true for a signed-in session — a guest must never sync
@@ -243,6 +279,34 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, now 
 
       logApplied(applied);
 
+      // ═══════════════════════════════════════════════════════════════════════
+      // GS-11 — day notes and blocked days, which are all-day EVENTS now.
+      // ═══════════════════════════════════════════════════════════════════════
+      //
+      // Through the SAME planner as tasks, on their own slice of the sync
+      // record. Every guard in `planSync` matters just as much here — a note
+      // present locally and absent remotely is the same ambiguity (never pushed,
+      // or deleted on your phone?) and answering it wrong either resurrects
+      // holidays you deleted or deletes ones you just added.
+      //
+      // ⚠️ SEPARATE ENTRY MAPS. Notes, blocked days and tasks share an id space
+      // only by luck, and one map would let a task and a note with the same id
+      // overwrite each other's hash — silently, and only for whoever happened to
+      // collide.
+      const noteState = { lastSyncAt: stateRef.current.lastSyncAt || 0, entries: stateRef.current.noteEntries || {} };
+      const notePlan = planSync(sched.dayNotes.map((n) => n.toJSON()), remote.notes || [], noteState);
+      const noteApplied = await applyPlan(api, calendarId, notePlan, { encode: encodeNoteParts });
+
+      const blockedState = { lastSyncAt: stateRef.current.lastSyncAt || 0, entries: stateRef.current.blockedEntries || {} };
+      const blockedPlan = planSync(sched.blockedDays.map(blockedRecord), remote.blockedDays || [], blockedState);
+      const blockedApplied = await applyPlan(api, calendarId, blockedPlan, { encode: encodeBlockedParts });
+
+      logApplied(noteApplied);
+      logApplied(blockedApplied);
+
+      if (notePlan.adopt.length || notePlan.deleteLocal.length) mutate((s) => applyLocalNotes(s, notePlan));
+      if (blockedPlan.adopt.length || blockedPlan.deleteLocal.length) mutate((s) => applyLocalBlocked(s, blockedPlan));
+
       if (plan.adopt.length || plan.deleteLocal.length) {
         mutate((s) => applyLocal(s, plan));
       }
@@ -266,6 +330,10 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, now 
       // which scheduled another sync. Every sync bought a second one, and the
       // app sat on "syncing" for two or three debounce cycles instead of one.
       stateRef.current = advanceState(stateRef.current, applied, now());
+      // The two all-day collections keep their own entry maps, advanced by the
+      // same rule: what Google CONFIRMED, never what was planned.
+      stateRef.current.noteEntries = advanceState(noteState, noteApplied, now()).entries;
+      stateRef.current.blockedEntries = advanceState(blockedState, blockedApplied, now()).entries;
       stateRef.current.libHash = libNow;
       saveSyncState(stateRef.current);
       setStatus('idle');

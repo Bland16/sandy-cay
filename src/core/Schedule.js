@@ -270,6 +270,25 @@ export class Schedule {
     return next;
   }
 
+  /**
+   * The same door for a day note (GS-11). A note arriving from Google replaces
+   * the local instance wholesale rather than going through `updateDayNote`.
+   *
+   * `updateDayNote` happens to rebuild from `toJSON` and so would not drop
+   * fields today — but it is a FORM's door, and the task side learned what
+   * happens when a store borrows one: `updateTask`'s whitelist silently stripped
+   * ten fields off every adopted task. A store gets its own door so a later
+   * whitelist on the form cannot quietly break the sync.
+   */
+  upsertDayNoteFromJSON(json) {
+    const next = DayNote.fromJSON(json);
+    const i = this.dayNotes.findIndex((n) => n.id === next.id);
+    if (i >= 0) this.dayNotes[i] = next;
+    else this.dayNotes.push(next);
+    this._touch();
+    return next;
+  }
+
   updateTask(id, changes) {
     const t = this.tasks.find((task) => task.id === id);
     if (!t) return null;

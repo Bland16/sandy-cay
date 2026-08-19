@@ -17,6 +17,9 @@
 import { encodeTaskParts, decodeEvent } from '../core/googleEncode.js';
 import { encodeLibrary, decodeLibrary } from '../core/googleLibrary.js';
 import {
+  dayKindOf, decodeDayEvent, encodeDayNote, encodeBlockedDay, KIND_BLOCKED,
+} from '../core/googleDayNotes.js';
+import {
   listAllEvents, insertEvent, patchEvent, deleteEvent,
 } from './google.js';
 
@@ -75,10 +78,33 @@ export async function pull(api, calendarId) {
   // full payload, so any surviving part rebuilds the whole thing.
   const byTaskId = new Map();
   const dropped = [];
+  // GS-11. A day note and a blocked day are ALL-DAY EVENTS, not library rows,
+  // so they come back here rather than inside the blob.
+  const notes = [];
+  const blockedDays = [];
+
   for (const ev of events) {
     if (!isOurs(ev)) continue;
     const p = ev.extendedProperties.private;
     if (p['sc.kind'] === 'library') continue;      // handled below
+
+    if (dayKindOf(ev)) {
+      const d = decodeDayEvent(ev);
+      if (!d.ok) {
+        // Same treatment as an unreadable task: reported, never guessed at.
+        dropped.push({ id: ev.id, taskId: d.id || null, summary: ev.summary, error: d.error });
+      } else if (d.kind === KIND_BLOCKED) {
+        // ⚠️ `task`, not `day` or `note` — both of these go through `planSync`,
+        // which reads `r.task`. Shaping them here rather than at the call site
+        // is what lets one planner serve all three collections; a different
+        // shape would need a second planner, and every guard copied with it.
+        blockedDays.push({ task: { id: d.id, day: d.day }, googleEventIds: [ev.id], updated: Date.parse(ev.updated || 0) || 0 });
+      } else {
+        notes.push({ task: d.note, googleEventIds: [ev.id], updated: Date.parse(ev.updated || 0) || 0 });
+      }
+      continue;
+    }
+
     const r = decodeEvent(ev);
     if (r.ok) {
       const seen = byTaskId.get(r.task.id);
@@ -113,6 +139,8 @@ export async function pull(api, calendarId) {
   const lib = decodeLibrary(events);
   return {
     tasks,
+    notes,
+    blockedDays,
     incomplete,
     library: lib.ok ? lib.library : null,
     libraryError: lib.ok || lib.empty ? null : lib.error,
@@ -151,12 +179,18 @@ function describeBodies(bodies) {
  * @returns `{ synced, forgotten, failed }` — `synced` and `forgotten` are what
  *          Google CONFIRMED, and are what `advanceState` may be given.
  */
-export async function applyPlan(api, calendarId, plan, { commitmentIds, timeZone } = {}) {
+export async function applyPlan(api, calendarId, plan, { commitmentIds, timeZone, encode } = {}) {
   const synced = [];
   const forgotten = [];
   const failed = [];
 
-  const bodiesFor = (task) => encodeTaskParts(task, { commitmentIds, timeZone });
+  // ⚠️ THE ENCODER IS INJECTABLE so day notes reuse this whole function rather
+  // than growing a second executor beside it (GS-11). Everything here that is
+  // worth having is about FAILURE — all-parts-or-none, only confirmed writes
+  // reaching `synced`, old events deleted last so a crash leaves duplicates
+  // rather than nothing — and none of it is task-specific. A second copy would
+  // be a second place to get those three wrong.
+  const bodiesFor = encode || ((task) => encodeTaskParts(task, { commitmentIds, timeZone }));
 
   for (const task of plan.create) {
     try {
@@ -218,6 +252,16 @@ export async function applyPlan(api, calendarId, plan, { commitmentIds, timeZone
 
   return { synced, forgotten, failed };
 }
+
+/**
+ * The encoders `applyPlan` takes for the two all-day collections (GS-11).
+ *
+ * Both return a LIST because `applyPlan` speaks in parts — a task can be
+ * several events. A day note is always exactly one, and saying so here costs
+ * nothing and keeps the executor unaware of the difference.
+ */
+export const encodeNoteParts = (note) => [encodeDayNote(note)];
+export const encodeBlockedParts = (b) => [encodeBlockedDay(b.day)];
 
 /**
  * Write the library, replacing whatever is there.

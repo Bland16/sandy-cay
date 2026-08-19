@@ -54,18 +54,14 @@ export const LIBRARY_KEYS = [
   'buckets',
   'activities',
   'retiredTags',
-  // ⚠️ DIVERGENCE FROM THE SPEC, PARKED HERE ON PURPOSE. GOOGLE-AS-STORAGE §4.2
-  // says day notes and blocked days become ALL-DAY EVENTS, so Thanksgiving is
-  // visible in Google Calendar like any other entry — which is a real part of
-  // "the calendar stays useful". They are carried in the library for now so
-  // that P1 loses nothing, and that is the only reason.
+  // ⚠️ `dayNotes` and `blockedDays` WERE HERE and are deliberately gone (GS-11,
+  // 2026-08-19). They are all-day events now — `core/googleDayNotes.js` — which
+  // is what §4.2 always specified, and they were removed in the SAME change that
+  // gave them an event to live on, exactly as the note that stood here demanded.
   //
-  // When they move to events they MUST be deleted from this list in the SAME
-  // change. Two homes for one collection is the drift this file exists to
-  // prevent, and it would be a particularly bad one: the library copy would
-  // quietly resurrect a note the user deleted in Google. See GS-11.
-  'dayNotes',
-  'blockedDays',
+  // DO NOT PUT THEM BACK. Two homes for one collection is the drift this file
+  // exists to prevent, and this would be a particularly bad one: the library
+  // copy would quietly resurrect a note deleted in Google, every sync, forever.
   'commitments',
   'routineInstances',
   'config',
@@ -92,8 +88,6 @@ export const LIBRARY_FIELD = {
   buckets: 'buckets',
   activities: 'activities',
   retiredTags: 'retiredTags',
-  dayNotes: 'dayNotes',
-  blockedDays: 'blockedDays',
   commitments: 'commitments',
   routineInstances: 'routineInstances',
   config: 'config',
@@ -103,8 +97,21 @@ export const LIBRARY_FIELD = {
   dismissed: '_dismissed',
 };
 
-/** Serialised by Schedule but deliberately NOT in the library. */
-const NOT_LIBRARY = new Set(['tasks', 'schemaVersion']);
+/**
+ * Serialised by Schedule and deliberately NOT in the library — because each of
+ * these has a home of its own, not because it is unimportant.
+ *
+ * ⚠️ `missingFromLibrary` answers "does this collection have a home at all",
+ * which is the question worth asking, so anything moved OUT of `LIBRARY_KEYS`
+ * has to be moved IN here or the guard starts reporting a fault that is not one.
+ * A collection in neither list is genuinely homeless and is lost on every sync.
+ */
+const NOT_LIBRARY = new Set([
+  'tasks',          // one event each (googleEncode.js)
+  'schemaVersion',  // constant
+  'dayNotes',       // all-day events (googleDayNotes.js) — GS-11
+  'blockedDays',    // all-day events (googleDayNotes.js) — GS-11
+]);
 
 /**
  * Which keys a schedule writes that the library would drop on the floor.

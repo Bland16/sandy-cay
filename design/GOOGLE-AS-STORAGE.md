@@ -123,8 +123,53 @@ own notes silently changes their schedule.
 
 ### 4.2 Day notes and blocked days
 
-All-day events (`start.date`). `blockersToNotes.js` and the `.ics` all-day import
-already establish this shape.
+All-day events (`start.date`). ✅ **BUILT 2026-08-19 — GS-11.**
+`core/googleDayNotes.js`; `dayNotes` and `blockedDays` were removed from
+`LIBRARY_KEYS` in the same change.
+
+```
+summary   note.label
+start     { date: from }
+end       { date: to PLUS ONE DAY }   ← exclusive
+recurrence  RRULE, bounded with a DATE
+extendedProperties.private:
+  sc.kind   daynote | blocked
+  sc.id     the note's id ('blocked-YYYY-MM-DD' for a blocked day)
+  sc.json   kind, tags, source, recurrence — chunked and checksummed
+```
+
+**Native vs payload, the same split a task gets and for the same reason.**
+`label` ← `summary`, `from` ← `start.date`, `to` ← `end.date` minus a day. Those
+three are Google's own fields, so **a hand edit LANDS** (GS-4): rename
+Thanksgiving in Google and it renames here; drag it and it moves here. They are
+NOT duplicated into the payload — two copies of one fact invite the two to
+disagree.
+
+⚠️ **`end.date` is EXCLUSIVE; `DayNote.to` is INCLUSIVE.** A note covering only
+the 15th is `start 2026-08-15 / end 2026-08-16`. This is sharp edge #11 in its
+original form, and `ical.js#eventToDayNote` already converts the same way.
+Getting it wrong does not error — it silently lengthens or shortens every
+holiday by a day, on every sync.
+
+⚠️ **A repeating note bounds with a DATE, not a date-time.** RFC 5545 §3.3.10
+requires it when `DTSTART` is a DATE, which is the mirror of the task rule (a
+task needs `UNTIL` in UTC *because* its DTSTART is a date-time). `allDayRRULE`
+strips the time part; handing a task-shaped `UNTIL` to an all-day event is
+invalid, and an invalid rule is a 400 with the event never appearing at all.
+
+**A blocked day carries no payload and no checksum**, deliberately: the whole
+datum is the date, and the date lives in `start.date` — a native field, which
+cannot be silently truncated the way an over-long extendedProperty can. A
+checksum exists to catch that truncation; there is nothing here for it to guard.
+
+**All three collections go through ONE planner.** `planSync` serves tasks, day
+notes and blocked days — the decisions are identical (the present-here-absent-
+there ambiguity that needs a sync record, the conflict rule, the unreadable
+guard) and only the row's NAME differs. They keep separate entry maps in the
+sync record, because ids collide only by luck and one map would let a task and a
+note overwrite each other's hash. `applyPlan` takes an injected encoder for the
+same reason: everything worth having in it is about FAILURE — all-parts-or-none,
+only confirmed writes recorded — and none of that is task-specific.
 
 ### 4.3 The library event
 
@@ -233,6 +278,7 @@ Proved by `design/probes/probe-google-bounded-repeat.mjs`; locked by the
 | **GS-7** | **Conflict.** GS-4 says a hand edit wins. But if the same task changed in *both* places while offline, which wins — newest `updated`, or ask? |
 | **GS-8** | ✅ **DECIDED AND BUILT 2026-08-19 — see §7.1.** Adopt if fresh; otherwise freeze the whole sync and ask. |
 | **GS-9** | ✅ **Defaulted and built:** retried silently once, then said out loud. Change it if the silent retry ever hides something worth knowing |
+| **GS-11** | ✅ **DECIDED AND BUILT 2026-08-19.** Day notes and blocked days are all-day events — see §4.2. Removed from `LIBRARY_KEYS` in the same change, as the note parked there demanded |
 | **GS-10** | ⚠️ **Opened by P0.** A hand edit to a single event's TIME is honoured (times live only on the event). A hand edit to its **repeat rule** is not — recurrence lives in the payload, because RRULE is strictly poorer than this app's model and storage has to be lossless. So the two hand edits behave differently. Accept the asymmetry and say so in the UI, or try to read RRULE changes back? **Gates P3.** |
 
 ### 7.1 GS-8 — the library gate

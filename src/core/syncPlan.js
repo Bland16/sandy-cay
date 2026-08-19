@@ -127,6 +127,14 @@ export function planSync(local, remote, state = emptyState(), { unreadable } = {
   const decide = (id, title, decision, why = {}) => {
     plan.decisions.push({ id, title, decision, ...why });
   };
+  // ⚠️ This planner is used for TASKS, DAY NOTES and BLOCKED DAYS (GS-11). The
+  // decisions are identical for all three — the ambiguity that needs a sync
+  // record, the conflict rule, the unreadable guard — and the only thing that
+  // differs is what the row is CALLED in the log. A day note has a `label`, a
+  // blocked day has only a date. Falling back keeps one planner instead of
+  // three, which is the point: every one of this file's hard-won guards would
+  // otherwise need copying, and a copy is a place to forget one.
+  const nameOf = (o) => (o && (o.title ?? o.label)) || (o && o.day) || (o && o.id) || '(unnamed)';
 
   for (const [id, task] of localById) {
     const r = remoteById.get(id);
@@ -135,7 +143,7 @@ export function planSync(local, remote, state = emptyState(), { unreadable } = {
     // Unreadable, not absent. Touch nothing until a human has looked.
     if (blocked.has(id)) {
       plan.blocked.push(id);
-      decide(id, task.title, 'blocked', { reason: 'its event exists but could not be read' });
+      decide(id, nameOf(task), 'blocked', { reason: 'its event exists but could not be read' });
       continue;
     }
 
@@ -144,10 +152,10 @@ export function planSync(local, remote, state = emptyState(), { unreadable } = {
       // device; never seen means it is new here.
       if (known) {
         plan.deleteLocal.push(id);
-        decide(id, task.title, 'delete-local', { reason: 'synced before, now missing from the calendar' });
+        decide(id, nameOf(task), 'delete-local', { reason: 'synced before, now missing from the calendar' });
       } else {
         plan.create.push(task);
-        decide(id, task.title, 'create', { reason: 'never synced' });
+        decide(id, nameOf(task), 'create', { reason: 'never synced' });
       }
       continue;
     }
@@ -157,7 +165,7 @@ export function planSync(local, remote, state = emptyState(), { unreadable } = {
 
     if (!localChanged && !remoteChanged) {
       plan.unchanged.push(id);
-      decide(id, task.title, 'unchanged', { localChanged, remoteChanged });
+      decide(id, nameOf(task), 'unchanged', { localChanged, remoteChanged });
       continue;
     }
     // ⚠️ eventIdS. One task can be several Google events — a repeating task with
@@ -165,12 +173,12 @@ export function planSync(local, remote, state = emptyState(), { unreadable } = {
     // has to know about all of them, not just the first one seen.
     if (localChanged && !remoteChanged) {
       plan.update.push({ task, eventIds: eventIdsOf(r) });
-      decide(id, task.title, 'update', { localChanged, remoteChanged, eventIds: eventIdsOf(r) });
+      decide(id, nameOf(task), 'update', { localChanged, remoteChanged, eventIds: eventIdsOf(r) });
       continue;
     }
     if (!localChanged && remoteChanged) {
       plan.adopt.push(r.task);
-      decide(id, task.title, 'adopt', { localChanged, remoteChanged, remoteAt: r.updated, lastSyncAt });
+      decide(id, nameOf(task), 'adopt', { localChanged, remoteChanged, remoteAt: r.updated, lastSyncAt });
       continue;
     }
 
@@ -180,8 +188,8 @@ export function planSync(local, remote, state = emptyState(), { unreadable } = {
     const localAt = (known && known.dirtyAt) || 0;
     const remoteAt = r.updated || 0;
     const winner = localAt >= remoteAt ? 'local' : 'remote';
-    plan.conflicts.push({ id, title: task.title, winner, localAt, remoteAt });
-    decide(id, task.title, `conflict -> ${winner}`, { localAt, remoteAt });
+    plan.conflicts.push({ id, title: nameOf(task), winner, localAt, remoteAt });
+    decide(id, nameOf(task), `conflict -> ${winner}`, { localAt, remoteAt });
     if (winner === 'local') plan.update.push({ task, eventIds: eventIdsOf(r) });
     else plan.adopt.push(r.task);
   }
@@ -191,10 +199,10 @@ export function planSync(local, remote, state = emptyState(), { unreadable } = {
     // Mirror of the ambiguity above, the other way round.
     if (entries[id]) {
       plan.deleteRemote.push({ id, eventIds: eventIdsOf(r) });
-      decide(id, r.task.title, 'delete-remote', { reason: 'deleted here since the last sync' });
+      decide(id, nameOf(r.task), 'delete-remote', { reason: 'deleted here since the last sync' });
     } else {
       plan.adopt.push(r.task);
-      decide(id, r.task.title, 'adopt', { reason: 'in the calendar but never seen here' });
+      decide(id, nameOf(r.task), 'adopt', { reason: 'in the calendar but never seen here' });
     }
   }
 
