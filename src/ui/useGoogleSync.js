@@ -28,6 +28,7 @@ import {
 import { libraryFrom } from '../core/googleLibrary.js';
 import { makeApi, pull, applyPlan, pushLibrary, inspectCalendar } from './googleSync.js';
 import { getAccessToken, readClientId } from './google.js';
+import { logPull, logPlan, logApplied, logStopped } from './syncLog.js';
 
 export const SYNC_STATE_KEY = 'sandycay.sync.state';
 export const SYNC_CALENDAR_KEY = 'sandycay.sync.calendar';
@@ -129,12 +130,15 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, now 
 
       const t = now();
       const localTasks = sched.toJSON().tasks;
+      logPull(remote, localTasks.length);
       stateRef.current = markDirty(stateRef.current, localTasks, t);
       // `unreadable` is not optional bookkeeping: without it a corrupt event
       // reads as an absent one and this deletes the local task. See planSync.
       const plan = planSync(localTasks, remote.tasks, stateRef.current, {
         unreadable: remote.unreadable,
       });
+
+      logPlan(plan);
 
       // ⚠️ STOP BEFORE EMPTYING THE SCHEDULE. A sync that would delete most of
       // your tasks at once is far likelier to be a bug than an intention — it
@@ -150,6 +154,7 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, now 
           + 'Nothing was changed. If you just restored a backup, use "Use a different calendar" '
           + 'in the Cabana to start the calendar fresh.';
         setLastError(msg);
+        logStopped(msg);
         showToast('Sync stopped — it would have deleted most of your tasks');
         return plan;
       }
@@ -158,6 +163,8 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, now 
         commitmentIds: new Set((sched.commitments || []).map((c) => c.id)),
         timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       });
+
+      logApplied(applied);
 
       if (plan.adopt.length || plan.deleteLocal.length) {
         mutate((s) => applyLocal(s, plan));

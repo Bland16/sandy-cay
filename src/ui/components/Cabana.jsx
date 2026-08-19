@@ -8,6 +8,7 @@ import { fmtDur } from '../format.js';
 import Icon from '../Icon.jsx';
 import CalendarCard from './CalendarCard.jsx';
 import { SESSION } from '../session.js';
+import { isSyncDebug, setSyncDebug } from '../syncLog.js';
 import TagManager from './TagManager.jsx';
 import EnergyCard from './EnergyCard.jsx';
 import ZonesEditor from './ZonesEditor.jsx';
@@ -174,6 +175,17 @@ export default function Cabana({
                   </button>
                   <button className="btn2 ghost" onClick={sync.forget}>Use a different calendar</button>
                 </div>
+                {/* Off by default. Logging that is always on stops being read —
+                    it becomes noise you scroll past, and the one line that
+                    mattered is invisible. */}
+                <label className="synclog">
+                  <input
+                    type="checkbox"
+                    defaultChecked={isSyncDebug()}
+                    onChange={(e) => { setSyncDebug(e.target.checked); bump(); }}
+                  />
+                  <span>Log every task to the browser console while syncing</span>
+                </label>
               </div>
             )}
 

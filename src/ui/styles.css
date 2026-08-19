@@ -1633,6 +1633,13 @@ button:focus-visible, .dhopen:focus-visible, .card:focus-visible, .slot:focus-vi
   margin: 8px 0 0; padding: 8px 10px; border: 2px solid var(--warning); border-radius: 8px;
   background: rgba(226, 104, 95, .12); font-size: 12px; line-height: 1.45; color: #ffd9d5;
 }
+.synclog {
+  display: flex; align-items: center; gap: 8px; margin-top: 10px;
+  font-family: var(--font-body); font-size: 11.5px; color: var(--cab-text);
+  opacity: .85; cursor: pointer;
+}
+.synclog input { cursor: pointer; }
+
 .callist { display: grid; gap: 6px; margin-top: 10px; max-height: 230px; overflow: auto; }
 .calrow {
   text-align: left; padding: 8px 10px; border-radius: 8px; cursor: pointer;

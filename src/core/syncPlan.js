@@ -116,6 +116,16 @@ export function planSync(local, remote, state = emptyState(), { unreadable } = {
 
   const plan = {
     create: [], update: [], deleteRemote: [], adopt: [], deleteLocal: [], conflicts: [], unchanged: [], blocked: [],
+    // ⚠️ One row per task saying WHAT was decided and WHY. This is not
+    // decoration: every sync bug in this file's history was diagnosed by
+    // working out which of localChanged/remoteChanged/known was wrong, and
+    // until now that reasoning existed only inside this function and had to be
+    // reconstructed from the outside each time. It is plain data, so the logger
+    // stays dumb and this stays testable.
+    decisions: [],
+  };
+  const decide = (id, title, decision, why = {}) => {
+    plan.decisions.push({ id, title, decision, ...why });
   };
 
   for (const [id, task] of localById) {
@@ -123,25 +133,46 @@ export function planSync(local, remote, state = emptyState(), { unreadable } = {
     const known = entries[id];
 
     // Unreadable, not absent. Touch nothing until a human has looked.
-    if (blocked.has(id)) { plan.blocked.push(id); continue; }
+    if (blocked.has(id)) {
+      plan.blocked.push(id);
+      decide(id, task.title, 'blocked', { reason: 'its event exists but could not be read' });
+      continue;
+    }
 
     if (!r) {
       // ⚠️ THE AMBIGUOUS CASE. Seen before means it was deleted on the other
       // device; never seen means it is new here.
-      if (known) plan.deleteLocal.push(id);
-      else plan.create.push(task);
+      if (known) {
+        plan.deleteLocal.push(id);
+        decide(id, task.title, 'delete-local', { reason: 'synced before, now missing from the calendar' });
+      } else {
+        plan.create.push(task);
+        decide(id, task.title, 'create', { reason: 'never synced' });
+      }
       continue;
     }
 
     const localChanged = !known || taskHash(task) !== known.hash;
     const remoteChanged = (r.updated || 0) > lastSyncAt;
 
-    if (!localChanged && !remoteChanged) { plan.unchanged.push(id); continue; }
+    if (!localChanged && !remoteChanged) {
+      plan.unchanged.push(id);
+      decide(id, task.title, 'unchanged', { localChanged, remoteChanged });
+      continue;
+    }
     // ⚠️ eventIdS. One task can be several Google events — a repeating task with
     // different times on different days is one event per time — so an update
     // has to know about all of them, not just the first one seen.
-    if (localChanged && !remoteChanged) { plan.update.push({ task, eventIds: eventIdsOf(r) }); continue; }
-    if (!localChanged && remoteChanged) { plan.adopt.push(r.task); continue; }
+    if (localChanged && !remoteChanged) {
+      plan.update.push({ task, eventIds: eventIdsOf(r) });
+      decide(id, task.title, 'update', { localChanged, remoteChanged, eventIds: eventIdsOf(r) });
+      continue;
+    }
+    if (!localChanged && remoteChanged) {
+      plan.adopt.push(r.task);
+      decide(id, task.title, 'adopt', { localChanged, remoteChanged, remoteAt: r.updated, lastSyncAt });
+      continue;
+    }
 
     // Both moved. GS-7: the newer edit wins, and it is SAID rather than done
     // quietly — the loser is only recoverable if the user is told which task
@@ -150,6 +181,7 @@ export function planSync(local, remote, state = emptyState(), { unreadable } = {
     const remoteAt = r.updated || 0;
     const winner = localAt >= remoteAt ? 'local' : 'remote';
     plan.conflicts.push({ id, title: task.title, winner, localAt, remoteAt });
+    decide(id, task.title, `conflict -> ${winner}`, { localAt, remoteAt });
     if (winner === 'local') plan.update.push({ task, eventIds: eventIdsOf(r) });
     else plan.adopt.push(r.task);
   }
@@ -157,8 +189,13 @@ export function planSync(local, remote, state = emptyState(), { unreadable } = {
   for (const [id, r] of remoteById) {
     if (localById.has(id)) continue;
     // Mirror of the ambiguity above, the other way round.
-    if (entries[id]) plan.deleteRemote.push({ id, eventIds: eventIdsOf(r) });
-    else plan.adopt.push(r.task);
+    if (entries[id]) {
+      plan.deleteRemote.push({ id, eventIds: eventIdsOf(r) });
+      decide(id, r.task.title, 'delete-remote', { reason: 'deleted here since the last sync' });
+    } else {
+      plan.adopt.push(r.task);
+      decide(id, r.task.title, 'adopt', { reason: 'in the calendar but never seen here' });
+    }
   }
 
   return plan;

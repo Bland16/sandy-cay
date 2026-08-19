@@ -255,6 +255,40 @@ describe('idempotence and partial failure', () => {
   });
 });
 
+describe('the per-task decisions (what the debug log prints)', () => {
+  // Every sync bug in this file's history was diagnosed by working out which of
+  // localChanged / remoteChanged / known was wrong, and that reasoning existed
+  // only inside planSync. Recording it per task is what makes "why did THIS one
+  // not sync" answerable instead of inferred from a summary count.
+  const a = task('a', 'Orientation');
+
+  it('records one row per task, with the reason', () => {
+    const p = planSync([a, task('b', 'New')], [remote(a, T1)], synced([a], T0));
+    expect(p.decisions).toHaveLength(2);
+    const byId = Object.fromEntries(p.decisions.map((d) => [d.id, d]));
+    expect(byId.b.decision).toBe('create');
+    expect(byId.b.reason).toMatch(/never synced/);
+    expect(byId.a.decision).toBe('adopt');
+  });
+
+  it('explains a deletion, which is the one worth being able to audit', () => {
+    const p = planSync([a], [], synced([a], T0));
+    expect(p.decisions[0]).toMatchObject({ id: 'a', decision: 'delete-local' });
+    expect(p.decisions[0].reason).toMatch(/missing from the calendar/);
+  });
+
+  it('names a blocked task rather than staying silent about it', () => {
+    const p = planSync([a], [], synced([a], T0), { unreadable: ['a'] });
+    expect(p.decisions[0]).toMatchObject({ id: 'a', decision: 'blocked' });
+  });
+
+  it('covers every task exactly once, so nothing goes unexplained', () => {
+    const local = [a, task('b'), task('c')];
+    const p = planSync(local, [remote(a, T0 - 10)], synced([a], T0));
+    expect(p.decisions.map((d) => d.id).sort()).toEqual(['a', 'b', 'c']);
+  });
+});
+
 describe('what the user is told', () => {
   it('names what happened rather than just "synced"', () => {
     const p = planSync([task('a'), task('b')], [remote(task('c'), T1)], emptyState());
