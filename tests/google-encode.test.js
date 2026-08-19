@@ -3,7 +3,7 @@
 // Pure functions, no network, no account. `design/probes/probe-google-encode.mjs`
 // prints the actual bytes; this locks the behaviour.
 import { describe, it, expect } from 'vitest';
-import { Schedule, defaultConfig } from '../src/core/index.js';
+import { Schedule, defaultConfig, seed, Task } from '../src/core/index.js';
 import {
   encodeTask, decodeEvent, kindOf, chunkString, packPayload, unpackPayload,
   checksum, byteLength, idQuery, KIND, CHUNK_BYTES, ENCODING_VERSION,
@@ -81,6 +81,95 @@ describe('a task survives the round trip', () => {
     expect(r.ok).toBe(true);
     expect(r.task.startTime).toBe(at(15).getTime());
     expect(r.task.endTime).toBe(at(16).getTime());
+  });
+});
+
+describe('reconstruction through the REAL Task constructor', () => {
+  // ⚠️ The tests above compare fields one by one, and that is how a whole field
+  // went missing without anything failing: recurrence was excluded from the
+  // payload as "native", so every repeating task decoded to a one-off. Nothing
+  // errored. Comparing toJSON to toJSON is what catches a field that simply is
+  // not there any more.
+  it('every seeded task rebuilds byte-identically', () => {
+    const s = seed();
+    expect(s.tasks.length).toBeGreaterThan(0);
+    for (const t of s.tasks) {
+      const back = decodeEvent(encodeTask(t, {}));
+      expect(back.ok).toBe(true);
+      expect(Task.fromJSON(back.task).toJSON()).toEqual(t.toJSON());
+    }
+  });
+
+  it('rebuilds a task whose every field is set to a NON-DEFAULT value', () => {
+    // ⚠️ The seed alone is not enough, and mutation proved it: dropping
+    // `history` from the payload changed nothing, because seeded tasks carry
+    // the DEFAULT history and `Task.fromJSON` regenerates that same default. A
+    // dropped field is only visible when its value differs from what the
+    // constructor would invent on its own. So this one sets everything to
+    // something the constructor would never produce.
+    const t = Task.fromJSON({
+      id: 'kitchen-sink-0001',
+      title: 'Kitchen sink',
+      details: 'every field carries a non-default value',
+      tags: ['alpha', 'beta'],
+      type: 'fixed',
+      pinned: true,
+      priority: 5,
+      startTime: at(9).getTime(),
+      endTime: at(11).getTime(),
+      deadline: at(18).getTime(),
+      placedBy: 'user',
+      activityId: 'act-0007',
+      schedulingWarning: 'parked outside a window',
+      schedulingInfo: { reason: 'no free slot' },
+      missedDeadline: true,
+      completion: 0.75,
+      satisfaction: { rating: 4, facets: { focus: 1, energy: -1, timing: 0 } },
+      energyAt: { physical: -2, mental: -3, social: 1, emotional: 0 },
+      dayFillAtCompletion: 0.63,
+      history: { moveCount: 3, displacedCount: 2, rippleCount: 1, carriedCount: 4 },
+      occurrenceData: { '2026-09-07': { completion: 1, satisfaction: { rating: 5 } } },
+      load: { physical: 2, mental: -1, social: 0, emotional: 1 },
+      isOccurrence: false,
+      routineId: 'laundry-0001',
+      stepIndex: 2,
+      occurrenceDate: '2026-09-07',
+      parentId: 'essay-0002',
+    });
+
+    const before = t.toJSON();
+    // Guard the guard: if these ever coincide with the defaults, this test
+    // silently stops testing anything.
+    expect(before.history).not.toEqual({ moveCount: 0, displacedCount: 0, rippleCount: 0, carriedCount: 0 });
+    expect(before.occurrenceData).not.toEqual({});
+
+    const back = decodeEvent(encodeTask(t, {}));
+    expect(back.ok).toBe(true);
+    expect(Task.fromJSON(back.task).toJSON()).toEqual(before);
+  });
+
+  it('a RECURRING task keeps its whole pattern', () => {
+    // The specific regression. RRULE is strictly poorer than this app's model
+    // (periods with their own bounds, per-window freq, move/add exceptions), so
+    // the payload has to carry it losslessly.
+    const s = seed();
+    const recurring = s.tasks.filter((t) => t.recurrence);
+    expect(recurring.length).toBeGreaterThan(0);
+    for (const t of recurring) {
+      const back = decodeEvent(encodeTask(t, {}));
+      expect(back.task.recurrence).toBeTruthy();
+      expect(back.task.recurrence).toEqual(t.toJSON().recurrence);
+    }
+  });
+
+  it('an RRULE, when asked for, is a DISPLAY MIRROR and not the truth', () => {
+    const s = seed();
+    const t = s.tasks.find((x) => x.recurrence);
+    const ev = encodeTask(t, { rrule: 'RRULE:FREQ=WEEKLY;BYDAY=MO' });
+    expect(ev.recurrence).toEqual(['RRULE:FREQ=WEEKLY;BYDAY=MO']);
+    // Wrecking the mirror must not change what decodes.
+    ev.recurrence = ['RRULE:FREQ=DAILY'];
+    expect(decodeEvent(ev).task.recurrence).toEqual(t.toJSON().recurrence);
   });
 });
 

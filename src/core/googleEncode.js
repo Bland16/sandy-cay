@@ -59,8 +59,22 @@ export const KIND = {
  * Fields Google stores NATIVELY. They are written to real event fields and must
  * not also be duplicated into the payload — two homes for one value is how the
  * two copies drift.
+ *
+ * ⚠️ `recurrence` IS DELIBERATELY NOT IN THIS SET, and it was, briefly, which
+ * silently turned every repeating task into a one-off. Proven on the seed's
+ * "Morning gym": pattern in, `null` out, no error anywhere. It is precisely the
+ * failure `Task.js` warns about beside this very field — "a field present in
+ * only one of the two is silently dropped (that is exactly how `freq` was lost)".
+ *
+ * The reason it cannot be native: RRULE is strictly POORER than this app's
+ * recurrence. A pattern here is a list of periods with their own
+ * effectiveFrom/Until, per-window freq, and exceptions that can move or add a
+ * session. `toRRULE` is an export convenience and `.ics` import already reports
+ * what it cannot read. Storage has to be lossless, so the payload holds the
+ * truth. A caller may ALSO pass `rrule` to make the event visibly repeat in
+ * Google — a display mirror, never the source. See GS-10.
  */
-const NATIVE = new Set(['title', 'startTime', 'endTime', 'recurrence']);
+const NATIVE = new Set(['title', 'startTime', 'endTime']);
 
 /** Never round-tripped: derived, or meaningless on the far side. */
 const SKIP = new Set(['schemaVersion']);
