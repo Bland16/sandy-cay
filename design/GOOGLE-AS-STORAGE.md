@@ -170,7 +170,7 @@ warning rather than relying on it.
 
 | P | What | Provable by |
 |---|---|---|
-| **P0** | The encoding as **pure functions** — `taskToEvent` / `eventToTask`, chunking, checksum. No network | A probe that round-trips every task type and asserts deep equality. **Fuzz the chunk boundary at 899/900/901 and 1023/1024/1025 bytes** |
+| **P0** | ✅ **BUILT 2026-08-18** — `src/core/googleEncode.js`, `tests/google-encode.test.js`, `design/probes/probe-google-encode.mjs`. 26 tests, 13 mutations bite | see below |
 | **P1** | The library event — chunk/unchunk, multi-event overflow | Round-trip a full term-scale state; assert a truncated chunk is DETECTED |
 | **P2** | The entry screen + guest mode | The user's eye on the mockup; jsdom can prove the two doors and that guest never calls the network |
 | **P3** | Pull on open · write-back · `syncToken` · `showDeleted` · per-event delete | Against a **throwaway calendar**, never the real one |
@@ -188,6 +188,7 @@ lives. Do them first.
 | **GS-7** | **Conflict.** GS-4 says a hand edit wins. But if the same task changed in *both* places while offline, which wins — newest `updated`, or ask? |
 | **GS-8** | **Guest → signed-in.** A guest builds a week, then signs in. Upload it, adopt what is in Google, or ask? |
 | **GS-9** | Does the ~1h token expiring mid-session need a visible re-auth, or silent retry then a toast? |
+| **GS-10** | ⚠️ **Opened by P0.** A hand edit to a single event's TIME is honoured (times live only on the event). A hand edit to its **repeat rule** is not — recurrence lives in the payload, because RRULE is strictly poorer than this app's model and storage has to be lossless. So the two hand edits behave differently. Accept the asymmetry and say so in the UI, or try to read RRULE changes back? **Gates P3.** |
 
 ## 8. Explicitly not proposed
 
