@@ -231,9 +231,54 @@ Proved by `design/probes/probe-google-bounded-repeat.mjs`; locked by the
 | **GS-5** | **Which calendar?** Writing 37 tasks into `Class Schedule` would be a disaster. Proposed: the user picks, it must be dedicated, and the app refuses if it finds events it did not write. Not agreed |
 | **GS-6** | **Write cadence.** Every change would burn Google's quota. Debounced? On blur? Explicit save? |
 | **GS-7** | **Conflict.** GS-4 says a hand edit wins. But if the same task changed in *both* places while offline, which wins — newest `updated`, or ask? |
-| **GS-8** | **Guest → signed-in.** A guest builds a week, then signs in. Upload it, adopt what is in Google, or ask? |
+| **GS-8** | ✅ **DECIDED AND BUILT 2026-08-19 — see §7.1.** Adopt if fresh; otherwise freeze the whole sync and ask. |
 | **GS-9** | ✅ **Defaulted and built:** retried silently once, then said out loud. Change it if the silent retry ever hides something worth knowing |
 | **GS-10** | ⚠️ **Opened by P0.** A hand edit to a single event's TIME is honoured (times live only on the event). A hand edit to its **repeat rule** is not — recurrence lives in the payload, because RRULE is strictly poorer than this app's model and storage has to be lossless. So the two hand edits behave differently. Accept the asymmetry and say so in the UI, or try to read RRULE changes back? **Gates P3.** |
+
+### 7.1 GS-8 — the library gate
+
+**The bug that forced it.** `pull` decoded the library and returned it as
+`remote.library`, and **nothing in `src/` ever read it**. The write side
+shipped; the read side did not. So a second device got its tasks and none of its
+buckets, zones, activities, commitments or routines — and then its own fresh
+`seedStarterBuckets` set hashed differently from what was up there, so
+`pushLibrary` **replaced the library in the calendar with the starter one**. The
+real library was gone from the store, and the first device looked fine only
+because it still held its own copy in localStorage.
+`design/probes/probe-google-second-device.mjs` drives exactly that.
+
+**The rule:**
+
+| the device | what happens |
+|---|---|
+| **fresh** — its library still hashes to what a new install produces | adopts the calendar's library, silently. It has contributed nothing, so nothing can be lost |
+| **agrees** with the calendar | ordinary sync |
+| **differs** | **the WHOLE sync freezes.** Read-only: no event writes, no library write, no local adopt, no local delete. A Cabana banner names every disagreeing collection with both counts, and offers the two answers |
+
+**Why the freeze covers tasks and not just the library**, which is the part
+worth keeping. Only `pushLibrary` can overwrite the library, so locking just it
+looks sufficient. It is not, because of `dirtyAt`.
+
+A device asleep for a week wakes with stale tasks AND a stale sync record. For
+every task edited elsewhere since, `planSync` sees `localChanged` (its hash
+differs from its own old entry) AND `remoteChanged` (`updated` is past its old
+`lastSyncAt`) — a conflict, settled by `dirtyAt` against Google's `updated`. But
+**`dirtyAt` is stamped when the device NOTICES, not when the edit happened.** So
+the stale copy wins every conflict, and wins *because* it woke up last.
+Newest-noticed is not newest-edited and nothing in the model can tell them
+apart. Two libraries disagreeing is the sharpest available signal that a device
+is out of step, so it stops everything.
+
+The same argument is why neither side wins automatically: the library has no
+modification time at all, and the only clock available records noticing. A
+person looking at both lists can tell which is right. The code cannot, so it
+asks — **This device is right — replace the calendar** / **The calendar is right
+— derive from it**. Tasks are untouched by either.
+
+**Built:** `diffLibrary` / `applyLibrary` / `LIBRARY_FIELD` in
+`core/googleLibrary.js`, the gate and `freshLibraryHash` in `ui/useGoogleSync.js`,
+the banner in `Cabana.jsx`. Locked by `tests/google-library-gate.test.jsx`,
+which renders the real hook and the real Cabana.
 
 ## 8. Explicitly not proposed
 

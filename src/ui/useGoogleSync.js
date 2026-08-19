@@ -25,10 +25,31 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   planSync, markDirty, advanceState, emptyState, describePlan, taskHash, isBulkDelete,
 } from '../core/syncPlan.js';
-import { libraryFrom } from '../core/googleLibrary.js';
+import { libraryFrom, diffLibrary, applyLibrary } from '../core/googleLibrary.js';
+import { Schedule, defaultConfig, seedStarterBuckets } from '../core/index.js';
 import { makeApi, pull, applyPlan, pushLibrary, inspectCalendar } from './googleSync.js';
 import { getAccessToken, readClientId } from './google.js';
 import { logPull, logPlan, logApplied, logStopped } from './syncLog.js';
+
+/**
+ * The library a brand-new install produces — starter buckets, default config,
+ * nothing else. A device whose library still hashes to this has contributed
+ * NOTHING, so adopting the store's library over the top of it cannot lose
+ * anything, and that is the whole test for "fresh" (GS-8).
+ *
+ * Computed once, lazily. It reads no clock: verified stable across calls, which
+ * matters because a moving value here would make every device look modified and
+ * freeze the sync permanently.
+ */
+let pristineHash = null;
+export function freshLibraryHash() {
+  if (pristineHash === null) {
+    const s = new Schedule({ config: defaultConfig });
+    seedStarterBuckets(s);
+    pristineHash = taskHash(libraryFrom(s.toJSON()));
+  }
+  return pristineHash;
+}
 
 export const SYNC_STATE_KEY = 'sandycay.sync.state';
 export const SYNC_CALENDAR_KEY = 'sandycay.sync.calendar';
@@ -89,6 +110,8 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, now 
   const [calendarId, setCalendarId] = useState(loadCalendarId);
   const [status, setStatus] = useState('idle'); // idle | syncing | error | off
   const [lastError, setLastError] = useState(null);
+  // GS-8. null = the two libraries agree, or the calendar has none yet.
+  const [libraryState, setLibraryState] = useState(null);
   const stateRef = useRef(loadSyncState());
   const runningRef = useRef(false);
   const timerRef = useRef(null);
@@ -126,6 +149,60 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, now 
         if (!/expired|401/i.test(err?.message || '')) throw err;
         api = makeApi(await token({ force: true }));
         remote = await pull(api, calendarId);
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // GS-8 — THE LIBRARY GATE. Nothing above this writes; everything below it
+      // does, so the decision belongs exactly here.
+      // ═══════════════════════════════════════════════════════════════════════
+      //
+      // FRESH  → adopt the calendar's library and carry on. A device that has
+      //          contributed nothing cannot lose anything by taking the store's
+      //          copy, and this is the phone-signs-in case.
+      // AGREE  → carry on.
+      // DIFFER → FREEZE THE WHOLE SYNC. Read-only until a human resolves it.
+      //
+      // ⚠️ WHY THE FREEZE COVERS TASKS TOO, and not just the library. The
+      // obvious reading is that only `pushLibrary` can destroy the library, so
+      // only it needs locking. That is wrong, and the reason is `dirtyAt`.
+      //
+      // A device that has been asleep for a week wakes with stale tasks AND a
+      // stale sync record. For every task edited elsewhere since, `planSync`
+      // sees localChanged (its hash differs from its own old entry) AND
+      // remoteChanged (`updated` is past its old `lastSyncAt`) — a conflict,
+      // settled by `dirtyAt` against Google's `updated`. But `dirtyAt` is
+      // stamped when this device NOTICES the difference, which is now, not when
+      // the edit happened. So the stale copy wins every conflict, and it wins
+      // precisely BECAUSE it woke up last. Newest-noticed is not newest-edited
+      // and nothing in the model can tell them apart.
+      //
+      // Two libraries disagreeing is the sharpest available signal that this
+      // device is out of step, so it stops everything until that is settled.
+      const localLibrary = libraryFrom(sched.toJSON());
+      if (remote.library) {
+        const diff = diffLibrary(localLibrary, remote.library);
+        if (diff.same) {
+          setLibraryState(null);
+        } else if (taskHash(localLibrary) === freshLibraryHash()) {
+          mutate((s) => applyLibrary(s, remote.library));
+          // Re-read rather than hashing what arrived: `applyLibrary` revives
+          // through `Schedule.fromJSON`, so the schedule is the authority on
+          // what it now holds. Hashing the incoming blob instead would leave
+          // this device one round-trip out of step with itself.
+          stateRef.current = { ...stateRef.current, libHash: taskHash(libraryFrom(sched.toJSON())) };
+          setLibraryState(null);
+          showToast('Brought your buckets, zones and settings down from the calendar');
+        } else {
+          const names = diff.differing.map((r) => r.key).join(', ');
+          const msg = `Sync paused: this device and the calendar disagree about your setup (${names}). `
+            + 'Nothing has been changed on either side. Open the Cabana and choose which one is right.';
+          setLibraryState({ conflict: true, rows: diff.differing });
+          setStatus('error');
+          setLastError(msg);
+          logStopped(msg);
+          showToast('Sync paused — this device and the calendar disagree about your setup');
+          return null;
+        }
       }
 
       const t = now();
@@ -295,6 +372,42 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, now 
     saveSyncState(stateRef.current);
   }, []);
 
+  /**
+   * GS-8, resolved the local way: THIS device is right. Replace the calendar's
+   * library with ours and let the sync go again.
+   *
+   * Deliberately a button and never automatic. The whole reason the sync is
+   * frozen is that no honest rule can tell which side is newer — the library
+   * has no modification time, and the sync's own `dirtyAt` records when a
+   * difference was NOTICED, which a stale device does last and would therefore
+   * win with. A person looking at both lists can tell; the code cannot.
+   */
+  const pushLibraryNow = useCallback(async () => {
+    const api = makeApi(await token());
+    const json = sched.toJSON();
+    const r = await pushLibrary(api, calendarId, json);
+    stateRef.current = { ...stateRef.current, libHash: taskHash(libraryFrom(json)) };
+    saveSyncState(stateRef.current);
+    setLibraryState(null);
+    setStatus('idle');
+    setLastError(null);
+    return r;
+  }, [token, sched, calendarId]);
+
+  /** GS-8, resolved the other way: the CALENDAR is right. Take its library. */
+  const deriveLibraryFromCalendar = useCallback(async () => {
+    const api = makeApi(await token());
+    const remote = await pull(api, calendarId);
+    if (!remote.library) throw new Error('That calendar has no Sandy Cay setup stored in it yet.');
+    const r = mutate((s) => applyLibrary(s, remote.library));
+    stateRef.current = { ...stateRef.current, libHash: taskHash(libraryFrom(sched.toJSON())) };
+    saveSyncState(stateRef.current);
+    setLibraryState(null);
+    setStatus('idle');
+    setLastError(null);
+    return r;
+  }, [token, sched, mutate, calendarId]);
+
   const forget = useCallback(() => {
     saveCalendarId(null);
     setCalendarId(null);
@@ -303,6 +416,16 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, now 
   }, []);
 
   return {
-    calendarId, status, lastError, syncNow: runSync, chooseCalendar, forget, resetState,
+    calendarId,
+    status,
+    lastError,
+    syncNow: runSync,
+    chooseCalendar,
+    forget,
+    resetState,
+    // GS-8: null unless this device and the calendar disagree about the setup.
+    libraryState,
+    pushLibraryNow,
+    deriveLibraryFromCalendar,
   };
 }

@@ -1633,6 +1633,27 @@ button:focus-visible, .dhopen:focus-visible, .card:focus-visible, .slot:focus-vi
   margin: 8px 0 0; padding: 8px 10px; border: 2px solid var(--warning); border-radius: 8px;
   background: rgba(226, 104, 95, .12); font-size: 12px; line-height: 1.45; color: #ffd9d5;
 }
+/* GS-8. The sync is FROZEN while this shows, so it is built to be read, not
+   skimmed past: it keeps the warning border of `.cabwarn` above it and then
+   lays the disagreement out as a list you can actually check a number against.
+   No dismiss control on purpose — dismissing it would leave a device that
+   silently never syncs again. */
+.syncconflict { margin-top: 8px; }
+.synclibdiff {
+  list-style: none; margin: 8px 0; padding: 0;
+  border: 1px solid var(--cab-trim); border-radius: 8px; overflow: hidden;
+}
+.synclibdiff li {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
+  padding: 6px 10px; font-family: var(--font-body); font-size: 11.5px;
+  border-top: 1px solid var(--cab-trim);
+}
+.synclibdiff li:first-child { border-top: 0; }
+.synclibkey { color: var(--cab-text); }
+/* The counts are the actionable half — "11 here, 4 in the calendar" tells you
+   which side is the stale one, where "buckets differ" tells you nothing. */
+.synclibcount { color: var(--cab-accent); font-family: var(--font-type); font-size: 11px; white-space: nowrap; }
+
 .synclog {
   display: flex; align-items: center; gap: 8px; margin-top: 10px;
   font-family: var(--font-body); font-size: 11.5px; color: var(--cab-text);

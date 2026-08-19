@@ -24,6 +24,7 @@
 // the count has to include it.
 
 import { chunkString, checksum, byteLength, CHUNK_BYTES } from './googleEncode.js';
+import { Schedule } from './Schedule.js';
 
 const NS = 'sc';
 export const LIBRARY_VERSION = 1;
@@ -73,6 +74,34 @@ export const LIBRARY_KEYS = [
   'lastSeenWeek',
   'dismissed',
 ];
+
+/**
+ * The JSON name → the field a live `Schedule` keeps it under.
+ *
+ * ⚠️ Deliberately RIGHT HERE, touching `LIBRARY_KEYS`, because most of these
+ * are the same word and four are not: `model` lives on `learning`, and
+ * `snapshots` / `lastSeenWeek` / `dismissed` are underscored. Schedule.js
+ * already carries this collection list three times (constructor, `toJSON`,
+ * `fromJSON`) and its own comments count the halves that have to move together;
+ * a fourth copy kept somewhere else is how one of them gets forgotten. A test
+ * asserts every `LIBRARY_KEYS` entry has a mapping, so adding a collection and
+ * forgetting this fails loudly instead of silently dropping it on adoption.
+ */
+export const LIBRARY_FIELD = {
+  zones: 'zones',
+  buckets: 'buckets',
+  activities: 'activities',
+  retiredTags: 'retiredTags',
+  dayNotes: 'dayNotes',
+  blockedDays: 'blockedDays',
+  commitments: 'commitments',
+  routineInstances: 'routineInstances',
+  config: 'config',
+  model: 'learning',
+  snapshots: '_snapshots',
+  lastSeenWeek: '_lastSeenWeek',
+  dismissed: '_dismissed',
+};
 
 /** Serialised by Schedule but deliberately NOT in the library. */
 const NOT_LIBRARY = new Set(['tasks', 'schemaVersion']);
@@ -235,4 +264,68 @@ export function libraryFootprint(scheduleJson) {
     }
   }
   return { events: events.length, bytes, props };
+}
+
+/**
+ * What differs between two libraries, per collection.
+ *
+ * ⚠️ THIS IS A GATE, NOT A REPORT. GS-8: a device whose library does not match
+ * the store's is not allowed to write anything until a human resolves it, so
+ * "are these the same" has to be answered honestly and cheaply, without a
+ * network call and without a clock.
+ *
+ * Compared by serialisation rather than by counts. Two buckets lists of the
+ * same length are not the same list, and "11 here, 11 there" is exactly the
+ * shape of a phone that seeded its own starter set over the top of yours.
+ * Counts are reported ALONGSIDE, because "config differs" is unactionable while
+ * "buckets: 11 here, 4 there" tells you which side is the stale one.
+ */
+export function diffLibrary(here = {}, there = {}) {
+  const sizeOf = (v) => {
+    if (v == null) return 0;
+    if (Array.isArray(v)) return v.length;
+    if (typeof v === 'object') return Object.keys(v).length;
+    return 1;
+  };
+  const rows = LIBRARY_KEYS.map((key) => ({
+    key,
+    same: JSON.stringify(here[key] ?? null) === JSON.stringify(there[key] ?? null),
+    here: sizeOf(here[key]),
+    there: sizeOf(there[key]),
+  }));
+  return { same: rows.every((r) => r.same), rows, differing: rows.filter((r) => !r.same) };
+}
+
+/**
+ * Take a library into a live schedule, replacing what it covers.
+ *
+ * ⚠️ WHY THIS EXISTS AT ALL. `pull` has always decoded the library and handed
+ * it back as `remote.library`, and NOTHING READ IT — the write side shipped and
+ * the read side did not. A second device therefore got its tasks and none of
+ * its buckets, zones, activities, commitments or routines, then pushed its own
+ * fresh starter set over the top and took the real one out of the store.
+ * `design/probes/probe-google-second-device.mjs` drives exactly that.
+ *
+ * ⚠️ TASKS ARE NOT TOUCHED. They are events in their own right and reconcile
+ * per-task through `planSync`; rebuilding them from a blob would undo that
+ * work. `libraryFrom` filters to LIBRARY_KEYS on the way in, so a payload that
+ * somehow carried `tasks` cannot reach through here.
+ *
+ * Revival goes through `Schedule.fromJSON` rather than by hand, so a bucket
+ * arrives as a `Bucket` and the model as a `LearningModule` — the same path a
+ * reload takes. Anything the library does not carry is left exactly as it was.
+ */
+export function applyLibrary(sched, library) {
+  if (!library) return { applied: [] };
+  const incoming = libraryFrom(library);
+  const next = Schedule.fromJSON({ ...sched.toJSON(), ...incoming });
+  const applied = [];
+  for (const key of LIBRARY_KEYS) {
+    if (incoming[key] === undefined) continue;
+    const field = LIBRARY_FIELD[key];
+    if (!field) continue;
+    sched[field] = next[field];
+    applied.push(key);
+  }
+  return { applied };
 }

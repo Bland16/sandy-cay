@@ -17,6 +17,26 @@ import RoutinesEditor from './RoutinesEditor.jsx';
 
 const WEIGHT_KEYS = [['proximity', 'Proximity'], ['balance', 'Balance'], ['stability', 'Stability'], ['preference', 'Preference (learned)'], ['buffer', 'Finish early']];
 
+// GS-8. The library's own key names for a person to read. Anything without an
+// entry falls back to the raw key rather than being hidden — a collection
+// missing from this list must still be nameable in the warning, or a device
+// could be frozen over something the screen never mentions.
+const LIBRARY_LABEL = {
+  buckets: 'Tag buckets',
+  activities: 'Activities',
+  zones: 'Zones',
+  retiredTags: 'Retired tags',
+  dayNotes: 'Day notes',
+  blockedDays: 'Blocked days',
+  commitments: 'Commitments',
+  routineInstances: 'Routines',
+  config: 'Settings',
+  model: 'What it has learned',
+  snapshots: 'Weekly baselines',
+  lastSeenWeek: 'Last week seen',
+  dismissed: 'Answered notices',
+};
+
 export default function Cabana({
   sched, mutate, weekStart, onBack, onReplace, onReset, showToast,
   session = null, onChangeSession, sync = null,
@@ -169,8 +189,56 @@ export default function Cabana({
                   {sync.status === 'syncing' ? ' · working…' : ''}
                 </p>
                 {sync.lastError && <p className="cabwarn">{sync.lastError}</p>}
+                {/* GS-8. The sync is FROZEN while this is showing — nothing is
+                    written to Google and nothing local is changed. It cannot be
+                    dismissed, because dismissing it would leave a device that
+                    silently never syncs, which is the failure this whole design
+                    is trying to stop being possible. It goes away by being
+                    answered. */}
+                {sync.libraryState && sync.libraryState.conflict && (
+                  <div className="syncconflict">
+                    <p className="cabwarn">
+                      <b>Sync is paused.</b> This device and the calendar disagree about your
+                      setup, and nothing can be written either way until you say which is right.
+                    </p>
+                    <ul className="synclibdiff">
+                      {sync.libraryState.rows.map((r) => (
+                        <li key={r.key}>
+                          <span className="synclibkey">{LIBRARY_LABEL[r.key] || r.key}</span>
+                          <span className="synclibcount">{r.here} here · {r.there} in the calendar</span>
+                        </li>
+                      ))}
+                    </ul>
+                    {/* Both are destructive to one side, so both say so plainly
+                        and neither is styled as the safe default. */}
+                    <div className="chest">
+                      <button
+                        className="btn2"
+                        disabled={sync.status === 'syncing'}
+                        onClick={() => sync.pushLibraryNow().catch((e) => showToast(e.message))}
+                      >
+                        This device is right — replace the calendar
+                      </button>
+                      <button
+                        className="btn2"
+                        disabled={sync.status === 'syncing'}
+                        onClick={() => sync.deriveLibraryFromCalendar().catch((e) => showToast(e.message))}
+                      >
+                        The calendar is right — derive from it
+                      </button>
+                    </div>
+                    <p className="cabhint">
+                      Your tasks are untouched by either choice. This is about buckets, zones,
+                      activities and settings — the things that are not appointments.
+                    </p>
+                  </div>
+                )}
                 <div className="chest">
-                  <button className="btn2" onClick={() => sync.syncNow()} disabled={sync.status === 'syncing'}>
+                  <button
+                    className="btn2"
+                    onClick={() => sync.syncNow()}
+                    disabled={sync.status === 'syncing' || !!(sync.libraryState && sync.libraryState.conflict)}
+                  >
                     <Icon name="refresh" /> Sync now
                   </button>
                   <button className="btn2 ghost" onClick={sync.forget}>Use a different calendar</button>

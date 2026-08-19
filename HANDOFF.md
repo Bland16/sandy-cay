@@ -77,6 +77,31 @@ goes through. Whether it converges. Whether anything ever called the option.
   or `sandycay.sync.debug`). Every bug above was diagnosed by reconstructing
   that reasoning by hand.
 
+### Session 9b (2026-08-19) — the sync met a real account, and lost twice
+
+Both found by USE, both invisible to the suite, both now fixed with the probe
+that proves it.
+
+| | |
+|---|---|
+| **Every course refused to reach Google** | `date.getTime is not a function`. `safeRRULE` works on the JSON form (dates are epoch ms); `toRRULE` works on the model form and calls `.getTime()` on `effectiveUntil`. So every repeat WITH AN END DATE threw — which is every class, because a term ends. Hidden because **nothing in the seed ever stops repeating**: 1014 green tests all took the null branch. Reviewing the fix found three more in the same seam — split parts dropped `UNTIL`, the split path hard-coded `FREQ=WEEKLY`, and `UNTIL` went out as local midnight with no `Z` (RFC 5545 §3.3.10 wants UTC beside a zoned DTSTART, and midnight drops the last day's session) |
+| **A second device lost everything that is not a task** | `pull` decoded the library and **nothing read it**. A phone signing in got its tasks and none of its buckets, zones, activities, commitments or routines — then pushed its own starter set over the top and took the real library OUT of the store. Fixed as GS-8; see `design/GOOGLE-AS-STORAGE.md` §7.1 |
+
+**GS-8 is decided and built: adopt if fresh, otherwise FREEZE the whole sync and
+ask.** The freeze deliberately covers tasks too, and the reason is worth
+knowing: `dirtyAt` is stamped when a device NOTICES a difference, not when the
+edit happened, so a device that has been asleep wins every conflict precisely
+because it woke up last. §7.1 has the argument in full.
+
+**The habit that caught the second one:** grep for who READS a thing, not just
+who writes it. `pushLibrary` had a caller; `remote.library` had none, and no
+test could see the difference because both sides were individually correct.
+
+**And the diagnostic that ended the guessing:** `logApplied` now prints the
+RRULE and the start of every event it writes. Three rounds of inferring from
+symptoms were settled in one reload by looking at what actually went on the
+wire. `1 confirmed, 0 failed` is true and useless.
+
 ### If you pick this up
 
 1. **`main` is 16 commits behind and the sync is NOT live.** Merging is a
