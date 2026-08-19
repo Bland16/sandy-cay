@@ -208,6 +208,22 @@ door a write goes through — were not tested at all.
 **P0 and P1 need no Google account at all** and are where the risk actually
 lives. Do them first.
 
+### The rule Google sees — three invariants, learned the hard way
+
+The RRULE on an event is a **display mirror**; the pattern itself lives in the
+payload (§4.1). A mirror that lies is worse than no mirror, so the encoding
+refuses to emit one it cannot stand behind. `safeRRULE` is the ONLY door — the
+split path used to hand-build its own rule, and every one of these bit it.
+
+| invariant | what happened without it |
+|---|---|
+| **The rule is derived from the MODEL, not the JSON** | `toRRULE` calls `.getTime()` on `effectiveUntil`, which is epoch ms in the JSON form. Every repeating task **with an end date** threw `date.getTime is not a function` and never reached Google — all eight courses at once. Invisible because nothing in the seed ever stops repeating |
+| **`UNTIL` is UTC, and it is the END of the last day** | RFC 5545 §3.3.10 requires UTC beside a zoned `DTSTART`, and Google answers a rule it will not take with a 400 — the event does not appear at all. `toRRULE` bounds at local MIDNIGHT of the last day, which is right for `.ics` and drops that day's session here. `untilForGoogle` converts |
+| **Only a WEEKLY pattern splits** | A split part is built around weekdays. Splitting a monthly one produced two events both claiming `FREQ=WEEKLY`, with no BYDAY, both anchored at the same instant. It now stays one event and says `sc.norrule=windows-differ` |
+
+Proved by `design/probes/probe-google-bounded-repeat.mjs`; locked by the
+"a repeat that ENDS" block in `tests/google-encode.test.js`.
+
 ## 7. Open — NOT decided, do not guess
 
 | # | Question |

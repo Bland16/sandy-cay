@@ -39,7 +39,7 @@ AHEAD of `main` and holds the whole sync. `main` has only the entry screen.**
 | **Entry screen → calendar picker → app** | Three steps. Guest keeps everything local and is proven never to touch the network; Google needs a calendar chosen before anything is written |
 | **Google as storage** | P0–P3 built and **exercised against a real account on localhost**. One event per task, a hidden library event, planner + executor + wiring |
 
-### ⚠️ SEVEN bugs came out of ONE afternoon of real use. The suite was green for every one.
+### ⚠️ EIGHT bugs came out of ONE afternoon of real use. The suite was green for every one.
 
 This is the number to sit with. 992 tests passed while the sync had never once
 fired. Listed by shape, because the shapes recur:
@@ -53,6 +53,7 @@ fired. Listed by shape, because the shapes recur:
 | the derived RRULE was correct | Google **rejects** one whose BYDAY excludes DTSTART, so the event never appeared at all |
 | a sync completed | it took **five passes to settle**, each a 5s debounce, because it kept seeing its own writes as remote edits |
 | a footlocker restore | was **undone** — restored ids were still in the sync record, so they read as deleted-elsewhere and were removed |
+| repeating tasks encoded, and now emitted a rule | **every task whose repeat ENDS threw** — `date.getTime is not a function`. All eight courses refused; the unbounded gym went up fine. Nothing in the seed ever stops repeating, so 1014 tests took the null branch |
 
 **The through-line: the thing under test was fine and everything AROUND it was
 broken.** What triggers it. What happens after a guard fires. Which door a write

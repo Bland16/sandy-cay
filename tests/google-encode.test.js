@@ -6,7 +6,7 @@ import { describe, it, expect } from 'vitest';
 import { Schedule, defaultConfig, seed, Task } from '../src/core/index.js';
 import {
   encodeTask, decodeEvent, kindOf, chunkString, packPayload, unpackPayload,
-  checksum, byteLength, idQuery, KIND, CHUNK_BYTES, ENCODING_VERSION,
+  checksum, byteLength, idQuery, KIND, CHUNK_BYTES, ENCODING_VERSION, encodeTaskParts,
 } from '../src/core/googleEncode.js';
 
 const at = (h, m = 0) => new Date(2026, 8, 7, h, m, 0, 0);
@@ -361,5 +361,119 @@ describe('the description is human-only', () => {
     expect(r.ok).toBe(true);
     expect(r.kind).toBe(KIND.ROUTINE_STEP);
     expect(r.task.stepIndex).toBe(1);
+  });
+});
+
+describe('a repeat that ENDS — the shape no fixture had', () => {
+  // ⚠️ WHY THIS BLOCK EXISTS. A real sync wrote 18 tasks and refused 8, every
+  // refusal `date.getTime is not a function`, and every refused task a course.
+  // The one thing courses have that nothing else here did is a TERM END —
+  // `period.effectiveUntil`. `safeRRULE` works on the JSON form, where dates are
+  // epoch ms; `toRRULE` works on the MODEL form and calls `.getTime()` on that
+  // field. Everything in the seed repeats FOREVER, so 1014 green tests took the
+  // null branch and the whole class of bug was invisible.
+  //
+  // The probe that found it prints the shapes:
+  //   node design/probes/probe-google-bounded-repeat.mjs
+  const term = () => new Date(2026, 11, 12).getTime(); // exclusive bound
+
+  const course = (s, title, windows) => s.addFixed({
+    title,
+    startTime: at(10),
+    endTime: at(10, 50),
+    tags: ['class'],
+    recurrence: {
+      periods: [{
+        windows,
+        interval: 1,
+        effectiveFrom: new Date(2026, 8, 7).getTime(),
+        effectiveUntil: term(),
+      }],
+      anchorDate: new Date(2026, 8, 7).getTime(),
+      exceptions: [],
+    },
+  });
+
+  const sameTime = [
+    { day: 'mon', start: '10:00', end: '10:50' },
+    { day: 'wed', start: '10:00', end: '10:50' },
+    { day: 'fri', start: '10:00', end: '10:50' },
+  ];
+
+  it('encodes at all, instead of throwing on the way to Google', () => {
+    const s = sched();
+    const t = course(s, 'General Chemistry I', sameTime);
+    const ev = encodeTask(t, { timeZone: 'America/New_York' });
+    expect(ev.recurrence[0]).toMatch(/^RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR;UNTIL=/);
+  });
+
+  it('states UNTIL in UTC, which RFC 5545 §3.3.10 requires beside a zoned DTSTART', () => {
+    // Not pedantry: Google answers a rule it will not accept with a 400, and
+    // the event then does not appear AT ALL — the same way a BYDAY that
+    // excluded its own DTSTART made a repeating gym vanish.
+    const s = sched();
+    const ev = encodeTask(course(s, 'Discussion', sameTime), { timeZone: 'America/New_York' });
+    expect(ev.recurrence[0]).toMatch(/UNTIL=\d{8}T\d{6}Z/);
+  });
+
+  it('keeps the LAST session of term inside the rule', () => {
+    // `toRRULE` bounds at MIDNIGHT of the last day it runs, which is right for
+    // the `.ics` file and drops that day here: UNTIL includes an occurrence
+    // that STARTS at or before it, and a 10:00 class starts after midnight.
+    const s = sched();
+    const ev = encodeTask(course(s, 'Lab', sameTime), { timeZone: 'America/New_York' });
+    const [, stamp] = /UNTIL=(\d{8}T\d{6})Z/.exec(ev.recurrence[0]);
+    const untilAt = Date.UTC(
+      +stamp.slice(0, 4), +stamp.slice(4, 6) - 1, +stamp.slice(6, 8),
+      +stamp.slice(9, 11), +stamp.slice(11, 13), +stamp.slice(13, 15),
+    );
+    const lastClass = new Date(2026, 11, 11, 10, 0, 0, 0).getTime(); // Fri 11 Dec
+    expect(untilAt).toBeGreaterThanOrEqual(lastClass);
+  });
+
+  it('carries the bound onto EVERY part of a split task', () => {
+    // A task with different times on different days is one event per time, and
+    // that path used to hand-build its own rule — which meant it silently
+    // dropped UNTIL and a class that ends in December repeated forever.
+    const s = sched();
+    const t = course(s, 'Foundations + Studio', [
+      { day: 'tue', start: '09:00', end: '10:00' },
+      { day: 'thu', start: '13:00', end: '15:00' },
+    ]);
+    const parts = encodeTaskParts(t, { timeZone: 'America/New_York' });
+    expect(parts).toHaveLength(2);
+    expect(parts[0].recurrence[0]).toMatch(/BYDAY=TU;UNTIL=\d{8}T\d{6}Z/);
+    expect(parts[1].recurrence[0]).toMatch(/BYDAY=TH;UNTIL=\d{8}T\d{6}Z/);
+  });
+
+  it('refuses to split a MONTHLY pattern into weekly lies', () => {
+    // The hand-built rule always said FREQ=WEEKLY. A monthly pattern with two
+    // times therefore became two weekly events anchored at the same instant —
+    // a mirror that lies, which is the one thing this encoding refuses to be.
+    // The honest answer is ONE event, no rule, and the reason on the event.
+    const s = sched();
+    const t = s.addFixed({
+      title: 'Board meeting',
+      startTime: at(9),
+      endTime: at(10),
+      recurrence: {
+        periods: [{
+          freq: 'monthly',
+          windows: [
+            { monthDay: 1, start: '09:00', end: '10:00' },
+            { monthDay: 15, start: '14:00', end: '15:00' },
+          ],
+          interval: 1,
+          effectiveFrom: new Date(2026, 8, 1).getTime(),
+          effectiveUntil: null,
+        }],
+        anchorDate: new Date(2026, 8, 1).getTime(),
+        exceptions: [],
+      },
+    });
+    const parts = encodeTaskParts(t, { timeZone: 'America/New_York' });
+    expect(parts).toHaveLength(1);
+    expect(parts[0].recurrence).toBeUndefined();
+    expect(parts[0].extendedProperties.private['sc.norrule']).toBe('windows-differ');
   });
 });

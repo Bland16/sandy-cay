@@ -42,6 +42,7 @@
 // may not have loaded yet. That ordering dependency is the bug this avoids.
 
 import { toRRULE } from './ical.js';
+import { reviveRecurrence } from './recurrenceSerde.js';
 
 const NS = 'sc';
 export const ENCODING_VERSION = 1;
@@ -215,10 +216,22 @@ const CODE_BY_INDEX = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
  * deliberate downgrade, not a silent failure — `rruleSkipped` says which.
  */
 export function safeRRULE(json) {
-  const rule = toRRULE(json);
+  const rec = json.recurrence;
+  if (!rec) return { rule: null, reason: null };
+
+  // ⚠️ REVIVED FIRST, and this is a bug fix, not tidiness. Everything in this
+  // file works on the JSON form, where a date is epoch MILLISECONDS. `toRRULE`
+  // works on the MODEL form and calls `lastRunDay(period.effectiveUntil)`,
+  // which reaches straight for `.getTime()` — so every repeating task WITH AN
+  // END DATE threw `date.getTime is not a function` and never reached Google.
+  //
+  // It hid because nothing bounded repeats: the seed's patterns run forever, so
+  // 1014 green tests and every probe took the `effectiveUntil == null` branch.
+  // A real term ends, so all eight of the user's courses failed at once while
+  // the unbounded gym went up fine.
+  const rule = untilForGoogle(toRRULE({ ...json, recurrence: reviveRecurrence(rec) }));
   if (!rule) return { rule: null, reason: null };
 
-  const rec = json.recurrence;
   const period = (rec.periods || []).find((p) => !p.effectiveUntil) || (rec.periods || [])[0];
   const windows = (period && period.windows) || [];
 
@@ -236,6 +249,36 @@ export function safeRRULE(json) {
   // Referenced so the map is not dead weight if the shape of `toRRULE` changes.
   void WEEKDAY_CODE;
   return { rule, reason: null };
+}
+
+/**
+ * `.ics` and Google want DIFFERENT `UNTIL`s, and handing Google the `.ics` one
+ * is wrong in two separate ways.
+ *
+ * `toRRULE` emits `UNTIL=20261211T000000` — floating local time, at MIDNIGHT of
+ * the last day it runs. That is right for the `.ics` file, whose `DTSTART` is
+ * floating too and whose reader that matters is this app's own `fromRRULE`.
+ * For Google it is wrong twice:
+ *
+ * 1. **RFC 5545 §3.3.10** — when `DTSTART` carries a zone, and ours does
+ *    (`{dateTime, timeZone}`), `UNTIL` MUST be UTC. A rule Google refuses is a
+ *    400 on the insert and the event does not appear AT ALL — the same failure
+ *    the BYDAY-anchor check was written for.
+ * 2. **Midnight drops the last day.** `UNTIL` includes an occurrence that
+ *    STARTS at or before it, so a 10:00 class on the last day starts after
+ *    midnight of that day and is excluded. The final session of term would
+ *    quietly be missing from the calendar.
+ *
+ * So: the end of the last day it runs, expressed in UTC.
+ */
+export function untilForGoogle(rule) {
+  if (!rule) return rule;
+  return String(rule).replace(/UNTIL=([0-9]{4})([0-9]{2})([0-9]{2})T[0-9]{6}Z?/, (_m, y, mo, d) => {
+    const endOfDay = new Date(Number(y), Number(mo) - 1, Number(d), 23, 59, 59, 0);
+    const p = (n) => String(n).padStart(2, '0');
+    return `UNTIL=${endOfDay.getUTCFullYear()}${p(endOfDay.getUTCMonth() + 1)}${p(endOfDay.getUTCDate())}`
+      + `T${p(endOfDay.getUTCHours())}${p(endOfDay.getUTCMinutes())}${p(endOfDay.getUTCSeconds())}Z`;
+  });
 }
 
 const DAY_INDEX = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
@@ -256,6 +299,13 @@ export function timeGroups(json) {
   const period = (rec.periods || []).find((p) => !p.effectiveUntil) || (rec.periods || [])[0];
   const windows = (period && period.windows) || [];
   if (windows.length < 2) return [];
+  // ⚠️ WEEKLY ONLY. A split part is built around a set of WEEKDAYS, and a
+  // monthly or yearly window has no `day` — it has a `monthDay` or an `nth`.
+  // Splitting one produced two events both claiming `FREQ=WEEKLY` with no BYDAY
+  // and both anchored at the same instant: a mirror that lies, which is the one
+  // thing `safeRRULE` exists to refuse. Returning [] sends it down the ordinary
+  // path, where it becomes ONE event and says `sc.norrule=windows-differ`.
+  if (period.freq && period.freq !== 'weekly') return [];
 
   const byTime = new Map();
   for (const w of windows) {
@@ -456,8 +506,6 @@ export function idQuery(taskId) {
   return `${NS}.id=${taskId}`;
 }
 
-const DAY_CODE = { sun: 'SU', mon: 'MO', tue: 'TU', wed: 'WE', thu: 'TH', fri: 'FR', sat: 'SA' };
-
 /**
  * A task → the event(s) that represent it in Google.
  *
@@ -483,7 +531,6 @@ export function encodeTaskParts(task, opts = {}) {
   const anchor = json.startTime ? new Date(json.startTime) : new Date();
   const rec = json.recurrence;
   const period = (rec.periods || []).find((p) => !p.effectiveUntil) || (rec.periods || [])[0];
-  const interval = (period && period.interval) || 1;
 
   return groups.map((g, i) => {
     // Each part starts on one of ITS OWN days, which is what keeps Google from
@@ -495,15 +542,30 @@ export function encodeTaskParts(task, opts = {}) {
     end.setHours(e.h, e.m, 0, 0);
     if (end <= start) end.setDate(end.getDate() + 1);
 
-    const byday = g.days.map((d) => DAY_CODE[d]).filter(Boolean).join(',');
-    const parts = [`FREQ=WEEKLY${interval > 1 ? `;INTERVAL=${interval}` : ''}`];
-    if (byday) parts.push(`BYDAY=${byday}`);
+    // ⚠️ ONE DOOR FOR THE RULE. This used to hand-build
+    // `FREQ=WEEKLY;BYDAY=…` right here, which meant the file had two rule
+    // derivations and only one of them obeyed the rules. The hand-built one
+    // DROPPED `UNTIL`, so a split class that ends in December repeated forever
+    // in Google, and it hard-coded WEEKLY, so a monthly pattern came out as a
+    // weekly one. Building this group's own period and putting it through
+    // `safeRRULE` gets the bound, the interval, the anchor check and the
+    // refuse-rather-than-lie downgrade for free — the same ones the single-event
+    // path has always had.
+    const groupWindows = (period.windows || []).filter((w) => `${w.start}-${w.end}` === `${g.start}-${g.end}`);
+    const derived = safeRRULE({
+      ...json,
+      startTime: start.getTime(),
+      recurrence: { ...rec, periods: [{ ...period, windows: groupWindows }] },
+    });
 
     const body = encodeTask(
       { ...json, startTime: start.getTime(), endTime: end.getTime() },
-      { ...opts, rrule: `RRULE:${parts.join(';')}` },
+      { ...opts, rrule: derived.rule },
     );
     const priv = body.extendedProperties.private;
+    // `encodeTask` records the reason only when it derives the rule itself; here
+    // it was handed one, so the downgrade is recorded on this side.
+    if (!derived.rule && derived.reason) priv[`${NS}.norrule`] = derived.reason;
     priv[`${NS}.part`] = String(i);
     priv[`${NS}.parts`] = String(groups.length);
     // ⚠️ THE TASK'S OWN TIMES, carried because this part's start is NOT the

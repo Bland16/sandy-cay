@@ -15,6 +15,7 @@ public; never paste raw calendar data into a probe.
 
 | probe | what it settled |
 |---|---|
+| `probe-google-bounded-repeat.mjs` | why every course failed to reach Google — a repeat with an END DATE, the shape no fixture had |
 | `probe-horizon.mjs` | the `spread`/proximity-renormalisation experiment — **rejected**, it lengthens the streak (WEEKLY-PLANNING §4.5) |
 | `probe-week-shapes.mjs` | four week shapes; the ~40%-full week concentrates work **harder** than an empty one |
 | `probe-mental-frontload.mjs` | placement is energy-blind: 960 of 1200 minutes onto the four worst days |
