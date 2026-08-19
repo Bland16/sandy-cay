@@ -14,6 +14,7 @@ import { useViewport, readViewport } from './ui/useViewport.js';
 import { loadZoom, saveZoom, zoomIn, zoomOut, DEFAULT_ZOOM } from './ui/zoom.js';
 import { loadSession, saveSession, clearSession, SESSION } from './ui/session.js';
 import { getAccessToken, readClientId } from './ui/google.js';
+import { useGoogleSync } from './ui/useGoogleSync.js';
 import LandingScreen from './ui/components/LandingScreen.jsx';
 import { useCardInteraction } from './ui/useCardInteraction.js';
 import { MIN_DURATION_MIN } from './ui/interaction.js';
@@ -168,6 +169,17 @@ export default function App() {
     toastTimer.current = setTimeout(() => setToast(null), action ? 7000 : 2600);
   }, []);
   useEffect(() => () => { clearTimeout(toastTimer.current); clearTimeout(gapTimer.current); }, []);
+
+  // ⚠️ `enabled` is the whole guarantee behind "nothing leaves this device".
+  // A guest session must never reach the sync, and this is the gate that keeps
+  // that promise honest — the hook itself does nothing when it is false.
+  const sync = useGoogleSync({
+    enabled: session === SESSION.GOOGLE,
+    sched,
+    mutate,
+    version,
+    showToast,
+  });
 
   const closePanel = useCallback(() => setSelection(null), []);
 
@@ -546,6 +558,7 @@ export default function App() {
             onReset={reset}
             showToast={showToast}
             session={session}
+            sync={sync}
             /* Forgets the choice and drops back to the entry screen. It does
                NOT touch the schedule — changing where your week lives must
                never be a way to lose it. */

@@ -1574,6 +1574,25 @@ button:focus-visible, .dhopen:focus-visible, .card:focus-visible, .slot:focus-vi
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 
+/* ---------- the sync box in the Cabana (GOOGLE-AS-STORAGE GS-5) ---------- */
+.syncbox { margin-top: 10px; border-top: 1px dashed var(--cab-trim); padding-top: 10px; }
+.syncbox code { font-family: var(--font-type); font-size: 11px; word-break: break-all; }
+/* A refusal must READ as a refusal. This is the one place P-1's "colour is for
+   physics" bends: a calendar that would eat your class schedule is a real
+   hazard, not moral bookkeeping. */
+.cabwarn {
+  margin: 8px 0 0; padding: 8px 10px; border: 2px solid var(--warning); border-radius: 8px;
+  background: rgba(226, 104, 95, .12); font-size: 12px; line-height: 1.45; color: #ffd9d5;
+}
+.callist { display: grid; gap: 6px; margin-top: 10px; max-height: 230px; overflow: auto; }
+.calrow {
+  text-align: left; padding: 8px 10px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--cab-trim); background: var(--cab-surface); color: var(--cab-text);
+  font-family: var(--font-body); font-size: 12px;
+}
+.calrow:hover { background: var(--cab-trim); }
+.calrow:focus-visible { outline: 2px solid var(--cab-accent); outline-offset: 1px; }
+
 /* ═══════════════════════════════════════════════════════════════════════════
    THE ENTRY SCREEN (design/GOOGLE-AS-STORAGE.md §5, mockup treatment A)
 

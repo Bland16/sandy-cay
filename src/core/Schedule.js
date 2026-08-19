@@ -246,6 +246,30 @@ export class Schedule {
     return removed;
   }
 
+  /**
+   * Put a task back exactly as it was serialised — a RESTORE, not an edit.
+   *
+   * ⚠️ DELIBERATELY BYPASSES `UPDATE_WHITELIST`, and that is the whole point.
+   * The whitelist exists to stop the UI writing fields a user is not editing:
+   * `load`, `activityId`, `routineId`, `stepIndex`, `parentId`, `chunking`,
+   * `history`, `energyAt`, `placedBy` are all absent from it, and `updateTask`
+   * drops them silently. That is correct for a form and catastrophic for a
+   * sync: adopting a task from Google through `updateTask` would quietly strip
+   * it of everything the whitelist omits, every single time.
+   *
+   * So this is the door a store uses, and only a store. It takes a full
+   * serialised task and replaces the instance wholesale, the per-task
+   * equivalent of the footlocker import.
+   */
+  upsertTaskFromJSON(json) {
+    const next = Task.fromJSON(json);
+    const i = this.tasks.findIndex((t) => t.id === next.id);
+    if (i >= 0) this.tasks[i] = next;
+    else this.tasks.push(next);
+    this._touch();
+    return next;
+  }
+
   updateTask(id, changes) {
     const t = this.tasks.find((task) => task.id === id);
     if (!t) return null;

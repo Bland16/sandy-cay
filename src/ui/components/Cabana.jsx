@@ -8,6 +8,7 @@ import { fmtDur } from '../format.js';
 import Icon from '../Icon.jsx';
 import CalendarCard from './CalendarCard.jsx';
 import { SESSION } from '../session.js';
+import { listCalendars, getAccessToken, readClientId } from '../google.js';
 import TagManager from './TagManager.jsx';
 import EnergyCard from './EnergyCard.jsx';
 import ZonesEditor from './ZonesEditor.jsx';
@@ -16,10 +17,43 @@ import RoutinesEditor from './RoutinesEditor.jsx';
 
 const WEIGHT_KEYS = [['proximity', 'Proximity'], ['balance', 'Balance'], ['stability', 'Stability'], ['preference', 'Preference (learned)'], ['buffer', 'Finish early']];
 
-export default function Cabana({ sched, mutate, weekStart, onBack, onReplace, onReset, showToast, session = null, onChangeSession }) {
+export default function Cabana({
+  sched, mutate, weekStart, onBack, onReplace, onReset, showToast,
+  session = null, onChangeSession, sync = null,
+}) {
   const fileRef = useRef(null);
   const [, force] = useState(0);
   const bump = () => force((n) => n + 1);
+
+  // The GS-5 calendar picker. Kept here rather than in CalendarCard because
+  // this is about WHERE THE APP LIVES, not about a one-off import or export.
+  const [cals, setCals] = useState(null);
+  const [calErr, setCalErr] = useState(null);
+  const [calBusy, setCalBusy] = useState(false);
+
+  const loadCals = async () => {
+    setCalBusy(true);
+    setCalErr(null);
+    try {
+      setCals(await listCalendars(await getAccessToken(readClientId())));
+    } catch (e) {
+      setCalErr(e?.message || 'Could not reach Google');
+    } finally {
+      setCalBusy(false);
+    }
+  };
+
+  const pickCal = async (id) => {
+    setCalErr(null);
+    try {
+      await sync.chooseCalendar(id);
+      showToast('Calendar set — syncing from now on');
+    } catch (e) {
+      // ⚠️ The refusal, said out loud. Silently ignoring a bad pick is how 37
+      // tasks end up in someone's class schedule.
+      setCalErr(e?.message || 'That calendar cannot be used');
+    }
+  };
 
   const setWeight = (key, v) => { mutate((s) => { s.config.weights[key] = v; }); };
   const setUrgency = (v) => { mutate((s) => { s.config.urgencyFactor = v; }); };
@@ -151,6 +185,52 @@ export default function Cabana({ sched, mutate, weekStart, onBack, onReplace, on
                 Export from the Footlocker below before you close the tab, or the tide takes it.
               </p>
             )}
+
+            {/* GS-5. Nothing is written until a calendar is chosen AND checked.
+                The refusal has to reach the user HERE, because the disaster it
+                prevents is a mis-click writing 37 tasks into Class Schedule. */}
+            {session === SESSION.GOOGLE && sync && (
+              <div className="syncbox">
+                {sync.calendarId ? (
+                  <>
+                    <p className="cabhint">
+                      Syncing to <code>{sync.calendarId}</code>
+                      {sync.status === 'syncing' ? ' · working…' : ''}
+                    </p>
+                    {sync.lastError && <p className="cabwarn">{sync.lastError}</p>}
+                    <div className="chest">
+                      <button className="btn2" onClick={() => sync.syncNow()} disabled={sync.status === 'syncing'}>
+                        <Icon name="refresh" /> Sync now
+                      </button>
+                      <button className="btn2 ghost" onClick={sync.forget}>Use a different calendar</button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="cabhint">
+                      Pick a calendar to keep your week in. Make an empty one first —
+                      Sandy Cay will refuse a calendar that already has other events in it.
+                    </p>
+                    {calErr && <p className="cabwarn">{calErr}</p>}
+                    <div className="chest">
+                      <button className="btn2" onClick={loadCals} disabled={calBusy}>
+                        {calBusy ? 'Asking Google…' : 'List my calendars'}
+                      </button>
+                    </div>
+                    {cals && cals.length > 0 && (
+                      <div className="callist">
+                        {cals.filter((c) => c.canWrite).map((c) => (
+                          <button key={c.id} className="calrow" onClick={() => pickCal(c.id)}>
+                            {c.name}{c.primary ? ' · primary' : ''}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
             <div className="chest">
               <button className="btn2 ghost" onClick={onChangeSession}>
                 <Icon name="compass" /> Change how you sign in
