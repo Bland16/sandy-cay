@@ -104,13 +104,22 @@ wire. `1 confirmed, 0 failed` is true and useless.
 
 ### If you pick this up
 
-1. **`main` is 16 commits behind and the sync is NOT live.** Merging is a
-   release and the user's call.
+1. **THE SYNC IS LIVE.** `main` was fast-forwarded to the session-9 tip on
+   2026-08-19 (`38d1da8..dca6f16`, 18 commits, no merge commit) at the user's
+   word, and Pages auto-deploys from it. What is on the site is what is in this
+   file. **1031 tests green** at the merge.
 2. **Known limits, both deliberate:** dragging ONE PART of a split task in
    Google does not move it (a part has no single time in the model), and a
    repeat rule edited in Google is not read back (GS-10).
-3. `design/GOOGLE-AS-STORAGE.md` §7 — GS-10 and GS-11 (day notes should be
-   all-day events, not library rows) are open.
+3. `design/GOOGLE-AS-STORAGE.md` §7 — **GS-8 is now decided and built (§7.1)**.
+   GS-10 and GS-11 (day notes should be all-day events, not library rows) are
+   still open.
+3b. **The phone has still never signed in.** That is the test GS-8 was built
+   for: a fresh device should take the library down silently. If it shows the
+   paused banner instead, it did not read as fresh — answer it with **The
+   calendar is right — derive from it**. Routines are worth checking there
+   first, because `routineInstances` live in the library and were squarely in
+   the blast radius of the bug §7.1 describes.
 4. P4, the export reminder, is unbuilt.
 5. **The first push is sequential** — one request per event, so ~15–30s for a
    real schedule. Batching is a real improvement, but measure it first.
