@@ -26,6 +26,7 @@ export { rippleShift } from './ripple.js';
 export { evacuateDay, blockRange } from './evacuate.js';
 export { isFullDayBlocker, planBlockerConversion, convertBlockersToDayNotes } from './blockersToNotes.js';
 export { planLibraryMerge, applyLibraryMerge } from './libraryMerge.js';
+export { rankOpenings, modelCanSpeak, ratingsUntilLearned, draftFor } from './openings.js';
 export { applyLibrary, diffLibrary, libraryFrom, LIBRARY_KEYS } from './googleLibrary.js';
 export { carryOver, letThemGo } from './carryOver.js';
 export { checkRollover, commitRollover, weekAfter, weekKeyOf } from './rollover.js';
@@ -48,7 +49,7 @@ export {
   activityUsage, activityPage, filterActivities, sortActivities, paginate, activityCfg,
   dedupeDrafts, dedupeBulk, parseActivityLine, parseBulkBlock, SORTS, SORT_LABELS,
 } from './activityList.js';
-export { energyBudget, energyCalibration, learnedCapacity, energyTrajectory, reserveAt, loadForTask, normalizeLoad, spendRestore, LOAD_AXES } from './energy.js';
+export { energyBudget, energyCalibration, learnedCapacity, energyTrajectory, reserveAt, dipIfPlaced, loadForTask, normalizeLoad, spendRestore, LOAD_AXES } from './energy.js';
 export {
   toICS, parseICS, importEvents, eventToTask, deriveTags,
   toRRULE, fromRRULE, toICSDate, fromICSDate, eventToDayNote,

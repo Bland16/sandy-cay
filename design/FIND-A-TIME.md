@@ -1,7 +1,8 @@
 # Find a time — ranked by whether the slot suits the thing
 
-**Status:** spec, unbuilt. Written 2026-08-19 after the use case *"I need to
-schedule a meeting between 2 and 5; can Find a time rank by best fit for a tag?"*
+**Status:** ✅ **BUILT 2026-08-20** — P0–P2. Written 2026-08-19 after the use case
+*"I need to schedule a meeting between 2 and 5; can Find a time rank by best fit
+for a tag?"* The window half already existed; the ranking is new.
 
 ---
 
@@ -106,6 +107,44 @@ uses. No fabricated confidence, and the count says how far off it is.
 | **F-1** | Is "data for this tag" = in `model.vocab` + past cold start? | Yes — §3.1. It is the only code-grounded meaning available |
 | **F-2** | One tag, or several? | **One.** Several makes the reason line unexplainable, and `loadForTask` already blends multiple buckets if the one tag touches several |
 | **F-3** | Does the ranked list stay capped at 30 rows? | Yes, as today — but **sorted before slicing**, or the cap silently discards the best openings |
+| **F-4** | ⚠️ **"Least impact" has TWO readings and they give OPPOSITE answers.** Found by probe | ✅ **ANSWERED 2026-08-20: how deep the day ENDS UP.** See §5.1 |
+
+### 5.1 F-4 — the reading that recommended your worst day
+
+Built as specified and run against a real-shaped week, the ranking put a study
+hour on a Monday **already six hours into the red**, and ranked an empty Tuesday
+LAST:
+
+```
+ slot        deeper  ends at  headroom
+  Mon 13:30   1.50   10.50    -7.00
+  Mon 16:00   1.50   10.50    -7.50
+  Tue 11:00   3.00    3.00     0.00
+
+  ranked by "deeper":  Mon 13:30  >  Mon 16:00  >  Tue 11:00
+  ranked by "ends at": Tue 11:00  >  Mon 13:30  >  Mon 16:00
+```
+
+Both columns are honest measures of "impact":
+
+- **deeper** (marginal) — how much further *this* day bottoms out. A day already
+  wrecked barely gets worse, so this systematically **prefers your worst day**.
+- **ends at** (absolute) — how deep the day is left altogether. This prefers the
+  day that ends up least bottomed-out, which is usually the emptier one.
+
+The spec said "least impact dominant" without saying which, and the two are not
+variations — they are opposite recommendations for the same afternoon.
+
+**ANSWERED: the order is by `resulting` — how deep the day ENDS UP.** The
+marginal number is still carried on every row (it is what "costs your day
+nothing" means) and deliberately does not decide the order.
+
+The general lesson, which is the reason this section stays: **a metric that
+measures a CHANGE rewards a state that is already bad.** Nothing about the
+arithmetic was wrong — every step was right and the answer was still
+backwards, and only printing the ordering against a real week showed it.
+
+Probe: `design/probes/probe-rank-openings.mjs` §2.
 
 ---
 
@@ -113,9 +152,9 @@ uses. No fabricated confidence, and the count says how far off it is.
 
 | P | What | Provable by |
 |---|---|---|
-| **P0** | `dipIfPlaced` in `energy.js` | unit — a task placed into a full afternoon dips further than into an empty one |
-| **P1** | `rankOpenings(schedule, slots, { tag, durationMin })` — pure, no DOM | probe printing a real afternoon's ordering under both rules |
-| **P2** | The tag field + reason line in `FindPanel` | rendered and DUMPED, per the standing lesson |
+| **P0** | ✅ **BUILT** — `dipIfPlaced` in `energy.js`, sharing `reserveWalk` | unit — a task placed into a full afternoon dips further than into an empty one |
+| **P1** | ✅ **BUILT** — `core/openings.js`, sorting by `resulting` per F-4 | probe printing a real afternoon's ordering under both rules |
+| **P2** | ✅ **BUILT** — tag field, per-row reason, and a line naming which rule is in force | rendered and DUMPED, per the standing lesson |
 
 ⚠️ **P1 is where the risk is**, and it is the same risk as everywhere else here:
 the ordering must be *checked against a real day*, not reasoned about. A probe

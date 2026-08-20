@@ -1851,3 +1851,20 @@ button:focus-visible, .dhopen:focus-visible, .card:focus-visible, .slot:focus-vi
   .lz-coast, .lz-door::before { filter: none; }
   .lz-chart { clip-path: none; opacity: 1; }
 }
+
+/* Find a time, ranked (design/FIND-A-TIME.md P2). The reason sits on its own
+   line under the times rather than beside them: it is a sentence, the row is
+   two short numbers, and squeezing them onto one line is how the "sittings" row
+   ended up rendering as garbage. */
+.slot { flex-wrap: wrap; }
+.slotwhy {
+  flex-basis: 100%;
+  font-size: 10.5px;
+  opacity: .72;
+  margin-top: 2px;
+}
+.tagin {
+  width: 100%;
+  font-family: var(--font-body);
+  font-size: 13px;
+}

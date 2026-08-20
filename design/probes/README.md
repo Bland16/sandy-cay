@@ -19,6 +19,7 @@ public; never paste raw calendar data into a probe.
 | `probe-google-second-device.mjs` | a second device: adopts if fresh, freezes if stale. Was RED (it lost the whole library); green since GS-8 |
 | `probe-google-day-notes.mjs` | GS-11 — the exclusive `end.date`, which silently lengthens every holiday by a day if it is wrong |
 | `probe-library-merge.mjs` | the two import doors on the SAME file — add-what's-missing vs restore-the-setup, and what each costs |
+| `probe-rank-openings.mjs` | F-4 — ranking by how much DEEPER a day gets recommends the day you have already wrecked |
 | `probe-horizon.mjs` | the `spread`/proximity-renormalisation experiment — **rejected**, it lengthens the streak (WEEKLY-PLANNING §4.5) |
 | `probe-week-shapes.mjs` | four week shapes; the ~40%-full week concentrates work **harder** than an empty one |
 | `probe-mental-frontload.mjs` | placement is energy-blind: 960 of 1200 minutes onto the four worst days |

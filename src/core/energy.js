@@ -155,6 +155,47 @@ export function energyTrajectory(schedule, date) {
   return { points, low };
 }
 
+/**
+ * The day's deepest dip WITH one more thing in it — what placing this here
+ * would cost the rest of the day (design/FIND-A-TIME.md P0).
+ *
+ * `energyTrajectory` walks the day's REAL tasks. Ranking an opening needs the
+ * dip with a hypothetical one added, and the difference between the two is the
+ * whole "least impact" term. Sharing `reserveWalk` rather than reimplementing
+ * the arithmetic is the point: two walks would drift, and the order-aware
+ * reserve rule (spend drains, restore repays, capped at 0) is exactly the sort
+ * of thing that gets subtly re-derived wrong.
+ *
+ * ⚠️ The draft is a PLAIN OBJECT, not a Task, and only needs `startTime`,
+ * `endTime` and `tags` — `loadForTask` reads tags (or an explicit `load`) and
+ * `durationHours` reads the two times. Nothing here places anything or touches
+ * the schedule.
+ *
+ * Returns `{ before, after, deeper, total }`. `deeper[axis] ≥ 0` is how much
+ * further that axis bottoms out because of this; `total` sums them, so LOWER IS
+ * BETTER and zero means it costs the day nothing.
+ */
+export function dipIfPlaced(schedule, slot, draft) {
+  const day = schedule.getTasksForDay(slot.start)
+    .filter((t) => !t.chunking && t.completion !== 'skipped');
+  const hypothetical = {
+    startTime: slot.start,
+    endTime: slot.end,
+    tags: (draft && draft.tags) || [],
+    load: (draft && draft.load) || null,
+  };
+  const before = reserveWalk(schedule, day).low;
+  const after = reserveWalk(schedule, [...day, hypothetical]).low;
+  const deeper = zeroLoad();
+  let total = 0;
+  for (const a of LOAD_AXES) {
+    // `low` is ≤ 0 and a deeper dip is MORE negative, so before − after ≥ 0.
+    deeper[a] = Math.max(0, before[a] - after[a]);
+    total += deeper[a];
+  }
+  return { before, after, deeper, total };
+}
+
 /** How depleted each axis is right now — the reserve after the tasks already under
  *  way today (startTime ≤ now). Steers suggestions away from deepening a bottomed axis. */
 export function reserveAt(schedule, now = new Date()) {
