@@ -1,10 +1,18 @@
 # All-day events as day notes, not blocks
 
-**Session 6, 2026-08-11.** Status: **PARTLY BUILT.** The model (`DayNote`,
-`Schedule.dayNotes`, `notesForDate`) and the `.ics` import are **shipped** — an
-all-day event now becomes a note on the right day instead of a 1440-minute task
-on the wrong one. **Still spec:** the Cabana card (§7), the day-header line (§4),
-"Block this day", export, and the holiday packs of §8.
+**Session 6, 2026-08-11.** Status: **MOSTLY BUILT** — corrected 2026-08-21, the
+line below had been understating this for two sessions.
+
+**Shipped:** the model (`DayNote`, `Schedule.dayNotes`, `notesForDate`); the
+`.ics` **import**, so an all-day event becomes a note on the right day instead of
+a 1440-minute task on the wrong one; the **day-header line** (§4 — `DayNoteBar`,
+wired into `WeekGrid`, `DayView` and `RightPanel`); **"Block this day"** in the
+note panel; the blocker-conversion offer in the Cabana; and **all-day events in
+Google** (GS-11, `core/googleDayNotes.js`).
+
+**Still spec:** the Cabana card for managing notes directly (§7), `.ics`
+**export** of notes (import works, export does not), and the holiday / ask packs
+of §8 — no code for those exists at all.
 
 A holiday is not 09:00–17:00. Neither is a birthday, a reading week, or "Mum
 visiting". They are **facts about a day**, not appointments inside it — so they

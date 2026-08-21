@@ -1,5 +1,14 @@
 # Spec comb — does the code match what the docs claim?
 
+> ### ⚠️ A DATED SNAPSHOT. Do not read it as current (banner added 2026-08-21)
+>
+> True on 2026-08-11, kept as the record of that comb. Row 10 — **"Export →
+> Google: built, never run"** — is the one to ignore: it has run daily since
+> 2026-08-18. Rows 4 and 5 (keyboard drag, retention) are still accurate and
+> still unbuilt.
+>
+> Current state: `HANDOFF.md`. Google: `design/GOOGLE-AS-STORAGE.md`.
+
 **Session 6, 2026-08-11.** Method: read the claim, then **check it against the
 code or prove it with a probe**. Nothing here is reasoned from the spec alone —
 that method scored 3-of-5 and 1-of-2 in the blind passes, against 6-of-6 for the

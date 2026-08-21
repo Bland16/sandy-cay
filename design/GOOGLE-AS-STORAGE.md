@@ -218,8 +218,8 @@ warning rather than relying on it.
 | **P0** | ✅ **BUILT 2026-08-18** — `src/core/googleEncode.js`, `tests/google-encode.test.js`, `design/probes/probe-google-encode.mjs`. 26 tests, 13 mutations bite | see below |
 | **P1** | ✅ **BUILT** — `googleLibrary.js`. Term-scale library measures **16.1 kB**, half of one event (the 12.4 kB estimate above missed property keys and the JSON wrapper), so it splits across N events from the start | 16 tests |
 | **P2** | ✅ **BUILT** — `LandingScreen.jsx`, `session.js`. Everyone sees it until they choose; changeable from the Cabana; guest proven never to touch the network | 12 tests |
-| **P3** | ✅ **BUILT, NEVER RUN FOR REAL** — `core/syncPlan.js` (decisions), `ui/googleSync.js` (execution), `ui/useGoogleSync.js` (wiring), driven end to end by a fake Google | 60 tests |
-| **P4** | The export reminder | Manual — still to do |
+| **P3** | ✅ **BUILT AND RUN FOR REAL** — `core/syncPlan.js` (decisions), `ui/googleSync.js` (execution), `ui/useGoogleSync.js` (wiring). Exercised against the real account from 2026-08-18; **seven bugs came out of one afternoon of use**, then four more from the first real week (§4.1) | 60 tests + the probes |
+| **P4** | The export reminder | Manual — **still the only unbuilt piece of this plan** |
 
 ### ⚠️ P3 is built but has NEVER touched a real Google account
 
@@ -273,9 +273,9 @@ Proved by `design/probes/probe-google-bounded-repeat.mjs`; locked by the
 
 | # | Question |
 |---|---|
-| **GS-5** | **Which calendar?** Writing 37 tasks into `Class Schedule` would be a disaster. Proposed: the user picks, it must be dedicated, and the app refuses if it finds events it did not write. Not agreed |
-| **GS-6** | **Write cadence.** Every change would burn Google's quota. Debounced? On blur? Explicit save? |
-| **GS-7** | **Conflict.** GS-4 says a hand edit wins. But if the same task changed in *both* places while offline, which wins — newest `updated`, or ask? |
+| **GS-5** | ✅ **BUILT** as proposed — you pick the calendar, and `inspectCalendar` REFUSES one holding events this app did not write, naming them. It is a step in signing in, not a setting to go and find. *(This row read "Not agreed" until 2026-08-21, long after it shipped.)* |
+| **GS-6** | ✅ **BUILT** — debounced `DEBOUNCE_MS = 5000` after the last change, so a burst of dragging writes once. The library is written only when its hash changes, because `pushLibrary` deletes and recreates and doing that every pass was pure quota burn |
+| **GS-7** | ✅ **BUILT** — newest wins, and the toast NAMES what was replaced. `Task` has no modification time, so the sync keeps its own `dirtyAt`. ⚠️ Read GS-8 §7.1 before trusting that: `dirtyAt` records when a difference was NOTICED, not when the edit happened, which is why a stale device would win every conflict and why the library gate freezes the whole sync rather than just the library |
 | **GS-8** | ✅ **DECIDED AND BUILT 2026-08-19 — see §7.1.** Adopt if fresh; otherwise freeze the whole sync and ask. |
 | **GS-9** | ✅ **Defaulted and built:** retried silently once, then said out loud. Change it if the silent retry ever hides something worth knowing |
 | **GS-11** | ✅ **DECIDED AND BUILT 2026-08-19.** Day notes and blocked days are all-day events — see §4.2. Removed from `LIBRARY_KEYS` in the same change, as the note parked there demanded |

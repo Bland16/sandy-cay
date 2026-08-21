@@ -1,5 +1,17 @@
 # What is still spec — verified against the code, 2026-08-11
 
+> ### ⚠️ A DATED SNAPSHOT. Do not read it as current (banner added 2026-08-21)
+>
+> This was true on 2026-08-11 and is kept as the record of that, not as a
+> description of today. Since then sessions 8–10 shipped **routines**, **grid
+> zoom**, the **entry screen**, and **Google as the store** (P0–P3, live and
+> exercised against the real account).
+>
+> Most misleading row: **"Export → Google — never run against the real
+> account"**. It has run, daily, since 2026-08-18, and eleven real bugs came out
+> of doing so. For the Google picture read `design/GOOGLE-AS-STORAGE.md`; for
+> what is open right now read `HANDOFF.md`.
+
 > ### ⚠️ The "If you want an order" list at the bottom is SUPERSEDED (2026-08-13)
 >
 > Use **HANDOFF's "START HERE — the build order"** instead. Two of this file's

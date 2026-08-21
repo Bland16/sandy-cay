@@ -1,8 +1,16 @@
 # Routines, passive waits & travel time
 
-**Status:** DRAFT spec (session 4, 2026-07-17). Not built. Extends
-`design/ACTIVITY-LIBRARY.md` (an activity gains internal structure). Decisions
-locked below; ready to turn into a build spec when scheduled.
+**Status:** ✅ **BUILT** (sessions 8–9). Written as a draft spec in session 4
+(2026-07-17); the header said "Not built" until 2026-08-21, long after it was.
+
+Shipped: `core/routines.js` (instantiate, re-flow, suggest),
+`core/RoutineInstance.js`, `ui/components/RoutinesEditor.jsx`, the Cabana button,
+the grid rows and the wait band. Routine steps are ordinary tasks carrying
+`routineId` + `stepIndex`, so they sync to Google like anything else; the
+PROGRAMS live in the library event.
+
+**Still not built:** the reorder suggestion ("shower first, then waffles") — see
+the note at §Reorder. Extends `design/ACTIVITY-LIBRARY.md`.
 
 ## The ask
 

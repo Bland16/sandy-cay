@@ -15,7 +15,53 @@ work nobody can see, and a handoff describing a world that no longer exists.
 Finishing the write-up is part of the task, not what you do with what is left
 over.
 
-## ▶ SESSION 9 (2026-08-18/19) — READ THIS FIRST, THE REST IS OLDER
+## ▶ SESSION 10 (2026-08-20/21) — READ THIS FIRST
+
+**Shipped:** Find-a-time ranking, the two footlocker import doors, and a service
+worker fix that matters more than it sounds.
+
+### ⚠️ A GUARD ONLY PROTECTS THE DEVICES ACTUALLY RUNNING IT
+
+`sw.js` was cache-first for every same-origin GET, **including the document**.
+Vite emits `assets/index-<hash>.js` and `index.html` is the only thing naming
+the hash — so a device that had opened the app once stayed pinned to that
+bundle, picking up a deploy only on a SECOND load, which nobody performs because
+the app looks like it loaded fine.
+
+That is not a staleness annoyance. A phone on the pre-2026-08-19 bundle still
+has the `date.getTime` bug (no repeating task can reach Google) **and predates
+the GS-8 library gate**, so it would push its starter buckets over the real
+library — the exact data-loss path GS-8 closed. Fixed: the document is
+network-first, hashed assets stay cache-first, cache bumped to v2. **The
+changeover still costs one extra load.**
+
+### OPEN: repeating tasks missing from the phone's calendar
+
+Reported 2026-08-21. Sign-in works; only non-repeating tasks appeared. TWO
+candidates, not yet separated:
+
+1. **The stale bundle above** — old code, repeating creates throw.
+2. **They have not started yet.** Classes and the gym begin **Mon 31 Aug** and
+   this was reported on the 21st. A series does not render before its first
+   occurrence, and this ALREADY explained an identical report about the gym on
+   the 19th, after a long detour.
+
+**The check that separates them:** open Google Calendar at the week of Mon 31
+Aug. Present → nothing is broken. Absent → real bug, and the `wrote` table in
+the sync log gives the rule and start of every event written.
+
+### Find a time is ranked now
+
+`design/FIND-A-TIME.md`. The window half already existed. The finding worth
+keeping: **a metric that measures a CHANGE rewards a state that is already
+bad** — ranking by "how much deeper does this day get" recommended piling work
+onto a Monday six hours into the red and ranked an empty Tuesday LAST. Every
+step of that arithmetic was correct. Only printing the ordering against a real
+week showed it.
+
+---
+
+## ▶ SESSION 9 (2026-08-18/19)
 
 **`main` is live and now actually WORKS.** It was serving the raw repo root —
 `index.html` pointing at `/src/main.jsx`, `package.json` fetchable, the app
@@ -114,15 +160,23 @@ wire. `1 confirmed, 0 failed` is true and useless.
 3. `design/GOOGLE-AS-STORAGE.md` §7 — **GS-8 is now decided and built (§7.1)**.
    GS-10 and GS-11 (day notes should be all-day events, not library rows) are
    still open.
-3b. **The phone has still never signed in.** That is the test GS-8 was built
-   for: a fresh device should take the library down silently. If it shows the
-   paused banner instead, it did not read as fresh — answer it with **The
-   calendar is right — derive from it**. Routines are worth checking there
-   first, because `routineInstances` live in the library and were squarely in
-   the blast radius of the bug §7.1 describes.
-4. P4, the export reminder, is unbuilt.
+3b. **The phone HAS now signed in (2026-08-21) and it works.** What did not:
+   only non-repeating tasks appeared in the calendar. Unresolved at time of
+   writing, with two candidates and a check that separates them — see §Session
+   10 below.
+4. P4, the export reminder, is unbuilt. It is the only unbuilt piece of the
+   original P0–P4 plan.
 5. **The first push is sequential** — one request per event, so ~15–30s for a
    real schedule. Batching is a real improvement, but measure it first.
+6. **GS-10 is the last open Google decision** and is now overdue: it is marked
+   "Gates P3" in the spec, and P3 shipped anyway. A repeat rule edited by hand
+   in Google is not read back, while a TIME edited by hand is — and nothing in
+   the UI says so.
+7. **Retention is still not built.** Nothing in `src/core` prunes anything;
+   grep for `prune` and you get nothing. The DECISION was made in session 7
+   (keep rated `history` and all `dismissed`; prune unrated history,
+   `occurrenceData` and `snapshots` at 12 months, on load, idempotent), so this
+   is build-only. `localStorage` exhaustion is the designed end state until then.
 
 
 **Updated:** 2026-08-13, session 8. **`main` is the trunk and is live on Pages**
