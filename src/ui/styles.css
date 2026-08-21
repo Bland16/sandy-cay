@@ -1357,8 +1357,19 @@ button:focus-visible, .dhopen:focus-visible, .card:focus-visible, .slot:focus-vi
 }
 
 /* Narrow desktops and the tablet share one panel problem: 322px of panel plus a
-   week leaves neither enough. */
-@media (max-width: 1023px) {
+   week leaves neither enough.
+
+   ⚠️ FLOORED AT 768, and it MUST stay floored. Written as a bare
+   `max-width: 1023px`, this also matched every phone — and because it sits
+   BELOW the phone block in this file, equal specificity handed it the win. The
+   phone's `.panel { width: 100% }` was overridden by `width: 280px`, so on a
+   390px screen the panel rendered as a fixed 280px column stuck to the left
+   instead of the full-width sheet it is supposed to be.
+
+   The comment above always said "narrow desktops and the tablet". The query did
+   not, and nothing caught the difference: 1069 tests were green, because none of
+   the behaviour changed. Reported from a real phone, 2026-08-21. */
+@media (min-width: 768px) and (max-width: 1023px) {
   .panel { flex-basis: 280px; width: 280px; }
 }
 
