@@ -345,19 +345,59 @@ export function firstOccurrence(days, time, from) {
 }
 
 /** The short readable line in the event's notes. WRITTEN, NEVER READ — see below. */
-export function humanSummary(task, kind) {
+export function humanSummary(task, kind, { groupNames } = {}) {
+  // The GROUP this belongs to, by name where the caller supplied one. An id is
+  // a last resort: `laundry-1-run` is at least searchable in Google, where
+  // nothing at all leaves you with three identical "Wash" events and no way to
+  // tell which routine each came from.
+  const ref = task.routineId ?? task.parentId ?? null;
+  const named = ref != null && groupNames ? (groupNames.get ? groupNames.get(ref) : groupNames[ref]) : null;
+  const group = named || (ref != null ? String(ref) : null);
+  const of = group ? ` of “${group}”` : '';
+
   switch (kind) {
     case KIND.ROUTINE_STEP:
-      return `Sandy Cay · routine step ${(task.stepIndex ?? 0) + 1}`;
+      return `Sandy Cay · step ${(task.stepIndex ?? 0) + 1}${of}`;
     case KIND.COMMITMENT_SITTING:
-      return 'Sandy Cay · a sitting toward a standing commitment';
+      return `Sandy Cay · a sitting${of || ' toward a standing commitment'}`;
     case KIND.PROJECT_CHUNK:
-      return 'Sandy Cay · one sitting of a larger project';
+      return `Sandy Cay · one sitting${of || ' of a larger project'}`;
     case KIND.PROJECT_PARENT:
       return 'Sandy Cay · project record (not a scheduled session)';
     default:
       return task.type === 'fixed' ? 'Sandy Cay · a fixed commitment' : 'Sandy Cay · a flexible task';
   }
+}
+
+/**
+ * The whole note that goes in the event's description.
+ *
+ * ⚠️ WRITTEN, NEVER READ — and everything below depends on that staying true.
+ * It is safe to put the code and the group in here PRECISELY because nothing
+ * parses it: a user tidying their own notes cannot change their schedule. The
+ * moment anything reads a line of this back, that stops being true and the
+ * whole note becomes a liability.
+ *
+ * Three things, in the order a person needs them:
+ *   what it is, and what it belongs to  — so three identical "Wash" events are
+ *                                          tellable apart in Google
+ *   the code                            — searchable, and the thing to quote
+ *                                          when something has gone wrong
+ *   how repeats behave                  — GS-10's honest half. A hand edit to an
+ *                                          event's TIME is honoured; a hand edit
+ *                                          to its REPEAT RULE is not, because
+ *                                          the pattern lives in the payload and
+ *                                          RRULE is strictly poorer than it.
+ *                                          Saying so on the event is what turns
+ *                                          a silent asymmetry into a stated one.
+ */
+export function eventNote(task, kind, opts = {}) {
+  const lines = [humanSummary(task, kind, opts)];
+  if (task.id != null) lines.push(`Code: ${task.id}`);
+  if (task.recurrence) {
+    lines.push('Repeats are set in Sandy Cay. Changing the repeat here will not carry back — move or rename this event freely, but edit the pattern in the app.');
+  }
+  return lines.join('\n');
 }
 
 /**
@@ -374,7 +414,9 @@ export function humanSummary(task, kind) {
 // made the `=== undefined` check below unreachable, so the derived rule never
 // ran — the fix looked right and did nothing. Absent means "derive it"; an
 // explicit `null` means "deliberately none".
-export function encodeTask(task, { commitmentIds, timeZone = 'UTC', rrule } = {}) {
+export function encodeTask(task, {
+  commitmentIds, timeZone = 'UTC', rrule, groupNames,
+} = {}) {
   const json = task.toJSON ? task.toJSON() : { ...task };
   const kind = kindOf(json, { commitmentIds });
 
@@ -404,7 +446,7 @@ export function encodeTask(task, { commitmentIds, timeZone = 'UTC', rrule } = {}
     // ⚠️ The description is WRITTEN and NEVER READ. It exists so the event is
     // legible in Google Calendar on a phone. The moment the app parses it, a
     // user tidying their own notes silently edits their schedule.
-    description: humanSummary(json, kind),
+    description: eventNote(json, kind, { groupNames }),
     extendedProperties: { private: priv },
   };
   if (json.startTime) body.start = { dateTime: new Date(json.startTime).toISOString(), timeZone };
@@ -525,6 +567,8 @@ export function idQuery(taskId) {
  * routine.
  */
 export function encodeTaskParts(task, opts = {}) {
+  // `opts` carries `groupNames` straight through to every part, so a split
+  // task's three events all name the same routine rather than only the first.
   const json = task.toJSON ? task.toJSON() : { ...task };
   const groups = timeGroups(json);
   if (groups.length === 0) return [encodeTask(task, opts)];
@@ -584,7 +628,12 @@ export function encodeTaskParts(task, opts = {}) {
     // single time in the model, only a window that must be edited as a window.
     if (json.startTime != null) priv[`${NS}.t0`] = String(json.startTime);
     if (json.endTime != null) priv[`${NS}.t1`] = String(json.endTime);
-    body.description = `${body.description} · part ${i + 1} of ${groups.length}`;
+    // On the FIRST line, beside what the thing is — not appended to the whole
+    // note, which put "· part 1 of 2" after the sentence about repeats and read
+    // as though the SENTENCE came in parts.
+    const noteLines = body.description.split('\n');
+    noteLines[0] = `${noteLines[0]} · part ${i + 1} of ${groups.length}`;
+    body.description = noteLines.join('\n');
     return body;
   });
 }

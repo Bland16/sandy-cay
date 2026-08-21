@@ -179,7 +179,9 @@ function describeBodies(bodies) {
  * @returns `{ synced, forgotten, failed }` — `synced` and `forgotten` are what
  *          Google CONFIRMED, and are what `advanceState` may be given.
  */
-export async function applyPlan(api, calendarId, plan, { commitmentIds, timeZone, encode } = {}) {
+export async function applyPlan(api, calendarId, plan, {
+  commitmentIds, timeZone, encode, groupNames,
+} = {}) {
   const synced = [];
   const forgotten = [];
   const failed = [];
@@ -190,7 +192,7 @@ export async function applyPlan(api, calendarId, plan, { commitmentIds, timeZone
   // reaching `synced`, old events deleted last so a crash leaves duplicates
   // rather than nothing — and none of it is task-specific. A second copy would
   // be a second place to get those three wrong.
-  const bodiesFor = encode || ((task) => encodeTaskParts(task, { commitmentIds, timeZone }));
+  const bodiesFor = encode || ((task) => encodeTaskParts(task, { commitmentIds, timeZone, groupNames }));
 
   for (const task of plan.create) {
     try {

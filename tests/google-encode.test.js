@@ -354,7 +354,11 @@ describe('the event id problem', () => {
 describe('the description is human-only', () => {
   it('says what the thing is, and is never the source of truth', () => {
     const ev = encodeTask({ id: 'a', title: 'Wash', routineId: 'laundry-1', stepIndex: 1 }, {});
-    expect(ev.description).toContain('routine step 2');
+    // Wording changed when the note gained the group and the code; what this
+    // test guards is unchanged — the description is for a HUMAN and decoding
+    // must not depend on a word of it.
+    expect(ev.description).toContain('step 2');
+    expect(ev.description).toContain('laundry-1');
     // Wrecking the description must not affect what decodes.
     ev.description = 'the cat sat on the keyboard';
     const r = decodeEvent(ev);
@@ -475,5 +479,96 @@ describe('a repeat that ENDS — the shape no fixture had', () => {
     expect(parts).toHaveLength(1);
     expect(parts[0].recurrence).toBeUndefined();
     expect(parts[0].extendedProperties.private['sc.norrule']).toBe('windows-differ');
+  });
+});
+
+describe('the event note — what a person reads in Google', () => {
+  // The user's design: "add a note in google event notes which has that specific
+  // code and also what group it belongs to. If an event is distinguishable on
+  // Sandy Cay we can invent a note which makes it distinguishable and
+  // identifiable in its specific use case in Google."
+  //
+  // ⚠️ SAFE ONLY BECAUSE NOTHING READS IT BACK. Putting the code and the group
+  // in the description is fine precisely because the description is written and
+  // never parsed — a user tidying their own notes cannot change their schedule.
+  // The moment anything reads a line of this, that stops being true.
+  //
+  // `design/probes/probe-event-note.mjs` prints them.
+  const names = new Map([['laundry-1-run', 'Laundry'], ['dishes-1-run', 'Dishwasher']]);
+  const step = (routineId, stepIndex) => ({
+    id: `wash-${routineId}`, title: 'Wash', routineId, stepIndex, type: 'fixed',
+  });
+
+  it('tells two identical "Wash" events apart by their routine', () => {
+    const a = encodeTask(step('laundry-1-run', 1), { groupNames: names }).description;
+    const b = encodeTask(step('dishes-1-run', 0), { groupNames: names }).description;
+    expect(a).toContain('Laundry');
+    expect(b).toContain('Dishwasher');
+    expect(a).not.toEqual(b);
+  });
+
+  it('counts steps from 1, the way a person does', () => {
+    expect(encodeTask(step('laundry-1-run', 1), { groupNames: names }).description).toContain('step 2');
+  });
+
+  it('carries the code, so it can be searched and quoted', () => {
+    const ev = encodeTask({ id: 'dentist-0003', title: 'Dentist', type: 'fixed' }, {});
+    expect(ev.description).toContain('Code: dentist-0003');
+  });
+
+  it('falls back to the raw id when no names were passed', () => {
+    // The encoder must not depend on a caller remembering an option — that is
+    // how the RRULE went un-emitted for a whole release.
+    expect(encodeTask(step('laundry-1-run', 1), {}).description).toContain('laundry-1-run');
+  });
+
+  it('invents no group for a task that belongs to nothing', () => {
+    const ev = encodeTask({ id: 'x-1', title: 'Dentist', type: 'fixed' }, { groupNames: names });
+    expect(ev.description).not.toContain('of “');
+  });
+
+  it('⚠️ GS-10 — a repeating task SAYS that repeats are edited in the app', () => {
+    // The asymmetry named on the event itself: a hand edit to the TIME is
+    // honoured, a hand edit to the REPEAT RULE is not, because the pattern lives
+    // in the payload and RRULE is strictly poorer than it. Stating it is the
+    // cheap half of GS-10.
+    const s = sched();
+    const t = s.tasks.find((x) => x.recurrence) || seed().tasks.find((x) => x.recurrence);
+    const note = encodeTask(t, {}).description;
+    expect(note).toMatch(/repeat here will not carry back/i);
+    expect(note).toMatch(/move or rename/i);
+  });
+
+  it('and a NON-repeating task does not carry that line', () => {
+    const note = encodeTask({ id: 'x-2', title: 'Dentist', type: 'fixed' }, {}).description;
+    expect(note).not.toMatch(/carry back/i);
+  });
+
+  it('puts "part 1 of 2" beside the KIND, not after the repeats sentence', () => {
+    const s = sched();
+    const t = s.addFixed({
+      title: 'Seminar',
+      startTime: at(9),
+      endTime: at(10),
+      recurrence: {
+        periods: [{
+          windows: [
+            { day: 'tue', start: '09:00', end: '10:00' },
+            { day: 'thu', start: '14:00', end: '16:00' },
+          ],
+          interval: 1,
+          effectiveFrom: new Date(2026, 8, 7).getTime(),
+          effectiveUntil: null,
+        }],
+        anchorDate: new Date(2026, 8, 7).getTime(),
+        exceptions: [],
+      },
+    });
+    const parts = encodeTaskParts(t, {});
+    expect(parts).toHaveLength(2);
+    for (const [i, p] of parts.entries()) {
+      expect(p.description.split('\n')[0]).toContain(`part ${i + 1} of 2`);
+      expect(p.description).toContain(t.id);
+    }
   });
 });

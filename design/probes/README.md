@@ -21,6 +21,7 @@ public; never paste raw calendar data into a probe.
 | `probe-library-merge.mjs` | the two import doors on the SAME file — add-what's-missing vs restore-the-setup, and what each costs |
 | `probe-rank-openings.mjs` | F-4 — ranking by how much DEEPER a day gets recommends the day you have already wrecked |
 | `probe-css-cascade.mjs` | which media block WINS at a width — a phone rule beaten by a later, wider one is invisible to every test |
+| `probe-event-note.mjs` | what an event's note SAYS in Google — three identical “Wash” events told apart, and GS-10 stated on the event |
 | `probe-horizon.mjs` | the `spread`/proximity-renormalisation experiment — **rejected**, it lengthens the streak (WEEKLY-PLANNING §4.5) |
 | `probe-week-shapes.mjs` | four week shapes; the ~40%-full week concentrates work **harder** than an empty one |
 | `probe-mental-frontload.mjs` | placement is energy-blind: 960 of 1200 minutes onto the four worst days |

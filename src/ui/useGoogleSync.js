@@ -121,6 +121,21 @@ export function applyLocalBlocked(sched, plan) {
   return { adopted, removed };
 }
 
+/**
+ * id → human name, for the note on each event.
+ *
+ * Routines, commitments and project parents are the three things a task can
+ * belong to, and they are addressed by `routineId` or `parentId` — which is
+ * overloaded, so all three go in one map and the id decides.
+ */
+export function groupNamesFor(sched) {
+  const names = new Map();
+  for (const r of sched.routineInstances || []) names.set(r.id, r.label);
+  for (const c of sched.commitments || []) names.set(c.id, c.title);
+  for (const t of sched.tasks || []) if (t.chunking) names.set(t.id, t.title);
+  return names;
+}
+
 /** A blocked day as the planner sees it: something with an id and a hash. */
 export const blockedRecord = (day) => ({ id: `blocked-${day}`, day });
 
@@ -275,6 +290,10 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, now 
       const applied = await applyPlan(api, calendarId, plan, {
         commitmentIds: new Set((sched.commitments || []).map((c) => c.id)),
         timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        // What each task BELONGS to, by name, for the event's note. Without
+        // this the note falls back to a raw id — still searchable, but a
+        // person reading their calendar should see “Laundry”, not `laundry-1-run`.
+        groupNames: groupNamesFor(sched),
       });
 
       logApplied(applied);

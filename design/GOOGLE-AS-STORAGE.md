@@ -279,7 +279,39 @@ Proved by `design/probes/probe-google-bounded-repeat.mjs`; locked by the
 | **GS-8** | ✅ **DECIDED AND BUILT 2026-08-19 — see §7.1.** Adopt if fresh; otherwise freeze the whole sync and ask. |
 | **GS-9** | ✅ **Defaulted and built:** retried silently once, then said out loud. Change it if the silent retry ever hides something worth knowing |
 | **GS-11** | ✅ **DECIDED AND BUILT 2026-08-19.** Day notes and blocked days are all-day events — see §4.2. Removed from `LIBRARY_KEYS` in the same change, as the note parked there demanded |
-| **GS-10** | ⚠️ **Opened by P0.** A hand edit to a single event's TIME is honoured (times live only on the event). A hand edit to its **repeat rule** is not — recurrence lives in the payload, because RRULE is strictly poorer than this app's model and storage has to be lossless. So the two hand edits behave differently. Accept the asymmetry and say so in the UI, or try to read RRULE changes back? **Gates P3.** |
+| **GS-10** | ⚠️ **HALF ANSWERED 2026-08-20 — the asymmetry is now SAID.** Every repeating event's note reads *“Repeats are set in Sandy Cay. Changing the repeat here will not carry back — move or rename this event freely, but edit the pattern in the app.”* Still open: whether to also READ an RRULE edit back, which would let a hand edit flatten a pattern RRULE cannot express. Original question below |
+| ~~GS-10~~ | ⚠️ **Opened by P0.** A hand edit to a single event's TIME is honoured (times live only on the event). A hand edit to its **repeat rule** is not — recurrence lives in the payload, because RRULE is strictly poorer than this app's model and storage has to be lossless. So the two hand edits behave differently. Accept the asymmetry and say so in the UI, or try to read RRULE changes back? **Gates P3.** |
+
+### 7.2 The event note — what a person reads in Google
+
+**The user's design, 2026-08-21:** *"add a note in google event notes which has
+that specific code and also what group it belongs to. If an event is
+distinguishable on Sandy Cay we can invent a note which makes it distinguishable
+and identifiable in its specific use case in Google."*
+
+The description now carries three things, in the order a person needs them:
+
+```
+Sandy Cay · step 2 of “Laundry” · part 1 of 2
+Code: wash-0001
+Repeats are set in Sandy Cay. Changing the repeat here will not carry back —
+move or rename this event freely, but edit the pattern in the app.
+```
+
+- **what it is, and what it belongs to** — three identical “Wash” events from
+  three routines were indistinguishable in Google; now each names its own.
+  Falls back to the raw id when the caller passes no names, because an option a
+  caller must remember is an option a caller will forget.
+- **the code** — searchable, and the thing to quote when something is wrong.
+- **how repeats behave** — GS-10's honest half, and only on tasks that repeat.
+
+⚠️ **This is safe ONLY because the description is written and never read.** That
+rule predates the note and is what makes putting real identifiers in it
+acceptable: a user tidying their own notes cannot change their schedule. If
+anything ever parses a line of this, the note becomes a liability rather than a
+convenience.
+
+Probe: `design/probes/probe-event-note.mjs`.
 
 ### 7.1 GS-8 — the library gate
 
