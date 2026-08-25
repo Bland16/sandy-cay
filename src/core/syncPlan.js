@@ -95,7 +95,41 @@ function eventIdsOf(r) {
   return r.googleEventId ? [r.googleEventId] : [];
 }
 
-export function planSync(local, remote, state = emptyState(), { unreadable } = {}) {
+/**
+ * What in the calendar has moved WITHOUT this app moving it.
+ *
+ * ⚠️ THE PROBLEM THIS SOLVES. `remoteChanged` was `r.updated > lastSyncAt` — a
+ * single timestamp against every event. Google stamps `updated` on everything
+ * WE write, so our own writes read as remote edits on the following pass. That
+ * is what made a sync take five passes to settle in session 9, and it is why
+ * "has anything changed there" and "did WE change it" were indistinguishable.
+ *
+ * A baseline taken at the start of the session, and kept current for the events
+ * we ourselves write, tells them apart per event: an `updated` newer than what
+ * we last saw for THAT event, and not put there by us, is a human's hand.
+ *
+ * @param baseline `{ [eventId]: updatedMs }` — what we last knew of each event
+ * @returns a Set of TASK ids touched outside this app
+ */
+export function outsideEdits(baseline, remote) {
+  const out = new Set();
+  if (!baseline) return out;
+  const seen = baseline instanceof Map ? baseline : new Map(Object.entries(baseline));
+  for (const r of remote || []) {
+    if (!r || !r.task || r.task.id == null) continue;
+    for (const eventId of eventIdsOf(r)) {
+      const known = Number(seen.get(eventId) ?? seen.get(String(eventId))) || 0;
+      // Unknown to the baseline is NOT an outside edit: it is an event this
+      // session has not seen before, which the create/adopt branches already
+      // handle. Calling it an edit would make every first pull look like a
+      // calendar full of hand edits.
+      if (known && (r.updated || 0) > known) { out.add(r.task.id); break; }
+    }
+  }
+  return out;
+}
+
+export function planSync(local, remote, state = emptyState(), { unreadable, changedOutside } = {}) {
   const entries = state.entries || {};
   const lastSyncAt = state.lastSyncAt || 0;
   // ⚠️ Tasks whose remote event EXISTS but could not be decoded. They must be
@@ -161,7 +195,14 @@ export function planSync(local, remote, state = emptyState(), { unreadable } = {
     }
 
     const localChanged = !known || taskHash(task) !== known.hash;
-    const remoteChanged = (r.updated || 0) > lastSyncAt;
+    // ⚠️ PER EVENT when a baseline was supplied, and only then. `changedOutside`
+    // knows the difference between the calendar moving and US moving it;
+    // `lastSyncAt` cannot, because Google stamps our own writes too. The old
+    // path is kept for callers that pass no baseline — every existing test —
+    // rather than silently changing what they assert.
+    const remoteChanged = changedOutside
+      ? changedOutside.has(id)
+      : (r.updated || 0) > lastSyncAt;
 
     if (!localChanged && !remoteChanged) {
       plan.unchanged.push(id);

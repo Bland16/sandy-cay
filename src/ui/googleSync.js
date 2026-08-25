@@ -185,6 +185,14 @@ export async function applyPlan(api, calendarId, plan, {
   const synced = [];
   const forgotten = [];
   const failed = [];
+  // ⚠️ WHAT WE OURSELVES WROTE, and the `updated` Google stamped on it. Without
+  // this the next pull cannot tell our own echo from a human's hand edit — the
+  // confusion that made a sync take five passes to settle. Google returns the
+  // written event from both insert and patch; this simply stops throwing it away.
+  const wrote = {};
+  const noteWrite = (ev) => {
+    if (ev && ev.id && ev.updated) wrote[ev.id] = Date.parse(ev.updated) || 0;
+  };
 
   // ⚠️ THE ENCODER IS INJECTABLE so day notes reuse this whole function rather
   // than growing a second executor beside it (GS-11). Everything here that is
@@ -202,7 +210,7 @@ export async function applyPlan(api, calendarId, plan, {
       const ids = [];
       for (const body of bodies) {
         const ev = await api.insert(calendarId, body);
-        if (ev && ev.id) ids.push(ev.id);
+        if (ev && ev.id) { ids.push(ev.id); noteWrite(ev); }
       }
       // ⚠️ ALL parts or none. A task recorded as synced with only some of its
       // events written would never be retried, and the calendar would keep a
@@ -221,7 +229,7 @@ export async function applyPlan(api, calendarId, plan, {
         // Same shape — PATCH in place, which preserves anything the user added
         // to the event in Google and keeps the ids stable.
         for (let i = 0; i < bodies.length; i += 1) {
-          await api.patch(calendarId, eventIds[i], bodies[i]);
+          noteWrite(await api.patch(calendarId, eventIds[i], bodies[i]));
         }
         synced.push({ task, eventId: eventIds[0], eventIds, wrote: describeBodies(bodies) });
       } else {
@@ -232,7 +240,7 @@ export async function applyPlan(api, calendarId, plan, {
         const ids = [];
         for (const body of bodies) {
           const ev = await api.insert(calendarId, body);
-          if (ev && ev.id) ids.push(ev.id);
+          if (ev && ev.id) { ids.push(ev.id); noteWrite(ev); }
         }
         if (ids.length !== bodies.length) throw new Error(`wrote ${ids.length} of ${bodies.length} parts`);
         for (const old of eventIds) await api.remove(calendarId, old).catch(() => {});
@@ -252,7 +260,9 @@ export async function applyPlan(api, calendarId, plan, {
     }
   }
 
-  return { synced, forgotten, failed };
+  return {
+    synced, forgotten, failed, wrote,
+  };
 }
 
 /**

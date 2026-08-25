@@ -24,6 +24,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   planSync, markDirty, advanceState, emptyState, describePlan, taskHash, isBulkDelete,
+  outsideEdits,
 } from '../core/syncPlan.js';
 import { libraryFrom, diffLibrary, applyLibrary } from '../core/googleLibrary.js';
 import { Schedule, defaultConfig, seedStarterBuckets, dateFromKey } from '../core/index.js';
@@ -31,7 +32,9 @@ import {
   makeApi, pull, applyPlan, pushLibrary, inspectCalendar, encodeNoteParts, encodeBlockedParts,
 } from './googleSync.js';
 import { getAccessToken, readClientId } from './google.js';
-import { logPull, logPlan, logApplied, logStopped } from './syncLog.js';
+import {
+  logPull, logPlan, logApplied, logStopped, logOutside,
+} from './syncLog.js';
 
 /**
  * The library a brand-new install produces — starter buckets, default config,
@@ -191,6 +194,22 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, now 
   // exists to stop. Only agreement, adoption, or one of the two Cabana buttons
   // counts as an answer.
   const librarySettled = useRef(false);
+  // ═══════════════════════════════════════════════════════════════════════
+  // WHAT THE CALENDAR LOOKED LIKE WHEN THIS SESSION STARTED.
+  // ═══════════════════════════════════════════════════════════════════════
+  //
+  // `{ eventId: updatedMs }`, seeded from the FIRST pull and kept current for
+  // every event we write ourselves. It answers the question `lastSyncAt` never
+  // could: has this event moved because a human moved it, or because WE did?
+  //
+  // Google stamps `updated` on our own writes, so a single global timestamp
+  // reads our echo as a remote edit — which is exactly how a sync came to take
+  // five passes to settle. Per event, with our own writes folded back in, an
+  // `updated` newer than what we last knew is a hand edit and nothing else.
+  //
+  // Per session, like `librarySettled`: it is a record of what we have SEEN, and
+  // a new session has seen nothing.
+  const baseline = useRef(null);
 
   // ⚠️ ONE cache, in google.js, shared with sign-in and the calendar picker.
   // A second copy here would go stale independently and would defeat the whole
@@ -281,14 +300,26 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, now 
         }
       }
 
+      // Seed on the first pull of the session, before anything is decided or
+      // written — this is the "before" picture and it has to be taken first.
+      if (baseline.current === null) {
+        baseline.current = {};
+        for (const r of remote.tasks || []) {
+          for (const eventId of r.googleEventIds || []) baseline.current[eventId] = r.updated || 0;
+        }
+      }
+      const changedOutside = outsideEdits(baseline.current, remote.tasks);
+
       const t = now();
       const localTasks = sched.toJSON().tasks;
       logPull(remote, localTasks.length);
+      if (changedOutside.size) logOutside(changedOutside, remote.tasks);
       stateRef.current = markDirty(stateRef.current, localTasks, t);
       // `unreadable` is not optional bookkeeping: without it a corrupt event
       // reads as an absent one and this deletes the local task. See planSync.
       const plan = planSync(localTasks, remote.tasks, stateRef.current, {
         unreadable: remote.unreadable,
+        changedOutside,
       });
 
       logPlan(plan);
@@ -322,6 +353,10 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, now 
       });
 
       logApplied(applied);
+      // Fold our own writes back into the baseline, or the very next pass reads
+      // them as somebody else's edits — the loop this whole mechanism exists to
+      // end.
+      Object.assign(baseline.current, applied.wrote || {});
 
       // ═══════════════════════════════════════════════════════════════════════
       // GS-11 — day notes and blocked days, which are all-day EVENTS now.

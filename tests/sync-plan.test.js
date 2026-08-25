@@ -6,6 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   planSync, markDirty, advanceState, emptyState, taskHash, describePlan, isBulkDelete,
+  outsideEdits,
 } from '../src/core/syncPlan.js';
 
 const task = (id, title = id) => ({ id, title });
@@ -299,5 +300,72 @@ describe('what the user is told', () => {
 
   it('says when there is nothing to do', () => {
     expect(describePlan(planSync([], [], emptyState()))).toBe('nothing to do');
+  });
+});
+
+describe('outsideEdits — a hand edit vs our own echo', () => {
+  // ⚠️ WHY THIS EXISTS. `remoteChanged` was `r.updated > lastSyncAt` — one
+  // timestamp against every event. Google stamps `updated` on everything WE
+  // write, so our own writes read as remote edits on the following pass. That
+  // is what made a sync take five passes to settle, and it is why "the calendar
+  // changed" and "we changed the calendar" were indistinguishable.
+  const withEvents = (t, updated, ids) => ({ task: t, googleEventIds: ids, updated });
+
+  it('flags an event whose updated moved past what we last knew', () => {
+    const base = { 'ev-a': 1000 };
+    const found = outsideEdits(base, [withEvents(task('a'), 2000, ['ev-a'])]);
+    expect([...found]).toEqual(['a']);
+  });
+
+  it('⚠️ does NOT flag our own write, once the baseline has caught up', () => {
+    // The executor folds what Google stamped on our writes back into the
+    // baseline. Without that step this is the loop, not the fix.
+    const base = { 'ev-a': 2000 };
+    expect(outsideEdits(base, [withEvents(task('a'), 2000, ['ev-a'])]).size).toBe(0);
+  });
+
+  it('does not flag an event the baseline has never seen', () => {
+    // A first pull would otherwise look like a calendar full of hand edits.
+    // New events are the create/adopt branches' business, not this one's.
+    expect(outsideEdits({}, [withEvents(task('a'), 9999, ['ev-a'])]).size).toBe(0);
+  });
+
+  it('flags a task if ANY of its parts moved', () => {
+    // A split task is several events; editing any one of them is an edit to it.
+    const base = { 'ev-1': 1000, 'ev-2': 1000 };
+    const found = outsideEdits(base, [withEvents(task('a'), 3000, ['ev-1', 'ev-2'])]);
+    expect([...found]).toEqual(['a']);
+  });
+
+  it('takes a Map as readily as an object', () => {
+    const found = outsideEdits(new Map([['ev-a', 1000]]), [withEvents(task('a'), 2000, ['ev-a'])]);
+    expect([...found]).toEqual(['a']);
+  });
+});
+
+describe('planSync uses the baseline when given one', () => {
+  it('a task WE wrote is unchanged, not adopted', () => {
+    // The old rule would call this remoteChanged — `updated` is past
+    // lastSyncAt — and adopt our own write straight back over the local copy.
+    const t = task('a');
+    const state = { lastSyncAt: 1000, entries: { a: { hash: taskHash(t), eventId: 'ev-a', dirtyAt: 0 } } };
+    const r = [{ task: t, googleEventIds: ['ev-a'], updated: 5000 }];
+
+    const without = planSync([t], r, state);
+    expect(without.adopt).toHaveLength(1);              // the old behaviour
+
+    const with_ = planSync([t], r, state, { changedOutside: new Set() });
+    expect(with_.adopt).toHaveLength(0);
+    expect(with_.unchanged).toEqual(['a']);
+  });
+
+  it('and still adopts a genuine hand edit', () => {
+    const t = task('a');
+    const state = { lastSyncAt: 9999, entries: { a: { hash: taskHash(t), eventId: 'ev-a', dirtyAt: 0 } } };
+    const r = [{ task: { ...t, title: 'edited in Google' }, googleEventIds: ['ev-a'], updated: 1 }];
+    // `updated` is BEFORE lastSyncAt, so the old rule would miss this entirely.
+    const plan = planSync([t], r, state, { changedOutside: new Set(['a']) });
+    expect(plan.adopt).toHaveLength(1);
+    expect(plan.adopt[0].title).toBe('edited in Google');
   });
 });

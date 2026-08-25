@@ -76,6 +76,33 @@ export function logPlan(plan) {
   console.groupEnd();
 }
 
+/**
+ * What moved in the calendar WITHOUT this app moving it.
+ *
+ * The most useful line in the whole log when something looks wrong, because it
+ * separates "the calendar changed" from "we changed the calendar" — a
+ * distinction `lastSyncAt` could never draw, since Google stamps `updated` on
+ * our own writes too.
+ */
+export function logOutside(ids, remote) {
+  if (!isSyncDebug() || !ids || !ids.size) return;
+  const byId = new Map((remote || []).map((r) => [r.task && r.task.id, r]));
+  console.groupCollapsed(
+    `%c[sync ${time()}] changed in Google, not here — ${ids.size}`,
+    'color:#D8A03D;font-weight:bold',
+  );
+  console.table([...ids].map((id) => {
+    const r = byId.get(id);
+    return {
+      task: r && r.task ? r.task.title : '(unknown)',
+      id,
+      events: r && r.googleEventIds ? r.googleEventIds.join(', ') : '',
+      updated: r && r.updated ? new Date(r.updated).toLocaleString() : '',
+    };
+  }));
+  console.groupEnd();
+}
+
 /** What Google actually confirmed — which is not always what was planned. */
 export function logApplied(applied) {
   if (!isSyncDebug()) return;

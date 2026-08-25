@@ -13,7 +13,9 @@
 //     node design/probes/probe-sync-convergence.mjs
 import { Schedule, defaultConfig, seedStarterBuckets } from '../../src/core/index.js';
 import { pull, applyPlan, pushLibrary, encodeNoteParts } from '../../src/ui/googleSync.js';
-import { planSync, emptyState, advanceState, taskHash } from '../../src/core/syncPlan.js';
+import {
+  planSync, emptyState, advanceState, taskHash, outsideEdits,
+} from '../../src/core/syncPlan.js';
 import { libraryFrom, diffLibrary, applyLibrary } from '../../src/core/googleLibrary.js';
 
 const ok = (b) => (b ? 'OK  ' : '**FAIL**');
@@ -42,6 +44,7 @@ function fakeGoogle() {
     },
     remove: async (_cal, id) => { events.delete(id); return null; },
     _events: events,
+    _touch: (id) => { clock += 5000; events.set(id, { ...events.get(id), updated: new Date(clock).toISOString() }); },
     _now: () => clock + 1000,
   };
 }
@@ -178,3 +181,63 @@ await run('WITHOUT the per-session flag — the library question re-asked every 
 await run('WITH the per-session flag — asked once, at the start', { resolvedFlagWorks: true });
 
 console.log(`\n${failures ? `${failures} FAILURE(S) — see which run they came from` : 'all clear'}`);
+
+// ════════════════════════════════════════════════════════════════════════════
+// THE BASELINE — telling a hand edit apart from our own echo
+// ════════════════════════════════════════════════════════════════════════════
+//
+// `remoteChanged` used to be `r.updated > lastSyncAt`. Google stamps `updated`
+// on everything WE write, so on the next pass our own writes read as somebody
+// else's edits. A baseline taken at the start of the session, kept current for
+// the events we write, draws the line properly.
+console.log('\n=== THE BASELINE: our echo vs a real hand edit ===\n');
+{
+  const api = fakeGoogle();
+  const s = new Schedule({ config: defaultConfig });
+  seedStarterBuckets(s);
+  s.addFixed({
+    title: 'Orientation',
+    startTime: new Date(2026, 8, 7, 9),
+    endTime: new Date(2026, 8, 7, 10),
+  });
+
+  // Push it up, then take the "before" picture, exactly as a session does.
+  let st = { ...emptyState() };
+  const first = planSync(s.toJSON().tasks, [], st);
+  const applied = await applyPlan(api, 'cal', first, { timeZone: 'America/New_York' });
+  st = advanceState(st, applied, api._now());
+
+  const remote0 = await pull(api, 'cal');
+  const base = {};
+  for (const r of remote0.tasks) for (const id of r.googleEventIds) base[id] = r.updated;
+  console.log(`  baseline holds ${Object.keys(base).length} event(s)\n`);
+
+  // 1. WE write. The event's `updated` moves, but it is our own doing.
+  s.updateTask(s.tasks[0].id, { title: 'Orientation — hall' });
+  const mine = planSync(s.toJSON().tasks, remote0.tasks, st, {
+    changedOutside: outsideEdits(base, remote0.tasks),
+  });
+  const appliedMine = await applyPlan(api, 'cal', mine, { timeZone: 'America/New_York' });
+  Object.assign(base, appliedMine.wrote || {});
+  const afterOurs = await pull(api, 'cal');
+  const echo = outsideEdits(base, afterOurs.tasks);
+  console.log(`  after OUR write, events flagged as changed elsewhere: ${echo.size}`);
+  check('our own write is NOT mistaken for a hand edit', echo.size === 0,
+    echo.size ? [...echo].join(', ') : '');
+
+  // 2. A HUMAN edits the event in Google. Same field, different hand.
+  const [evId] = [...api._events.keys()];
+  api._touch(evId);
+  const afterTheirs = await pull(api, 'cal');
+  const hand = outsideEdits(base, afterTheirs.tasks);
+  console.log(`  after a HAND edit in Google, flagged: ${hand.size}`);
+  check('a real hand edit IS caught', hand.size === 1, [...hand].join(', '));
+
+  // 3. And an event the baseline has never seen is not an "edit" — it is new,
+  //    which the create/adopt branches already handle. Calling it an edit would
+  //    make every first pull look like a calendar full of hand edits.
+  const unseen = outsideEdits({}, afterTheirs.tasks);
+  check('an event the baseline never saw is not called an edit', unseen.size === 0);
+}
+
+console.log(`\n${failures ? `${failures} FAILURE(S)` : 'all clear'}`);
