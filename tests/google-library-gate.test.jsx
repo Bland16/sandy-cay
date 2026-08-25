@@ -322,3 +322,86 @@ describe('the Cabana says it, and the suite READS what it says', () => {
     expect(syncNow.disabled, 'Sync now stayed clickable during a freeze').toBe(true);
   });
 });
+
+describe('⚠️ asked ONCE per session — the loop fix', () => {
+  // The library question used to be re-decided on EVERY pass. Adopting calls
+  // `mutate`, which bumps `version`, which schedules another sync, which asks
+  // again — so whenever the answer did not come back identical the second time,
+  // the app either adopted forever at five-second intervals or landed in a
+  // freeze it had caused itself.
+  //
+  // A single-pass test cannot see any of that, which is why these re-render.
+  // `design/probes/probe-sync-convergence.mjs` runs six passes and prints them.
+  const rerenderTwice = async (result, rerender) => {
+    for (let v = 2; v <= 3; v += 1) {
+      rerender({ version: v, enabled: true });
+      // eslint-disable-next-line no-await-in-loop
+      await act(async () => { vi.advanceTimersByTime(6000); await Promise.resolve(); });
+    }
+    return result;
+  };
+
+  it('adopts on the first pass and NEVER adopts again', async () => {
+    vi.useFakeTimers();
+    const lib = remoteLibrary();
+    pullMock.mockImplementation(async () => ({
+      tasks: [], library: lib, libraryError: null, dropped: [], unreadable: new Set(),
+    }));
+    const sched = freshSchedule();
+    const mutate = vi.fn((fn) => fn(sched));
+
+    const { result, rerender } = mount({ sched, mutate, showToast: vi.fn() });
+    await act(async () => { await Promise.resolve(); });
+    const afterFirst = mutate.mock.calls.length;
+    expect(afterFirst).toBeGreaterThan(0);          // it DID adopt
+
+    await rerenderTwice(result, rerender);
+
+    // ⚠️ The whole point: later passes must not keep adopting. Each adoption is
+    // a mutate, and each mutate schedules the next pass.
+    expect(sched.buckets.some((b) => b.label === 'Fieldwork')).toBe(true);
+    expect(mutate.mock.calls.length).toBe(afterFirst);
+    vi.useRealTimers();
+  });
+
+  it('⚠️ but a FREEZE keeps refusing — settled is not the same as waved through', async () => {
+    // If "asked once" also silenced an unresolved conflict, the gate would
+    // quietly admit the stale device it exists to stop. Only agreement,
+    // adoption, or one of the two Cabana buttons counts as an answer.
+    vi.useFakeTimers();
+    pullMock.mockImplementation(async () => ({
+      tasks: [], library: remoteLibrary(), libraryError: null, dropped: [], unreadable: new Set(),
+    }));
+    const sched = usedSchedule();
+    const { result, rerender } = mount({ sched, mutate: vi.fn((fn) => fn(sched)), showToast: vi.fn() });
+    await act(async () => { await Promise.resolve(); });
+    expect(result.current.libraryState?.conflict).toBe(true);
+
+    await rerenderTwice(result, rerender);
+
+    expect(result.current.libraryState?.conflict).toBe(true);
+    expect(applyPlanMock).not.toHaveBeenCalled();
+    expect(pushLibraryMock).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it('and answering it lets the sync run again', async () => {
+    vi.useFakeTimers();
+    pullMock.mockImplementation(async () => ({
+      tasks: [], library: remoteLibrary(), libraryError: null, dropped: [], unreadable: new Set(),
+    }));
+    const sched = usedSchedule();
+    const { result, rerender } = mount({ sched, mutate: vi.fn((fn) => fn(sched)), showToast: vi.fn() });
+    await act(async () => { await Promise.resolve(); });
+    expect(result.current.libraryState?.conflict).toBe(true);
+
+    await act(async () => { await result.current.pushLibraryNow(); });
+    expect(result.current.libraryState).toBeNull();
+
+    await rerenderTwice(result, rerender);
+    // Settled, so the question is not re-asked and the freeze does not return.
+    expect(result.current.libraryState).toBeNull();
+    expect(applyPlanMock).toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+});

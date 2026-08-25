@@ -168,6 +168,29 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, now 
   const timerRef = useRef(null);
   // The first render must not be read as "something changed".
   const seenVersion = useRef(version);
+  // ═══════════════════════════════════════════════════════════════════════
+  // ASKED ONCE PER SESSION. This is the loop fix.
+  // ═══════════════════════════════════════════════════════════════════════
+  //
+  // The library question — adopt, agree, or freeze — was re-decided on EVERY
+  // pass. Adopting calls `mutate`, which bumps `version`, which schedules
+  // another sync, which asks again. Whenever the answer does not come back
+  // identical the second time — an `applyLibrary` round trip that is not
+  // byte-for-byte what the blob held, a config gaining a default on the way
+  // through — the app either adopts forever at five-second intervals or lands
+  // in a freeze it can never leave, having just done the adopting itself.
+  //
+  // It is a question about THIS SESSION, so it is answered once, at the start,
+  // and thereafter this device's schedule is the source of truth. A ref, not
+  // state: flipping it must not itself cause a render, and it must not persist
+  // — a new session genuinely should ask again.
+  //
+  // ⚠️ A FREEZE DOES NOT SETTLE IT. That is the whole GS-8 protection: an
+  // unresolved conflict has to keep refusing until a human answers it, or the
+  // "asked once" rule would quietly wave through the stale device the gate
+  // exists to stop. Only agreement, adoption, or one of the two Cabana buttons
+  // counts as an answer.
+  const librarySettled = useRef(false);
 
   // ⚠️ ONE cache, in google.js, shared with sign-in and the calendar picker.
   // A second copy here would go stale independently and would defeat the whole
@@ -230,11 +253,13 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, now 
       // Two libraries disagreeing is the sharpest available signal that this
       // device is out of step, so it stops everything until that is settled.
       const localLibrary = libraryFrom(sched.toJSON());
-      if (remote.library) {
+      if (remote.library && !librarySettled.current) {
         const diff = diffLibrary(localLibrary, remote.library);
         if (diff.same) {
+          librarySettled.current = true;
           setLibraryState(null);
         } else if (taskHash(localLibrary) === freshLibraryHash()) {
+          librarySettled.current = true;
           mutate((s) => applyLibrary(s, remote.library));
           // Re-read rather than hashing what arrived: `applyLibrary` revives
           // through `Schedule.fromJSON`, so the schedule is the authority on
@@ -433,6 +458,10 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, now 
     }
     saveCalendarId(id);
     setCalendarId(id);
+    // A DIFFERENT calendar is a different question, so it must be asked again.
+    // Carrying "settled" across would let a device adopt from one calendar and
+    // then never look at the next one it was pointed at.
+    librarySettled.current = false;
     // A fresh calendar means nothing has been synced to it yet.
     stateRef.current = emptyState();
     saveSyncState(stateRef.current);
@@ -475,6 +504,8 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, now 
     const r = await pushLibrary(api, calendarId, json);
     stateRef.current = { ...stateRef.current, libHash: taskHash(libraryFrom(json)) };
     saveSyncState(stateRef.current);
+    // Answered. Stop asking for the rest of this session.
+    librarySettled.current = true;
     setLibraryState(null);
     setStatus('idle');
     setLastError(null);
@@ -489,6 +520,7 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, now 
     const r = mutate((s) => applyLibrary(s, remote.library));
     stateRef.current = { ...stateRef.current, libHash: taskHash(libraryFrom(sched.toJSON())) };
     saveSyncState(stateRef.current);
+    librarySettled.current = true;
     setLibraryState(null);
     setStatus('idle');
     setLastError(null);
@@ -498,6 +530,7 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, now 
   const forget = useCallback(() => {
     saveCalendarId(null);
     setCalendarId(null);
+    librarySettled.current = false;
     stateRef.current = emptyState();
     saveSyncState(stateRef.current);
   }, []);

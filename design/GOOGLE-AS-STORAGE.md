@@ -325,6 +325,23 @@ real library was gone from the store, and the first device looked fine only
 because it still held its own copy in localStorage.
 `design/probes/probe-google-second-device.mjs` drives exactly that.
 
+**⚠️ ASKED ONCE PER SESSION (2026-08-24).** The question below was originally
+re-decided on EVERY pass, and that loops: adopting calls `mutate`, which bumps
+`version`, which schedules another sync, which asks again. Any time the answer
+does not come back identical the second time — an `applyLibrary` round trip that
+is not byte-for-byte what the blob held, a config gaining a default on the way
+through — the app either adopts forever at five-second intervals, or freezes
+immediately after the user has just answered the freeze. The user hit the
+second one.
+
+It is a question about THIS SESSION, so `librarySettled` answers it once, at the
+start, and thereafter this device's schedule is the source of truth. Choosing a
+different calendar un-settles it, because that is a different question.
+
+**A FREEZE DOES NOT SETTLE IT** — that is the whole protection. Only agreement,
+adoption, or one of the two Cabana buttons counts as an answer, or "asked once"
+would quietly wave through the stale device this gate exists to stop.
+
 **The rule:**
 
 | the device | what happens |
