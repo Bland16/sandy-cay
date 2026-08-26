@@ -274,3 +274,66 @@ describe('the round trip through the REAL sync', () => {
     expect(here.dayNotes).toHaveLength(0);
   });
 });
+
+describe('⚠️ the fallout of leaving the library — found by bug check', () => {
+  // `LIBRARY_KEYS` answers "what rides in the hidden calendar event". GS-11
+  // removed day notes and blocked days from it, correctly. But `applyLibrary`
+  // iterates that list and has a SECOND caller — the Cabana's "Restore setup
+  // only" — where "they are events now" means nothing, because a footlocker
+  // file is a FILE. Two questions, one list, two collections lost.
+  //
+  // `design/probes/probe-gs11-fallout.mjs` prints both halves.
+  const oldSave = () => {
+    const s = sched();
+    s.addBucket({ label: 'Thesis', tags: ['thesis'] });
+    s.addDayNote({ label: 'Thanksgiving', from: '2026-11-26', to: '2026-11-26' });
+    s.addDayNote({ label: 'Reading week', from: '2026-11-23', to: '2026-11-27' });
+    s.blockDay(dateFromKey('2026-12-24'));
+    return s.toJSON();
+  };
+
+  it('a footlocker restore puts day notes and blocked days BACK', async () => {
+    const { applyLibrary, RESTORABLE_KEYS } = await import('../src/core/googleLibrary.js');
+    const s = sched();
+    applyLibrary(s, oldSave(), { keys: RESTORABLE_KEYS });
+
+    expect(s.dayNotes.map((n) => n.label).sort()).toEqual(['Reading week', 'Thanksgiving']);
+    expect(s.blockedDays).toEqual(['2026-12-24']);
+    expect(s.buckets.some((b) => b.label === 'Thesis')).toBe(true);
+  });
+
+  it('but the GOOGLE library path still refuses them', async () => {
+    // A copy in the blob alongside the events would resurrect a note deleted in
+    // Google, on every sync, forever. That is the whole reason they left.
+    const { applyLibrary } = await import('../src/core/googleLibrary.js');
+    const s = sched();
+    applyLibrary(s, oldSave());
+    expect(s.dayNotes).toHaveLength(0);
+    expect(s.blockedDays).toHaveLength(0);
+    expect(s.buckets.some((b) => b.label === 'Thesis')).toBe(true);
+  });
+
+  it('⚠️ a local edit to a day note CAN win a conflict', async () => {
+    // GS-7 is "newest edit wins", and the only clock either side has is the
+    // sync's own `dirtyAt` — stamped by `markDirty`, which ran over tasks and
+    // nothing else. With no stamp a note's localAt is 0 and REMOTE WINS EVERY
+    // TIME: rename a holiday here and anywhere else, and yours lost silently.
+    const { markDirty, taskHash: hash } = await import('../src/core/syncPlan.js');
+    const note = {
+      id: 'thanksgiving-note', label: 'Thanksgiving (mine)', from: '2026-11-26', to: '2026-11-26',
+    };
+    const pushed = { ...note, label: 'Thanksgiving' };
+    const state = {
+      lastSyncAt: 1000,
+      entries: { [note.id]: { hash: hash(pushed), eventId: 'ev-1', dirtyAt: 0 } },
+    };
+    const remote = [{
+      task: { ...pushed, label: 'Thanksgiving (theirs)' }, googleEventIds: ['ev-1'], updated: 2000,
+    }];
+
+    // Unstamped: the old behaviour, kept here so the difference is visible.
+    expect(planSync([note], remote, state).conflicts[0].winner).toBe('remote');
+    // Stamped, as `runSync` now does before planning notes.
+    expect(planSync([note], remote, markDirty(state, [note], 5000)).conflicts[0].winner).toBe('local');
+  });
+});

@@ -337,7 +337,21 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, now 
       // notes could not honour "nothing is written or deleted on this pass",
       // because by then something had been. Deciding everything first is what
       // makes the guard mean what it says.
-      const noteState = { lastSyncAt: stateRef.current.lastSyncAt || 0, entries: stateRef.current.noteEntries || {} };
+      // ⚠️ MARKED DIRTY LIKE A TASK. GS-7 is "newest edit wins", and the only
+      // clock either side has is the sync's own `dirtyAt`. `markDirty` was run
+      // over tasks and nothing else, so a day note's entry never carried one —
+      // and a conflict resolves on `(known && known.dirtyAt) || 0`, which meant
+      // 0, which meant REMOTE WON EVERY TIME. Rename a holiday here and
+      // anywhere else and yours lost silently, however recent it was.
+      const localNotes = sched.dayNotes.map((n) => n.toJSON());
+      const noteState = markDirty(
+        { lastSyncAt: stateRef.current.lastSyncAt || 0, entries: stateRef.current.noteEntries || {} },
+        localNotes,
+        t,
+      );
+      // Blocked days need no such stamp: the record is `{ id: 'blocked-<day>',
+      // day }`, so its hash is a pure function of its id and it cannot go dirty
+      // in place. A day is blocked or it is not — there is no edit to lose.
       const blockedState = { lastSyncAt: stateRef.current.lastSyncAt || 0, entries: stateRef.current.blockedEntries || {} };
       // ⚠️ `unreadable` GOES TO ALL THREE. It was passed only to the tasks, so a
       // corrupt day-note event was dropped from `remote.notes`, which made the
@@ -345,7 +359,7 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, now 
       // the note was deleted locally. The check that catches the corruption
       // completing the data loss, which is the precise failure this argument
       // exists to prevent for tasks.
-      const notePlan = planSync(sched.dayNotes.map((n) => n.toJSON()), remote.notes || [], noteState, {
+      const notePlan = planSync(localNotes, remote.notes || [], noteState, {
         unreadable: remote.unreadable,
       });
       const blockedPlan = planSync(sched.blockedDays.map(blockedRecord), remote.blockedDays || [], blockedState, {

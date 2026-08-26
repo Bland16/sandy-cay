@@ -84,6 +84,12 @@ export const LIBRARY_KEYS = [
  * forgetting this fails loudly instead of silently dropping it on adoption.
  */
 export const LIBRARY_FIELD = {
+  // ⚠️ `dayNotes` and `blockedDays` are NOT in LIBRARY_KEYS — they are all-day
+  // events now (GS-11) — but they keep their mapping here, because a FOOTLOCKER
+  // restore still has to put them back. A file is not a calendar; see
+  // RESTORABLE_KEYS.
+  dayNotes: 'dayNotes',
+  blockedDays: 'blockedDays',
   zones: 'zones',
   buckets: 'buckets',
   activities: 'activities',
@@ -96,6 +102,23 @@ export const LIBRARY_FIELD = {
   lastSeenWeek: '_lastSeenWeek',
   dismissed: '_dismissed',
 };
+
+/**
+ * What a FOOTLOCKER RESTORE puts back — which is MORE than the Google library
+ * carries, and the difference silently cost two collections.
+ *
+ * ⚠️ `LIBRARY_KEYS` answers "what rides in the hidden calendar event". GS-11
+ * removed day notes and blocked days from it, correctly: they are all-day
+ * events now, and a second copy in the blob would resurrect a note deleted in
+ * Google.
+ *
+ * But `applyLibrary` iterates that list and has a SECOND caller — the Cabana's
+ * "Restore setup only" — where "they are events now" means nothing, because a
+ * footlocker file is a FILE, not a calendar. Removing the keys quietly stopped
+ * that button restoring holidays and blocked days. Two questions, two lists;
+ * answering both from one list is what broke it.
+ */
+export const RESTORABLE_KEYS = [...LIBRARY_KEYS, 'dayNotes', 'blockedDays'];
 
 /**
  * Serialised by Schedule and deliberately NOT in the library — because each of
@@ -322,12 +345,13 @@ export function diffLibrary(here = {}, there = {}) {
  * arrives as a `Bucket` and the model as a `LearningModule` — the same path a
  * reload takes. Anything the library does not carry is left exactly as it was.
  */
-export function applyLibrary(sched, library) {
+export function applyLibrary(sched, library, { keys = LIBRARY_KEYS } = {}) {
   if (!library) return { applied: [] };
-  const incoming = libraryFrom(library);
+  const incoming = {};
+  for (const k of keys) if (library[k] !== undefined) incoming[k] = library[k];
   const next = Schedule.fromJSON({ ...sched.toJSON(), ...incoming });
   const applied = [];
-  for (const key of LIBRARY_KEYS) {
+  for (const key of keys) {
     if (incoming[key] === undefined) continue;
     const field = LIBRARY_FIELD[key];
     if (!field) continue;

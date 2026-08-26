@@ -5,7 +5,7 @@
 import { useRef, useState } from 'react';
 import {
   exportState, summarizeImport, planBlockerConversion, convertBlockersToDayNotes,
-  planLibraryMerge, applyLibraryMerge, applyLibrary,
+  planLibraryMerge, applyLibraryMerge, applyLibrary, RESTORABLE_KEYS,
 } from '../../core/index.js';
 import { fmtDur } from '../format.js';
 import Icon from '../Icon.jsx';
@@ -133,10 +133,15 @@ export default function Cabana({
     const n = (count, one, many) => `${count} ${count === 1 ? one : many}`;
     const msg = `Replace your buckets, activities, zones and settings with this file's`
       + ` (${n(sum.bucketCount, 'bucket', 'buckets')}, ${n(sum.activityCount, 'activity', 'activities')},`
-      + ` ${n(sum.zoneCount, 'zone', 'zones')})?`
+      + ` ${n(sum.zoneCount, 'zone', 'zones')}`
+      + `${sum.dayNoteCount ? `, ${n(sum.dayNoteCount, 'day note', 'day notes')}` : ''})?`
       + ' Your tasks are kept. Anything you have made since is discarded.';
     if (!window.confirm(msg)) return;
-    const r = mutate((s) => applyLibrary(s, blob));
+    // ⚠️ RESTORABLE_KEYS, not the library's own list. A footlocker file is a
+    // FILE: day notes and blocked days live in it, and they must come back even
+    // though they no longer ride in the Google library event (GS-11). Passing
+    // the narrower list silently dropped every holiday on restore.
+    const r = mutate((s) => applyLibrary(s, blob, { keys: RESTORABLE_KEYS }));
     showToast(`Restored ${r.applied.length} collections · your week is untouched`);
     bump();
   });
