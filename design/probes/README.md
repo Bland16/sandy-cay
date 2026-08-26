@@ -23,6 +23,7 @@ public; never paste raw calendar data into a probe.
 | `probe-css-cascade.mjs` | which media block WINS at a width — a phone rule beaten by a later, wider one is invisible to every test |
 | `probe-event-note.mjs` | what an event's note SAYS in Google — three identical “Wash” events told apart, and GS-10 stated on the event |
 | `probe-sync-convergence.mjs` | six passes, not one — the library question asked every pass vs asked once. A loop is invisible to a single-pass test |
+| `probe-bulk-delete-gap.mjs` | the bulk-delete guard covered TASKS only — an emptied calendar silently took every day note and blocked day with it |
 | `probe-horizon.mjs` | the `spread`/proximity-renormalisation experiment — **rejected**, it lengthens the streak (WEEKLY-PLANNING §4.5) |
 | `probe-week-shapes.mjs` | four week shapes; the ~40%-full week concentrates work **harder** than an empty one |
 | `probe-mental-frontload.mjs` | placement is energy-blind: 960 of 1200 minutes onto the four worst days |

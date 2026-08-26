@@ -162,6 +162,17 @@ datum is the date, and the date lives in `start.date` — a native field, which
 cannot be silently truncated the way an over-long extendedProperty can. A
 checksum exists to catch that truncation; there is nothing here for it to guard.
 
+⚠️ **AND THROUGH ITS GUARDS TOO — which they did not, at first (fixed
+2026-08-25).** Reusing `planSync` for day notes and blocked days inherited its
+DECISIONS but none of its PROTECTIONS: `isBulkDelete` was consulted for tasks
+only, and `unreadable` was passed to tasks only. So an emptied calendar took
+every holiday and every blocked day with it silently, and a corrupt day-note
+event — dropped from `remote.notes`, therefore looking absent, therefore reading
+as deleted-elsewhere — deleted the note it was trying to protect. All three
+collections are now planned BEFORE anything is written, so "nothing was changed"
+can be true of the whole pass, and any one of them tripping the guard stops it.
+Proven by `design/probes/probe-bulk-delete-gap.mjs`.
+
 **All three collections go through ONE planner.** `planSync` serves tasks, day
 notes and blocked days — the decisions are identical (the present-here-absent-
 there ambiguity that needs a sync record, the conflict rule, the unreadable

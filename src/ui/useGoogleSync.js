@@ -331,15 +331,56 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, now 
       // restored schedule. Nothing is written or deleted on this pass; the
       // record is left untouched so the next pass can still do the right thing
       // once the cause is dealt with.
-      if (isBulkDelete(plan, localTasks.length)) {
+      // ⚠️ PLANNED BEFORE ANYTHING IS WRITTEN, all three of them. GS-11 routed
+      // day notes and blocked days through this same planner but planned them
+      // AFTER the tasks had already been written — so a guard that trips on
+      // notes could not honour "nothing is written or deleted on this pass",
+      // because by then something had been. Deciding everything first is what
+      // makes the guard mean what it says.
+      const noteState = { lastSyncAt: stateRef.current.lastSyncAt || 0, entries: stateRef.current.noteEntries || {} };
+      const blockedState = { lastSyncAt: stateRef.current.lastSyncAt || 0, entries: stateRef.current.blockedEntries || {} };
+      // ⚠️ `unreadable` GOES TO ALL THREE. It was passed only to the tasks, so a
+      // corrupt day-note event was dropped from `remote.notes`, which made the
+      // note look ABSENT, which reads as "deleted on the other device" — and
+      // the note was deleted locally. The check that catches the corruption
+      // completing the data loss, which is the precise failure this argument
+      // exists to prevent for tasks.
+      const notePlan = planSync(sched.dayNotes.map((n) => n.toJSON()), remote.notes || [], noteState, {
+        unreadable: remote.unreadable,
+      });
+      const blockedPlan = planSync(sched.blockedDays.map(blockedRecord), remote.blockedDays || [], blockedState, {
+        unreadable: remote.unreadable,
+      });
+
+      logPlan(notePlan);
+      logPlan(blockedPlan);
+
+      // ⚠️ STOP BEFORE EMPTYING THE SCHEDULE — AND THAT MEANS ALL OF IT. A sync
+      // about to delete most of anything at once is far likelier to be a bug
+      // than an intention: it is what a stale sync record, a re-made calendar
+      // and a half-finished restore all look like from here, and one of those
+      // really did wipe a restored schedule.
+      //
+      // The guard covered TASKS ONLY until 2026-08-25. Day notes and blocked
+      // days went through the same planner with none of it, so an emptied
+      // calendar took every holiday and every blocked day with it, silently.
+      // Proven by `design/probes/probe-bulk-delete-gap.mjs`.
+      const bulk = [
+        ['tasks', plan, localTasks.length],
+        ['day notes', notePlan, sched.dayNotes.length],
+        ['blocked days', blockedPlan, sched.blockedDays.length],
+      ].find(([, p, n]) => isBulkDelete(p, n));
+
+      if (bulk) {
+        const [what, p, n] = bulk;
         setStatus('error');
-        const msg = `Sync stopped: it was about to remove ${plan.deleteLocal.length} of your `
-          + `${localTasks.length} tasks because they are missing from the calendar. `
+        const msg = `Sync stopped: it was about to remove ${p.deleteLocal.length} of your `
+          + `${n} ${what} because they are missing from the calendar. `
           + 'Nothing was changed. If you just restored a backup, use "Use a different calendar" '
           + 'in the Cabana to start the calendar fresh.';
         setLastError(msg);
         logStopped(msg);
-        showToast('Sync stopped — it would have deleted most of your tasks');
+        showToast(`Sync stopped — it would have deleted most of your ${what}`);
         return plan;
       }
 
@@ -372,12 +413,7 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, now 
       // only by luck, and one map would let a task and a note with the same id
       // overwrite each other's hash — silently, and only for whoever happened to
       // collide.
-      const noteState = { lastSyncAt: stateRef.current.lastSyncAt || 0, entries: stateRef.current.noteEntries || {} };
-      const notePlan = planSync(sched.dayNotes.map((n) => n.toJSON()), remote.notes || [], noteState);
       const noteApplied = await applyPlan(api, calendarId, notePlan, { encode: encodeNoteParts });
-
-      const blockedState = { lastSyncAt: stateRef.current.lastSyncAt || 0, entries: stateRef.current.blockedEntries || {} };
-      const blockedPlan = planSync(sched.blockedDays.map(blockedRecord), remote.blockedDays || [], blockedState);
       const blockedApplied = await applyPlan(api, calendarId, blockedPlan, { encode: encodeBlockedParts });
 
       logApplied(noteApplied);

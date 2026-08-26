@@ -405,3 +405,80 @@ describe('⚠️ asked ONCE per session — the loop fix', () => {
     vi.useRealTimers();
   });
 });
+
+describe('⚠️ the bulk-delete guard covers EVERY collection, not just tasks', () => {
+  // GS-11 routed day notes and blocked days through the same planner as tasks
+  // and inherited none of its protections. An emptied calendar — a re-made one,
+  // a footlocker restore, events cleared by hand — took every holiday and every
+  // blocked day with it, silently. `isBulkDelete` already recognised the
+  // situation; nothing on that path asked it.
+  //
+  // `design/probes/probe-bulk-delete-gap.mjs` drives it end to end.
+  const NOTES = [
+    ['Thanksgiving', '2026-11-26'], ['Reading week', '2026-11-23'], ['Term ends', '2026-12-12'],
+    ['Mum visiting', '2026-10-03'], ['Conference', '2026-09-18'], ['Bank holiday', '2026-08-31'],
+  ];
+
+  const withNotes = () => {
+    const s = usedSchedule();
+    for (const [label, day] of NOTES) s.addDayNote({ label, from: day, to: day });
+    return s;
+  };
+
+  it('stops the pass when the notes would be wiped, and changes NOTHING', async () => {
+    const sched = withNotes();
+    // The sync remembers pushing them; the calendar no longer has them.
+    const state = { lastSyncAt: 1, entries: {}, noteEntries: {} };
+    for (const n of sched.dayNotes) state.noteEntries[n.id] = { hash: 'x', eventId: `ev-${n.id}`, dirtyAt: 0 };
+    window.localStorage.setItem('sandycay.sync.state', JSON.stringify(state));
+
+    pullMock.mockImplementation(async () => ({
+      tasks: [],
+      notes: [],            // ← everything gone from the calendar
+      blockedDays: [],
+      library: libraryFrom(sched.toJSON()),
+      libraryError: null,
+      dropped: [],
+      unreadable: new Set(),
+    }));
+
+    const { result } = mount({ sched, mutate: vi.fn((fn) => fn(sched)), showToast: vi.fn() });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(sched.dayNotes).toHaveLength(NOTES.length);
+    expect(result.current.status).toBe('error');
+    expect(result.current.lastError).toMatch(/day notes/);
+    // "Nothing was changed" has to be true of the WHOLE pass, which is why the
+    // plans are all computed before anything is written.
+    expect(applyPlanMock).not.toHaveBeenCalled();
+    expect(pushLibraryMock).not.toHaveBeenCalled();
+  });
+
+  it('says which collection it stopped for', async () => {
+    const sched = usedSchedule();
+    for (const day of ['2026-12-24', '2026-12-25', '2026-12-26']) {
+      sched.blockDay(new Date(2026, 11, Number(day.slice(-2))));
+    }
+    const state = { lastSyncAt: 1, entries: {}, blockedEntries: {} };
+    for (const d of sched.blockedDays) {
+      state.blockedEntries[`blocked-${d}`] = { hash: 'x', eventId: `ev-${d}`, dirtyAt: 0 };
+    }
+    window.localStorage.setItem('sandycay.sync.state', JSON.stringify(state));
+
+    pullMock.mockImplementation(async () => ({
+      tasks: [],
+      notes: [],
+      blockedDays: [],
+      library: libraryFrom(sched.toJSON()),
+      libraryError: null,
+      dropped: [],
+      unreadable: new Set(),
+    }));
+
+    const { result } = mount({ sched, mutate: vi.fn((fn) => fn(sched)), showToast: vi.fn() });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(sched.blockedDays).toHaveLength(3);
+    expect(result.current.lastError).toMatch(/blocked days/);
+  });
+});
