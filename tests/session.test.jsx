@@ -8,6 +8,46 @@
 // can be changed rather than being a one-way door.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup, screen, fireEvent, act } from '@testing-library/react';
+
+// ════════════════════════════════════════════════════════════════════════════
+// THE TOKEN, WHICH IS A DIFFERENT THING FROM THE SESSION.
+// ════════════════════════════════════════════════════════════════════════════
+//
+// jsdom has no Google, so the real `cachedAccessToken()` is null forever — and
+// "signed in with no token" is now a state the app renders DIFFERENTLY, so the
+// tests have to be able to say which one they mean.
+//
+// It defaults to NO token, because that is what a reload actually is: the cache
+// lives in module memory in google.js and does not survive one. Tests that want
+// to be inside the app say so with `holdToken()`.
+let tokenHeld = false;
+let tokenRefusal = null;
+const tokenAsks = [];
+const holdToken = () => { tokenHeld = true; };
+/** Google says no — the popup was blocked, or consent was cancelled. */
+const refuseToken = (why) => { tokenRefusal = why; };
+
+vi.mock('../src/ui/google.js', async (importOriginal) => {
+  const real = await importOriginal();
+  return {
+    ...real,
+    cachedAccessToken: () => (tokenHeld ? 'test-token' : null),
+    clearAccessToken: () => { tokenHeld = false; },
+    getAccessToken: (clientId, opts = {}) => {
+      // ⚠️ MIRRORS THE REAL ONE, and the distinction is the whole point of
+      // `tokenAsks`: a live cached token comes back with NO window opened, so
+      // it is not an "ask". Only a miss (or `force`) reaches Google, and only
+      // that can be blocked. Counting cache hits here would make the assertion
+      // "never fires a popup that cannot succeed" meaningless.
+      if (tokenHeld && !opts.force) return Promise.resolve('test-token');
+      tokenAsks.push(opts);
+      if (tokenRefusal) return Promise.reject(new Error(tokenRefusal));
+      tokenHeld = true;
+      return Promise.resolve('test-token');
+    },
+  };
+});
+
 import App from '../src/App.jsx';
 import { Schedule, defaultConfig, weekStart as weekStartOf, addDays } from '../src/core/index.js';
 import { STORAGE_KEY } from '../src/ui/useEngine.js';
@@ -31,6 +71,9 @@ const onLanding = () => !!document.querySelector('.lz');
 const inApp = () => !!document.querySelector('.stage');
 
 beforeEach(() => {
+  tokenHeld = false;
+  tokenRefusal = null;
+  tokenAsks.length = 0;
   window.localStorage.clear();
   window.innerWidth = 1440;
   window.matchMedia = (query) => ({
@@ -139,12 +182,13 @@ describe('the Google door', () => {
     // A door that silently does nothing is the disabled-button-that-swallows-
     // clicks bug this project has already had once.
     seedSchedule();
+    refuseToken('Popup window closed');
     render(<App />);
     fireEvent.click(screen.getByText(/Bury it in the chest/i).closest('button'));
     await act(async () => { await Promise.resolve(); });
-    // jsdom cannot load Google's script, so the attempt fails — which is
-    // exactly the path being tested. Either an error is shown, or we are still
-    // on the entry screen; what must NOT happen is a silent sign-in.
+    // Google refused, which is exactly the path being tested. Either an error
+    // is shown, or we are still on the entry screen; what must NOT happen is a
+    // silent sign-in.
     await vi.waitFor(() => {
       expect(onLanding()).toBe(true);
     });
@@ -181,8 +225,12 @@ describe('step two: which calendar is the storage (GS-5)', () => {
     expect(screen.getByText(/refuse a calendar that already has other events/i)).toBeTruthy();
   });
 
-  it('goes straight to the app once a calendar is stored', () => {
+  it('goes straight to the app once a calendar is stored AND a token is held', () => {
+    // ⚠️ THIS TEST USED TO OMIT THE TOKEN, and asserted the app appeared
+    // anyway. That was the bug, asserted as a feature — see the reconnect-gate
+    // block below for what the missing half did to a real user.
     seedSchedule();
+    holdToken();
     window.localStorage.setItem(SESSION_KEY, SESSION.GOOGLE);
     window.localStorage.setItem('sandycay.sync.calendar', JSON.stringify('cal-1'));
     render(<App />);
@@ -227,6 +275,151 @@ describe('step two: which calendar is the storage (GS-5)', () => {
   });
 });
 
+describe('the reconnect gate — a session is not a token', () => {
+  // ════════════════════════════════════════════════════════════════════════
+  // THE BUG, AS REPORTED: "every now and then it says popup session failed…
+  // I say if the popup fails don't take me to the local storage calendar."
+  // ════════════════════════════════════════════════════════════════════════
+  //
+  // `session` persists; the token does not — it lives in module memory in
+  // google.js and every reload starts without one. App gated the whole app on
+  // the session alone, so a reload rendered the week grid out of localStorage
+  // and THEN let useGoogleSync ask Google for a token from a mount effect,
+  // where a popup cannot survive. The user was left looking at local data with
+  // nothing on screen to say so.
+  //
+  // ⚠️ Every test here fails if the gate in App.jsx is removed. The one that
+  // matters most is the FIRST: it is the only one that can tell "signed in"
+  // from "actually connected".
+
+  it('does NOT show the app when signed in with no token — it asks', async () => {
+    seedSchedule();
+    window.localStorage.setItem(SESSION_KEY, SESSION.GOOGLE);
+    window.localStorage.setItem('sandycay.sync.calendar', JSON.stringify('cal-1'));
+    render(<App />);
+    await act(async () => {});
+
+    expect(inApp()).toBe(false);
+    expect(onLanding()).toBe(true);
+    // and the local week is genuinely not on screen — this is the assertion
+    // the user's sentence turns into.
+    expect(screen.queryByText('Monday thing')).toBe(null);
+    expect(screen.getByText(/reconnect to Google/i)).toBeTruthy();
+  });
+
+  it('⚠️ never fires a popup that cannot succeed', async () => {
+    // The mount effect and the 5s debounce are BOTH non-gesture contexts, so a
+    // token request from either is not unlucky, it is impossible. Asking anyway
+    // is what produced "popup session failed" on a perfectly healthy account.
+    seedSchedule();
+    window.localStorage.setItem(SESSION_KEY, SESSION.GOOGLE);
+    window.localStorage.setItem('sandycay.sync.calendar', JSON.stringify('cal-1'));
+    render(<App />);
+    await act(async () => { vi.advanceTimersByTime(20000); });
+
+    expect(tokenAsks).toEqual([]);
+  });
+
+  it('the chest reconnects, from a click, and lands you in the app', async () => {
+    seedSchedule();
+    window.localStorage.setItem(SESSION_KEY, SESSION.GOOGLE);
+    window.localStorage.setItem('sandycay.sync.calendar', JSON.stringify('cal-1'));
+    render(<App />);
+    await act(async () => {});
+    expect(inApp()).toBe(false);
+
+    await act(async () => {
+      fireEvent.click(screen.getByText(/Bury it in the chest/i).closest('button'));
+    });
+    // ONE ask, and it came from the click — the only context a popup survives.
+    expect(tokenAsks.length).toBe(1);
+    expect(inApp()).toBe(true);
+    expect(screen.getByText('Monday thing')).toBeTruthy();
+  });
+
+  it('⚠️ reconnecting PULLS — the latch re-arms, it is not spent for the day', async () => {
+    // The open-once latch exists so a re-render does not re-pull. But `enabled`
+    // now goes false whenever the token is gone, so without re-arming it the
+    // pull that makes Google the truth (GS-3) would happen only on a load that
+    // happened to hold a token — i.e. almost never. Signing back in has to
+    // fetch whatever moved while we were away.
+    seedSchedule();
+    window.localStorage.setItem(SESSION_KEY, SESSION.GOOGLE);
+    window.localStorage.setItem('sandycay.sync.calendar', JSON.stringify('cal-1'));
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+      .mockImplementation(async () => ({ ok: true, status: 200, json: async () => ({ items: [] }), text: async () => '' }));
+    try {
+      render(<App />);
+      await act(async () => {});
+      expect(fetchSpy).not.toHaveBeenCalled();   // nothing while disconnected
+
+      await act(async () => {
+        fireEvent.click(screen.getByText(/Bury it in the chest/i).closest('button'));
+      });
+      await act(async () => {});
+      expect(inApp()).toBe(true);
+      // ...and the reconnect actually went and looked at the calendar.
+      expect(fetchSpy).toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('⚠️ the bottle is "just this once" and does NOT convert you to a guest', async () => {
+    // The user's call. Two different questions reach the same door: on the
+    // entry screen it means "I want to be a guest"; here it means "let me at
+    // the local copy for now". Writing the guest marker here would silently
+    // end the sync for good, and the next reload would never ask again.
+    seedSchedule();
+    window.localStorage.setItem(SESSION_KEY, SESSION.GOOGLE);
+    window.localStorage.setItem('sandycay.sync.calendar', JSON.stringify('cal-1'));
+    render(<App />);
+    await act(async () => {});
+
+    await act(async () => {
+      fireEvent.click(screen.getByText(/Sail without a flag/i).closest('button'));
+    });
+    expect(inApp()).toBe(true);
+    expect(screen.getByText('Monday thing')).toBeTruthy();
+    // THE POINT: still a Google session, so the next load asks again.
+    expect(loadSession()).toBe(SESSION.GOOGLE);
+    expect(window.localStorage.getItem(SESSION_KEY)).toBe(SESSION.GOOGLE);
+  });
+
+  it('and a local-only session still never reaches the network', async () => {
+    // `enabled` is the whole guarantee. Having taken the local door, this
+    // session must behave exactly like a guest until it reconnects.
+    seedSchedule();
+    window.localStorage.setItem(SESSION_KEY, SESSION.GOOGLE);
+    window.localStorage.setItem('sandycay.sync.calendar', JSON.stringify('cal-1'));
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(() => {
+      throw new Error('a local-only session must not fetch');
+    });
+    try {
+      render(<App />);
+      await act(async () => {});
+      await act(async () => {
+        fireEvent.click(screen.getByText(/Sail without a flag/i).closest('button'));
+      });
+      await act(async () => { vi.advanceTimersByTime(20000); });
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('a GUEST is never asked to reconnect', async () => {
+    // The gate keys on the Google session, so the guest door must be untouched
+    // by all of this.
+    seedSchedule();
+    window.localStorage.setItem(SESSION_KEY, SESSION.GUEST);
+    render(<App />);
+    await act(async () => {});
+    expect(inApp()).toBe(true);
+    expect(tokenAsks).toEqual([]);
+  });
+});
+
 describe('the choice is not a one-way door', () => {
   it('can be changed from the Cabana, WITHOUT losing the schedule', () => {
     // Without this, switching from guest to Google would mean clearing browser
@@ -254,6 +447,7 @@ describe('the choice is not a one-way door', () => {
     // back in with Google skipped the picker and silently reused the old one —
     // there was no way to re-choose it short of clearing browser storage.
     seedSchedule();
+    holdToken();                           // in the app, not on the reconnect gate
     window.localStorage.setItem(SESSION_KEY, SESSION.GOOGLE);
     window.localStorage.setItem('sandycay.sync.calendar', JSON.stringify('cal-1'));
     render(<App />);

@@ -13,7 +13,7 @@ import { useEngine } from './ui/useEngine.js';
 import { useViewport, readViewport } from './ui/useViewport.js';
 import { loadZoom, saveZoom, zoomIn, zoomOut, DEFAULT_ZOOM } from './ui/zoom.js';
 import { loadSession, saveSession, clearSession, SESSION } from './ui/session.js';
-import { getAccessToken, readClientId } from './ui/google.js';
+import { getAccessToken, readClientId, cachedAccessToken } from './ui/google.js';
 import { useGoogleSync } from './ui/useGoogleSync.js';
 import LandingScreen from './ui/components/LandingScreen.jsx';
 import CalendarPicker from './ui/components/CalendarPicker.jsx';
@@ -83,8 +83,41 @@ export default function App() {
   const [signingIn, setSigningIn] = useState(false);
   const [signInError, setSignInError] = useState(null);
 
+  // ════════════════════════════════════════════════════════════════════════
+  // A SIGNED-IN SESSION IS NOT THE SAME THING AS A TOKEN IN HAND.
+  // ════════════════════════════════════════════════════════════════════════
+  //
+  // `session` says which door you came through, and it persists. The TOKEN
+  // does not: it lives in memory in google.js and is gone on every reload, by
+  // design. Treating the first as evidence of the second is what put the app's
+  // week grid on screen — full of localStorage — while Google had refused us.
+  //
+  // Google Identity Services has no silent token path, so this can only ever
+  // be answered by a click. `authed` is therefore what gates the app, and it
+  // starts as "do we already hold one", which is true only within a live tab.
+  const [authed, setAuthed] = useState(() => !!cachedAccessToken());
+
+  // The user's escape hatch, and deliberately NOT persisted: "show me the local
+  // copy just this once". The session marker stays `google`, so the Cabana keeps
+  // its Google panel and the next load asks again — picking this must never
+  // quietly convert a synced user into a guest. Local edits are not at risk:
+  // GS-8 asks which library is right the next time the two disagree.
+  const [localOnly, setLocalOnly] = useState(false);
+
+  // Handed to the sync. Whatever it was doing, it has just discovered Google
+  // does not know us — so stop showing a grid that pretends otherwise.
+  const onAuthLost = useCallback(() => setAuthed(false), []);
+
   const chooseSession = useCallback(async (choice) => {
     if (choice === SESSION.GUEST) {
+      // ⚠️ TWO DIFFERENT QUESTIONS REACH THIS DOOR. On the entry screen it
+      // means "I want to be a guest". On the reconnect gate — where the session
+      // is ALREADY google and only the token is missing — it means "let me at
+      // the local copy for now", which must not rewrite the session marker.
+      if (session === SESSION.GOOGLE) {
+        setLocalOnly(true);
+        return;
+      }
       saveSession(SESSION.GUEST);
       setSession(SESSION.GUEST);
       return;
@@ -98,6 +131,9 @@ export default function App() {
       await getAccessToken(readClientId());
       saveSession(SESSION.GOOGLE);
       setSession(SESSION.GOOGLE);
+      // The point of the whole gate: a token is now genuinely held.
+      setAuthed(true);
+      setLocalOnly(false);
     } catch (err) {
       // ⚠️ SAY IT. A door that silently does nothing is the disabled-button
       // bug this project has already had once.
@@ -105,7 +141,7 @@ export default function App() {
     } finally {
       setSigningIn(false);
     }
-  }, []);
+  }, [session]);
 
   const [zoom, setZoom] = useState(loadZoom);
   // The transient value a pinch is currently at. `zoom` stays a RUNG at all
@@ -175,11 +211,18 @@ export default function App() {
   // A guest session must never reach the sync, and this is the gate that keeps
   // that promise honest — the hook itself does nothing when it is false.
   const sync = useGoogleSync({
-    enabled: session === SESSION.GOOGLE,
+    // ⚠️ THREE CONDITIONS, AND `authed` IS THE ONE THAT WAS MISSING. "Enabled"
+    // has to mean "can actually sync", not "chose Google once" — a session
+    // marker survives a reload and the token does not, and treating the first
+    // as the second is what let the sync fire into a browser that would never
+    // give it a popup. `localOnly` rides along for the guest reason: a session
+    // the user has asked to keep on this device must not reach the network.
+    enabled: session === SESSION.GOOGLE && !localOnly && authed,
     sched,
     mutate,
     version,
     showToast,
+    onAuthLost,
   });
 
   const closePanel = useCallback(() => setSelection(null), []);
@@ -501,6 +544,31 @@ export default function App() {
           setSession(null);
           setSignInError(null);
         }}
+      />
+    );
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // THE RECONNECT GATE — signed in, calendar chosen, but no token in hand.
+  // ════════════════════════════════════════════════════════════════════════
+  //
+  // This is the state a reload always lands in, and the state an afternoon
+  // reaches when the hour runs out. Falling through it put the localStorage
+  // copy on screen dressed as the user's calendar, with the only word about it
+  // a toast and a line in the Cabana.
+  //
+  // It reuses the entry screen rather than adding a fourth: the chest IS the
+  // reconnect — it asks for a token from a click, which is the one context a
+  // popup survives — and the bottle is already the "keep it on this device"
+  // door. `chooseSession` reads the session to tell the two meanings apart.
+  //
+  // `localOnly` is the way past, so this is a gate and never a wall.
+  if (session === SESSION.GOOGLE && !authed && !localOnly) {
+    return (
+      <LandingScreen
+        busy={signingIn}
+        error={signInError || 'Sandy Cay needs to reconnect to Google — open the chest to sign back in, or sail on to work from this device for now.'}
+        onChoose={chooseSession}
       />
     );
   }

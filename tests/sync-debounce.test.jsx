@@ -19,8 +19,16 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { Schedule, defaultConfig } from '../src/core/index.js';
 
+// ⚠️ `cachedAccessToken` matters as much as `getAccessToken` here. `runSync`
+// now refuses to run without a token ALREADY in hand, because every one of its
+// callers is a non-gesture context where a Google popup cannot open. These
+// tests exercise the sync's decisions, not sign-in, so they hold a live token
+// throughout — omit it and the hook correctly does nothing at all.
+let tokenHeld = true;
 vi.mock('../src/ui/google.js', () => ({
   getAccessToken: vi.fn(async () => 'token-1'),
+  cachedAccessToken: () => (tokenHeld ? 'token-1' : null),
+  clearAccessToken: () => { tokenHeld = false; },
   readClientId: () => 'client',
 }));
 
@@ -47,6 +55,7 @@ const { useGoogleSync, DEBOUNCE_MS, SYNC_CALENDAR_KEY } = await import('../src/u
 beforeEach(() => {
   window.localStorage.clear();
   window.localStorage.setItem(SYNC_CALENDAR_KEY, JSON.stringify('cal-1'));
+  tokenHeld = true;
   pullMock.mockClear();
   applyPlanMock.mockClear();
   pushLibraryMock.mockClear();
@@ -80,6 +89,41 @@ describe('it runs at all', () => {
     rerender({ version: 1, enabled: true });
     await act(async () => { await Promise.resolve(); });
     expect(runs()).toBe(1);
+  });
+
+  it('does NOTHING, and says so, when no token is held', async () => {
+    // Every caller of runSync is a non-gesture context, so asking Google here
+    // cannot open a popup — it can only fail. Before this guard the failure was
+    // reported as a sync error while the app went on showing localStorage as
+    // though it were the calendar.
+    tokenHeld = false;
+    const { sched, showToast, mutate } = setup();
+    const onAuthLost = vi.fn();
+    mount({ enabled: true, sched, mutate, showToast, onAuthLost });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(runs()).toBe(0);              // nothing was pulled
+    expect(onAuthLost).toHaveBeenCalled(); // and the app was TOLD
+  });
+
+  it('⚠️ pulls AGAIN after reconnecting — the open-once latch re-arms', async () => {
+    // `enabled` now means "can actually sync", so it goes false when the hour
+    // runs out and true again when the user signs back in. The latch that stops
+    // a re-render re-pulling must not also stop THAT: GS-3 says Google is the
+    // truth, and a reconnect is exactly when we do not know what changed while
+    // we were away.
+    const { sched, showToast, mutate } = setup();
+    const { rerender } = mount({ enabled: true, sched, mutate, showToast });
+    await act(async () => { await Promise.resolve(); });
+    expect(runs()).toBe(1);
+
+    rerender({ version: 1, enabled: false });          // the token expired
+    await act(async () => { await Promise.resolve(); });
+    expect(runs()).toBe(1);                            // and nothing ran
+
+    rerender({ version: 1, enabled: true });           // signed back in
+    await act(async () => { await Promise.resolve(); });
+    expect(runs()).toBe(2);
   });
 });
 

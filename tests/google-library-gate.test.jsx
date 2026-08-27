@@ -21,8 +21,15 @@ import {
   LIBRARY_KEYS, LIBRARY_FIELD, libraryFrom, diffLibrary, applyLibrary,
 } from '../src/core/googleLibrary.js';
 
+// ⚠️ `cachedAccessToken` matters as much as `getAccessToken` here. `runSync`
+// now refuses to run without a token ALREADY in hand, because every one of its
+// callers is a non-gesture context where a Google popup cannot open. These
+// tests exercise the sync's decisions, not sign-in, so they hold a live token
+// throughout — omit it and the hook correctly does nothing at all.
 vi.mock('../src/ui/google.js', () => ({
   getAccessToken: vi.fn(async () => 'token-1'),
+  cachedAccessToken: () => 'token-1',
+  clearAccessToken: () => {},
   readClientId: () => 'client',
 }));
 

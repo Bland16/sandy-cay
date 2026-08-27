@@ -31,7 +31,9 @@ import { Schedule, defaultConfig, seedStarterBuckets, dateFromKey } from '../cor
 import {
   makeApi, pull, applyPlan, pushLibrary, inspectCalendar, encodeNoteParts, encodeBlockedParts,
 } from './googleSync.js';
-import { getAccessToken, readClientId } from './google.js';
+import {
+  getAccessToken, readClientId, cachedAccessToken, clearAccessToken,
+} from './google.js';
 import {
   logPull, logPlan, logApplied, logStopped, logOutside,
 } from './syncLog.js';
@@ -143,12 +145,30 @@ export function groupNamesFor(sched) {
 export const blockedRecord = (day) => ({ id: `blocked-${day}`, day });
 
 /**
+ * Is this Google saying "we do not know who you are" rather than "that
+ * request was wrong"?
+ *
+ * The two need opposite answers. A 404 or a rate limit is reported or
+ * retried; a lost identity can only be fixed by a HUMAN CLICKING, because
+ * Google Identity Services has no silent token path — every token comes
+ * through a popup, and a popup only survives inside a user gesture. So an
+ * auth failure must stop trying and go and ask.
+ */
+export function isAuthFailure(message) {
+  return /popup|consent|expired|\b401\b|access_denied|interaction_required|sign-in/i
+    .test(String(message || ''));
+}
+
+/**
  * @param enabled   only true for a signed-in session — a guest must never sync
  * @param sched     the live Schedule
  * @param mutate    App's mutate(fn) — applies a change and re-reads
  * @param version   bumps on every engine change; this is the "something moved"
  *                  signal that starts the debounce
  * @param showToast say what happened
+ * @param onAuthLost Google no longer knows us, and only a click can fix it —
+ *                  App sends the user back to the entry screen rather than
+ *                  leaving them on a grid that looks synced and is not
  */
 /**
  * ⚠️ HOISTED, not a default parameter. `now = () => Date.now()` in the argument
@@ -160,7 +180,7 @@ export const blockedRecord = (day) => ({ id: `blocked-${day}`, day });
  */
 const wallClock = () => Date.now();
 
-export function useGoogleSync({ enabled, sched, mutate, version, showToast, now = wallClock }) {
+export function useGoogleSync({ enabled, sched, mutate, version, showToast, onAuthLost, now = wallClock }) {
   const [calendarId, setCalendarId] = useState(loadCalendarId);
   const [status, setStatus] = useState('idle'); // idle | syncing | error | off
   const [lastError, setLastError] = useState(null);
@@ -221,6 +241,18 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, now 
     [],
   );
 
+  // "We no longer know who you are — go and ask." A ref for the same reason
+  // `runRef` is one: the effects below must not re-run because a parent handed
+  // down a new function identity.
+  const authLostRef = useRef(onAuthLost);
+  authLostRef.current = onAuthLost;
+  const loseAuth = useCallback((message) => {
+    clearAccessToken();
+    setStatus('error');
+    setLastError(message || 'Google sign-in needed.');
+    if (authLostRef.current) authLostRef.current(message);
+  }, []);
+
   /**
    * One full pass: pull, plan, apply both halves, record ONLY what Google
    * confirmed. `advanceState` is given the executor's results and never the
@@ -228,6 +260,32 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, now 
    */
   const runSync = useCallback(async () => {
     if (!enabled || !calendarId || runningRef.current) return null;
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ⚠️ NEVER ASK FOR A TOKEN FROM HERE. ASK FOR A CLICK INSTEAD.
+    // ═══════════════════════════════════════════════════════════════════════
+    //
+    // Every caller of this function is a NON-GESTURE context: the open-once
+    // mount effect, and the 5s debounce `setTimeout`. `getAccessToken` opens a
+    // Google popup, and a browser blocks a popup with no user gesture behind
+    // it — so calling it from either place does not "sometimes fail", it
+    // CANNOT succeed. What the user saw was "popup session failed" on every
+    // reload, and then the app quietly showing the localStorage copy as though
+    // it were their calendar, because App renders the grid the moment a
+    // session and a calendar id exist.
+    //
+    // `CalendarPicker` already learned this and asks for a click when it holds
+    // no token (see its `needsClick`). The lesson never crossed to this file.
+    // Same shape as the last two bug checks: reusing a function does not reuse
+    // the context that made it safe.
+    //
+    // So: no token in hand → do not try, do not fail, hand it back to the
+    // human, who has a button that IS a gesture.
+    if (!cachedAccessToken()) {
+      loseAuth('Google sign-in needed — the connection has to be renewed from a click.');
+      return null;
+    }
+
     runningRef.current = true;
     setStatus('syncing');
     setLastError(null);
@@ -240,7 +298,17 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, now 
         // GS-9: the token lasts about an hour, so a long afternoon WILL hit
         // this. Retry once, silently, before bothering anyone.
         if (!/expired|401/i.test(err?.message || '')) throw err;
-        api = makeApi(await token({ force: true }));
+        // ⚠️ `force` skips the cache, so this is ALWAYS a fresh popup — and we
+        // are deep inside an async pass, long past any gesture that may have
+        // started it. It can only succeed if Google hands one back without
+        // opening a window; when it does not, that is not a sync error to
+        // report, it is a sign-in to ask for.
+        try {
+          api = makeApi(await token({ force: true }));
+        } catch (again) {
+          loseAuth(again?.message || 'Google sign-in expired — connect again.');
+          return null;
+        }
         remote = await pull(api, calendarId);
       }
 
@@ -485,14 +553,21 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, now 
       if (summary !== 'nothing to do') showToast(`Synced · ${summary}`);
       return plan;
     } catch (err) {
+      const msg = err?.message || String(err);
+      // A lost identity is not a failed sync. Reporting it as one leaves the
+      // user on a grid that looks live and is not — which is the whole bug.
+      if (isAuthFailure(msg)) {
+        loseAuth(msg);
+        return null;
+      }
       setStatus('error');
-      setLastError(err?.message || String(err));
-      showToast(err?.message || 'Sync failed');
+      setLastError(msg);
+      showToast(msg || 'Sync failed');
       return null;
     } finally {
       runningRef.current = false;
     }
-  }, [enabled, calendarId, sched, mutate, showToast, token, now]);
+  }, [enabled, calendarId, sched, mutate, showToast, token, now, loseAuth]);
 
   // ⚠️ The effects below must NOT depend on `runSync`'s identity. It is a
   // useCallback over several values, so it changes whenever any of them does —
@@ -504,9 +579,16 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, now 
   runRef.current = runSync;
 
   // Pull once when the app opens signed in (GS-3: Google is truth).
+  //
+  // ⚠️ AND ONCE AGAIN AFTER RECONNECTING. `enabled` now includes "a token is
+  // actually in hand", so it goes false when the hour runs out or a reload
+  // lands without one — and the latch has to be re-armed when it does, or the
+  // pull that makes Google the truth happens only on the luckiest load of the
+  // day. Signing back in must fetch what changed while we were away.
   const opened = useRef(false);
   useEffect(() => {
-    if (!enabled || !calendarId || opened.current) return;
+    if (!enabled || !calendarId) { opened.current = false; return; }
+    if (opened.current) return;
     opened.current = true;
     runRef.current();
   }, [enabled, calendarId]);
