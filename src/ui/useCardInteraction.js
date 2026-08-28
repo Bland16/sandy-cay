@@ -343,8 +343,29 @@ export function useCardInteraction({ sched, mutate, showToast, weekStart }) {
         return;
       }
       clickGuard.current = Date.now();
-      const { task, cols } = s;
+      const { task } = s;
       const dur = task.getDuration();
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // ⚠️ RE-READ THE COLUMNS. THE ONES FROM DRAG-START MAY HAVE MOVED.
+      // ═══════════════════════════════════════════════════════════════════════
+      //
+      // `s.cols` was measured when the drag armed, and `col.top` is a VIEWPORT
+      // coordinate. Anything that shifts the page between then and now — iOS
+      // collapsing its address bar mid-gesture, the grid scrolling, a keyboard
+      // dismissing — moves the real column while that number stays put, and
+      // every drop lands off by the shift with nothing to say so.
+      //
+      // This was reported from a phone as the card landing about its own
+      // duration too early, so you had to aim a duration low to hit the spot.
+      // A 60px shift at 42px/hour is 85 minutes, which snaps to 90.
+      //
+      // ⚠️ AND `grab.dy` IS NOT STALE, so it must NOT be "corrected" too. It is
+      // a distance measured WITHIN the card at one instant — where in the card
+      // the finger is — and a page that moves takes the finger and the card
+      // with it equally. Adjusting both would double-count the shift.
+      const live = readColumns();
+      const cols = live.length ? live : s.cols;
 
       if (s.mode === 'move') {
         const col = columnAt(cols, x - s.grab.dx + s.origin.width / 2);
@@ -396,7 +417,10 @@ export function useCardInteraction({ sched, mutate, showToast, weekStart }) {
         return;
       }
 
-      const col = s.col;
+      // A resize stays in its own column, so it is found by identity rather
+      // than by pointer — but it needs the LIVE geometry for the same reason a
+      // move does, or a page that shifted resizes to the wrong minute.
+      const col = cols.find((c) => c.dayIndex === s.col.dayIndex) || s.col;
       const startMin = s.startMin;
       const endMin = s.endMin;
 
@@ -516,6 +540,13 @@ export function useCardInteraction({ sched, mutate, showToast, weekStart }) {
         return;
       }
       // Resize preview is snapped live, so you see the 15-minute steps.
+      //
+      // ⚠️ DELIBERATELY the geometry from drag-start, unlike `finish`, which
+      // re-reads it. A page that shifts mid-drag would make this PREVIEW drift
+      // for the rest of the gesture — but the committed time is right either
+      // way, and re-measuring every column on every pointermove is layout
+      // thrash on the one device (a phone) where this happens at all. If the
+      // preview is ever reported as drifting, this line is why.
       const col = s.col;
       if (s.mode === 'resize-end') {
         const endMin = clamp(minutesAt(col, e.clientY), s.startMin + MIN_DURATION_MIN, 24 * 60);
