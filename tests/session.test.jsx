@@ -33,6 +33,9 @@ vi.mock('../src/ui/google.js', async (importOriginal) => {
     ...real,
     cachedAccessToken: () => (tokenHeld ? 'test-token' : null),
     clearAccessToken: () => { tokenHeld = false; },
+    listCalendars: async () => ([
+      { id: 'cal-1', name: 'Sandy Cay', primary: false, canWrite: true },
+    ]),
     getAccessToken: (clientId, opts = {}) => {
       // ⚠️ MIRRORS THE REAL ONE, and the distinction is the whole point of
       // `tokenAsks`: a live cached token comes back with NO window opened, so
@@ -45,6 +48,24 @@ vi.mock('../src/ui/google.js', async (importOriginal) => {
       tokenHeld = true;
       return Promise.resolve('test-token');
     },
+  };
+});
+
+// Counting PULLS is how "did it actually go and look at the calendar" is
+// asserted here — the network itself is mocked, so a fetch spy would see
+// nothing whether or not a sync ran.
+const pullMock = vi.fn(async () => ({
+  tasks: [], library: null, libraryError: null, dropped: [], notes: [], blocked: [],
+}));
+vi.mock('../src/ui/googleSync.js', async (importOriginal) => {
+  const real = await importOriginal();
+  return {
+    ...real,
+    makeApi: () => ({}),
+    inspectCalendar: async () => ({ safe: true, foreign: 0, ours: 0, total: 0, foreignSample: [] }),
+    pull: (...a) => pullMock(...a),
+    applyPlan: async () => ({ synced: [], forgotten: [], failed: [] }),
+    pushLibrary: async () => ({ events: 1, replaced: 0 }),
   };
 });
 
@@ -74,6 +95,7 @@ beforeEach(() => {
   tokenHeld = false;
   tokenRefusal = null;
   tokenAsks.length = 0;
+  pullMock.mockClear();
   window.localStorage.clear();
   window.innerWidth = 1440;
   window.matchMedia = (query) => ({
@@ -346,23 +368,62 @@ describe('the reconnect gate — a session is not a token', () => {
     seedSchedule();
     window.localStorage.setItem(SESSION_KEY, SESSION.GOOGLE);
     window.localStorage.setItem('sandycay.sync.calendar', JSON.stringify('cal-1'));
-    const fetchSpy = vi.spyOn(globalThis, 'fetch')
-      .mockImplementation(async () => ({ ok: true, status: 200, json: async () => ({ items: [] }), text: async () => '' }));
-    try {
-      render(<App />);
-      await act(async () => {});
-      expect(fetchSpy).not.toHaveBeenCalled();   // nothing while disconnected
+    render(<App />);
+    await act(async () => {});
+    expect(pullMock).not.toHaveBeenCalled();   // nothing while disconnected
 
-      await act(async () => {
-        fireEvent.click(screen.getByText(/Bury it in the chest/i).closest('button'));
-      });
-      await act(async () => {});
-      expect(inApp()).toBe(true);
-      // ...and the reconnect actually went and looked at the calendar.
-      expect(fetchSpy).toHaveBeenCalled();
-    } finally {
-      fetchSpy.mockRestore();
-    }
+    await act(async () => {
+      fireEvent.click(screen.getByText(/Bury it in the chest/i).closest('button'));
+    });
+    await act(async () => {});
+    expect(inApp()).toBe(true);
+    // ...and the reconnect actually went and looked at the calendar.
+    expect(pullMock).toHaveBeenCalled();
+  });
+
+  it('⚠️ finishing the CALENDAR PICKER does not bounce you back to the gate', async () => {
+    // THE BUG THE BUG CHECK FOUND, and it was mine. The gate first read a
+    // boolean `authed` kept in App state, set only where the entry screen signs
+    // in. But FOUR doors mint a token, and the picker is one of them: it has its
+    // own "Show me my calendars" click, and `chooseCalendar` takes another.
+    //
+    // So a signed-in reload with no calendar went to the picker, got a real
+    // token from a real click, chose a calendar — and landed on a screen saying
+    // "Sandy Cay needs to reconnect", holding a perfectly good token.
+    //
+    // The gate reads google.js now instead of copying it. This test is what
+    // stops a second copy creeping back.
+    seedSchedule();
+    window.localStorage.setItem(SESSION_KEY, SESSION.GOOGLE);   // no calendar yet
+    render(<App />);
+    await act(async () => {});
+    expect(document.querySelector('.cp-lead')).toBeTruthy();     // on the picker
+
+    await act(async () => {
+      fireEvent.click(screen.getByText(/Show me my calendars/i).closest('button'));
+    });
+    await act(async () => {});
+    await act(async () => {
+      fireEvent.click(screen.getByText('Sandy Cay').closest('button'));
+    });
+    await act(async () => {});
+
+    expect(inApp()).toBe(true);
+    expect(onLanding()).toBe(false);
+    expect(screen.queryByText(/reconnect to Google/i)).toBe(null);
+  });
+
+  it('the reconnect prompt is a NOTICE, not a coral refusal', async () => {
+    // P-1 reserves --warning for scheduling physics, which is why the X on the
+    // chart is drawn in ink. Needing to sign in again is the ordinary state of
+    // a reload — nothing has gone wrong — so it must not borrow that colour.
+    seedSchedule();
+    window.localStorage.setItem(SESSION_KEY, SESSION.GOOGLE);
+    window.localStorage.setItem('sandycay.sync.calendar', JSON.stringify('cal-1'));
+    render(<App />);
+    await act(async () => {});
+    expect(document.querySelector('.lz-notice')).toBeTruthy();
+    expect(document.querySelector('.lz-error')).toBe(null);
   });
 
   it('⚠️ the bottle is "just this once" and does NOT convert you to a guest', async () => {

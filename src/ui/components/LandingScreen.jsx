@@ -23,7 +23,7 @@ import compass from '../../assets/icons/compass.png';
 
 const MOTES = 16;
 
-export default function LandingScreen({ onChoose, busy = false, error = null }) {
+export default function LandingScreen({ onChoose, busy = false, error = null, notice = null }) {
   const motesRef = useRef(null);
   const layersRef = useRef(null);
   const [still] = useState(() => {
@@ -169,8 +169,15 @@ export default function LandingScreen({ onChoose, busy = false, error = null }) 
           </div>
 
           {/* A refusal has to be SAID. A door that silently does nothing is the
-              disabled-button-that-swallows-clicks bug this project already had. */}
+              disabled-button-that-swallows-clicks bug this project already had.
+
+              ⚠️ A NOTICE IS NOT A REFUSAL, and they are deliberately two props.
+              "Reconnect to Google" is the ordinary state of a reload — coral
+              would tell the user something had gone wrong, and P-1 reserves
+              that colour for scheduling physics. An error outranks a notice,
+              because if Google has just refused you that is the newer news. */}
           {error && <p className="lz-error" role="alert">{error}</p>}
+          {!error && notice && <p className="lz-notice" role="status">{notice}</p>}
 
           <p className="lz-smallprint">
             A guest&rsquo;s week is kept in this browser alone.<br />

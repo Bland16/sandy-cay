@@ -93,9 +93,19 @@ export default function App() {
   // week grid on screen — full of localStorage — while Google had refused us.
   //
   // Google Identity Services has no silent token path, so this can only ever
-  // be answered by a click. `authed` is therefore what gates the app, and it
-  // starts as "do we already hold one", which is true only within a live tab.
-  const [authed, setAuthed] = useState(() => !!cachedAccessToken());
+  // be answered by a click.
+  //
+  // ⚠️ AND IT IS READ, NEVER COPIED. The first version of this kept a boolean
+  // `authed` in state, set in the one place I was looking at — and FOUR doors
+  // mint a token: this screen, the calendar picker's "Show me my calendars",
+  // `chooseCalendar`, and the Cabana's CalendarCard. Finish the picker and the
+  // copy still said "no token" while google.js held a perfectly good one, so
+  // the gate below bounced the user off a screen they had just completed.
+  //
+  // The token lives in ONE place. This reads it. The nonce below exists only to
+  // make React look again — its value means nothing.
+  const [, bumpAuth] = useState(0);
+  const connected = !!cachedAccessToken();
 
   // The user's escape hatch, and deliberately NOT persisted: "show me the local
   // copy just this once". The session marker stays `google`, so the Cabana keeps
@@ -104,9 +114,10 @@ export default function App() {
   // GS-8 asks which library is right the next time the two disagree.
   const [localOnly, setLocalOnly] = useState(false);
 
-  // Handed to the sync. Whatever it was doing, it has just discovered Google
-  // does not know us — so stop showing a grid that pretends otherwise.
-  const onAuthLost = useCallback(() => setAuthed(false), []);
+  // Handed to the sync. It has just discovered Google does not know us, and it
+  // has already cleared the token — this only has to make React look again, so
+  // the grid stops pretending otherwise.
+  const onAuthLost = useCallback(() => bumpAuth((n) => n + 1), []);
 
   const chooseSession = useCallback(async (choice) => {
     if (choice === SESSION.GUEST) {
@@ -131,8 +142,10 @@ export default function App() {
       await getAccessToken(readClientId());
       saveSession(SESSION.GOOGLE);
       setSession(SESSION.GOOGLE);
-      // The point of the whole gate: a token is now genuinely held.
-      setAuthed(true);
+      // ⚠️ `setSession` cannot be relied on to re-render here: on the reconnect
+      // gate the session is ALREADY google, so setting it to the same value
+      // bails out. The nonce is what makes React re-read the token.
+      bumpAuth((n) => n + 1);
       setLocalOnly(false);
     } catch (err) {
       // ⚠️ SAY IT. A door that silently does nothing is the disabled-button
@@ -211,13 +224,13 @@ export default function App() {
   // A guest session must never reach the sync, and this is the gate that keeps
   // that promise honest — the hook itself does nothing when it is false.
   const sync = useGoogleSync({
-    // ⚠️ THREE CONDITIONS, AND `authed` IS THE ONE THAT WAS MISSING. "Enabled"
+    // ⚠️ THREE CONDITIONS, AND THE TOKEN IS THE ONE THAT WAS MISSING. "Enabled"
     // has to mean "can actually sync", not "chose Google once" — a session
     // marker survives a reload and the token does not, and treating the first
     // as the second is what let the sync fire into a browser that would never
     // give it a popup. `localOnly` rides along for the guest reason: a session
     // the user has asked to keep on this device must not reach the network.
-    enabled: session === SESSION.GOOGLE && !localOnly && authed,
+    enabled: session === SESSION.GOOGLE && !localOnly && connected,
     sched,
     mutate,
     version,
@@ -563,11 +576,12 @@ export default function App() {
   // door. `chooseSession` reads the session to tell the two meanings apart.
   //
   // `localOnly` is the way past, so this is a gate and never a wall.
-  if (session === SESSION.GOOGLE && !authed && !localOnly) {
+  if (session === SESSION.GOOGLE && !connected && !localOnly) {
     return (
       <LandingScreen
         busy={signingIn}
-        error={signInError || 'Sandy Cay needs to reconnect to Google — open the chest to sign back in, or sail on to work from this device for now.'}
+        error={signInError}
+        notice="Sandy Cay needs to reconnect to Google — open the chest to sign back in, or sail on to work from this device for now."
         onChoose={chooseSession}
       />
     );
