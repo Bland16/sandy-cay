@@ -173,6 +173,36 @@ export class Task {
     return this.pinned || this.type === 'fixed' || this.hasProtectedTag(protectedTags);
   }
 
+  // ---- history (§2.4's resolved-task rule, made shared) -------------------
+  //
+  // ⚠️ THE RULE ALREADY EXISTED AND ONLY `autoSchedule` KNEW IT. Its comment
+  // states it exactly — "a resolved task is history, never a re-placement
+  // candidate; moving finished work into the present/future is the bug this
+  // guards" — and `carryOver`, `projects` and `backfillCandidates` each check
+  // `completion` by hand. `resolveDropConflicts`, `rippleShift` and
+  // `evacuateDay` never got the memo, so all three moved work that had already
+  // happened. Reported 2026-08-31 against "Do it now".
+  //
+  // Four hand-rolled copies of a rule is how the fifth caller gets it wrong, so
+  // it lives here now, in the two halves the rule actually has.
+
+  /** History: it happened (or explicitly didn't). Never re-placed, ever. */
+  isResolved() {
+    return this.completion != null;
+  }
+
+  /**
+   * Does its slot stay spent?
+   *
+   * `done`/`partial` DO — you were there, those hours are gone, so they anchor
+   * and still occupy. `skipped` does NOT: it is resolved as not-done, so it
+   * neither moves nor blocks and its old slot is free for something else. That
+   * asymmetry is the whole reason this is two predicates and not one.
+   */
+  holdsItsSlot() {
+    return this.completion === 'done' || this.completion === 'partial';
+  }
+
   // ---- copy semantics (7C) ----------------------------------------------
   /** clone(): SAME id. Internal only — drag ghosts, optimistic edits. Never
    *  enters tasks[]. */

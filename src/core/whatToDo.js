@@ -19,7 +19,18 @@ export function currentOpening(schedule, now = new Date()) {
   if (now.getTime() >= b.end.getTime()) return null; // today's window has closed
 
   let start = now.getTime() < b.start.getTime() ? b.start : now;
-  const dayTasks = schedule.getTasksForDay(now).filter((t) => t.completion === null);
+  // ⚠️ FINISHED WORK STILL OCCUPIES ITS HOURS, and this is where the "Do it now
+  // moved my completed assignment" bug BEGAN. Filtering on `completion === null`
+  // treats a task you finished at 09:00–11:00 as though its time were free, so
+  // the opening was reported as starting at 09:30 — and "Do it now" then dropped
+  // into hours that were already spent, where `resolveDropConflicts` evicted the
+  // finished task and re-placed it in the future.
+  //
+  // §2.4's rule, and the asymmetry is the point: `done`/`partial` HOLD their
+  // slot (you were there), `skipped` does NOT (you weren't) — a skipped session
+  // genuinely does leave its hour open, which is the case the old filter got
+  // right and is the only reason it looked correct.
+  const dayTasks = schedule.getTasksForDay(now).filter((t) => t.completion === null || t.holdsItsSlot());
 
   // Step past whatever is in progress at the cursor — that time isn't open.
   for (let i = 0; i < 8; i += 1) {

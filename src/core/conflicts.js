@@ -27,6 +27,12 @@ export function resolveDropConflicts(schedule, droppedTask, opts = {}) {
   for (const t of schedule.tasks) {
     if (t === droppedTask || t.id === droppedTask.id) continue;
     if (t.chunking) continue;
+    // ⚠️ HISTORY IS NOT A BLOCKER TO BE SHOVED ASIDE (§2.4's resolved rule).
+    // A `skipped` task is resolved as not-done: it neither moves nor holds its
+    // old slot, so it is not a blocker at all and the drop simply lands on it.
+    // Without this it was evicted and re-placed into the FUTURE — a session you
+    // had already declined, put back on your calendar.
+    if (t.completion === 'skipped') continue;
     if (t.recurrence) {
       for (const occ of expandRecurrence(t, ws)) {
         if (occ.overlaps(droppedTask)) blockers.push(occ);
@@ -43,6 +49,16 @@ export function resolveDropConflicts(schedule, droppedTask, opts = {}) {
     // Recurring occurrence target → occurrence menu, no silent default (§3.1/4C).
     if (target.isOccurrence) {
       return { displaced, warned, occurrenceMenu: true, occurrence: target, options: ['move', 'skip', 'cancel'] };
+    }
+    // ⚠️ FINISHED WORK ANCHORS, exactly as it does in `autoSchedule` — you were
+    // there, those hours are spent, so they are not free to be re-planned. It
+    // snaps back rather than silently overlapping, which is this file's answer
+    // for every other anchor and the only one that does not lie about the day.
+    if (target.holdsItsSlot()) {
+      return {
+        displaced, warned, rejected: true, snapBack: true,
+        reason: `Conflicts with finished work: ${target.title}`,
+      };
     }
     // Pinned / fixed / protected → reject the drop (snap-back).
     if (target.isAnchored(protectedTags)) {

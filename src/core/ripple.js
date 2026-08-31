@@ -41,13 +41,23 @@ export function rippleShift(schedule, pivotTask, deltaMin) {
         t !== pivotTask &&
         !t.chunking &&
         !t.recurrence &&
+        // §2.4's resolved rule: `skipped` neither moves nor holds its slot, so
+        // it is not part of the chain at all. `done`/`partial` DO hold theirs —
+        // they stay in `downstream` on purpose, to be found as a wall below.
+        t.completion !== 'skipped' &&
         sameDay(t.startTime, pivotTask.startTime) &&
         t.startTime.getTime() >= pivotEnd.getTime(),
     )
     .sort((a, b) => a.startTime - b.startTime);
 
   // First wall stops propagation.
-  const firstWallIdx = downstream.findIndex((t) => t.isAnchored(protectedTags));
+  //
+  // ⚠️ FINISHED WORK IS A WALL. It used to be shifted like anything else, so a
+  // meeting that overran pushed the assignment you had already handed in an hour
+  // later in the day. Its hours are spent; nothing may move them, and nothing
+  // may be rippled THROUGH them either — which is what makes it a wall rather
+  // than merely a skip.
+  const firstWallIdx = downstream.findIndex((t) => t.holdsItsSlot() || t.isAnchored(protectedTags));
   const affected = firstWallIdx >= 0 ? downstream.slice(0, firstWallIdx) : downstream;
   const wall = firstWallIdx >= 0 ? downstream[firstWallIdx] : null;
   const dayEnd = dayWindowBounds(config, pivotTask.startTime).end;

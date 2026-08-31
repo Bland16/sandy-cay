@@ -25,8 +25,14 @@ export function evacuateDay(schedule, date, { blockDay = false } = {}) {
   const dayTasks = schedule.tasks.filter(
     (t) => !t.chunking && !t.recurrence && sameDay(t.startTime, date),
   );
-  const movable = dayTasks.filter((t) => t.type === 'flexible' && !t.pinned && !t.hasProtectedTag(protectedTags));
-  const needsReview = dayTasks.filter((t) => t.isAnchored(protectedTags));
+  // ⚠️ CLEARING A DAY CLEARS WHAT IS LEFT OF IT, NOT WHAT ALREADY HAPPENED.
+  // §2.4's resolved rule: history is never a re-placement candidate. Without
+  // this, "I'm sick, clear today" relocated the assignment you finished at 09:00
+  // onto tomorrow — and it needs no human decision either, so it is not
+  // `needsReview`; it is simply left alone, where it happened.
+  const live = dayTasks.filter((t) => !t.isResolved());
+  const movable = live.filter((t) => t.type === 'flexible' && !t.pinned && !t.hasProtectedTag(protectedTags));
+  const needsReview = live.filter((t) => t.isAnchored(protectedTags));
 
   const relocated = [];
   const warned = [];
