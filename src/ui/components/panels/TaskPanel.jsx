@@ -4,7 +4,7 @@
 // then the app re-reads.
 import { useState } from 'react';
 import {
-  addMinutes, atTime, addDays, dateKey, formatHHMM,
+  addMinutes, atTime, addDays, dateKey, formatHHMM, placementFrom,
   addException, splitPeriod, periodFor, temporaryChange, endRecurrence, dayStart, dateFromKey,
   untilAfterLastRun,
 } from '../../../core/index.js';
@@ -191,14 +191,68 @@ export default function TaskPanel({ task, sched, mutate, weekStart, onClose, sho
     onClose();
   };
 
+  /**
+   * ⚠️ FROM NOW, NOT FROM THE WEEK'S MONDAY — AND NOT BOUNDED BY A WEEK THAT IS
+   * NEARLY OVER. Both halves of the same defect, and each on its own leaves the
+   * button useless.
+   *
+   * `from: weekStart` is Monday 00:00, so from Tuesday onward the openings led
+   * with hours already lived — and only the first SIX are ever shown. Measured
+   * on Sunday 30 Aug: 08:00 Mon 24 through 08:00 Sat 29, not one of them a time
+   * you could actually take.
+   *
+   * Clamping `from` to now then exposes the other half: `to` is the end of the
+   * VIEWED WEEK, which on that same Sunday is tonight. "Find another time" would
+   * offer the ninety minutes left in the day and call it a week. So `to` gets the
+   * same floor `Schedule#_place` uses — `config.maxPlacementLookahead`, the
+   * horizon the engine already searches when nobody names a range. A week with
+   * days left in it is unaffected; the floor may only ever widen.
+   */
   const doFind = () => {
-    const found = sched.findFreeSlots({ from: weekStart, to: addDays(weekStart, 6), durationMin: durMin });
+    const from = placementFrom(weekStart);
+    const weekEnd = addDays(weekStart, 6);
+    const horizon = addDays(from, sched.config.maxPlacementLookahead);
+    const found = sched.findFreeSlots({
+      from,
+      to: weekEnd.getTime() < horizon.getTime() ? horizon : weekEnd,
+      durationMin: durMin,
+    });
     setSlots(found.slice(0, 6));
   };
+
+  /**
+   * ⚠️ A SESSION IS NOT ITS PATTERN, and `upd` writes to the pattern.
+   *
+   * `editable` resolves an occurrence to its PARENT — right for the title, the
+   * tags and the priority, which a session genuinely shares. It is wrong for a
+   * TIME: an occurrence is materialized from `recurrence.periods[].windows`, so
+   * writing `startTime`/`endTime` onto the parent moved a field nothing renders
+   * and left the session exactly where it was. The panel then said "Moved to a
+   * new slot", which is how this reads as "find another time doesn't work".
+   *
+   * The per-session door already existed and this simply never used it:
+   * `addException(parent, occurrenceKey, 'move', {toDate, start, end})` — §4.2's
+   * relocation, keyed by the ORIGINAL date so the session keeps its identity and
+   * its lived data (§4.4). `toDate` is passed even when the day is unchanged; a
+   * relocation to its own date is the {start,end} case and `expandRecurrence`
+   * handles it in pass 1 without emitting twice.
+   */
   const placeAt = (slot) => {
-    upd({ startTime: slot.start, endTime: slot.end });
+    if (isOcc) {
+      mutate((s) => {
+        const parent = s.tasks.find((t) => t.id === editable.id);
+        if (!parent) return;
+        addException(parent, task.occurrenceDate || dateKey(task.startTime), 'move', {
+          toDate: dateKey(slot.start),
+          start: formatHHMM(slot.start),
+          end: formatHHMM(slot.end),
+        });
+      });
+    } else {
+      upd({ startTime: slot.start, endTime: slot.end });
+    }
     setSlots(null);
-    showToast('Moved to a new slot');
+    showToast(isOcc ? 'This session moved — the pattern is unchanged' : 'Moved to a new slot');
   };
 
   const duplicate = () => {
@@ -338,7 +392,7 @@ export default function TaskPanel({ task, sched, mutate, weekStart, onClose, sho
         <button type="button" className="btn" onClick={doFind}><Icon name="spyglass" /> Find another time</button>
         {slots && (
           <div className="slotlist" style={{ marginTop: 8 }}>
-            {slots.length === 0 && <div className="empty">No openings this week.</div>}
+            {slots.length === 0 && <div className="empty">No openings between now and the end of the week.</div>}
             {slots.map((sl, i) => (
               <button key={i} className="slot" onClick={() => placeAt(sl)}>
                 <span>{DAY_NAMES[(sl.start.getDay() + 6) % 7]}</span>

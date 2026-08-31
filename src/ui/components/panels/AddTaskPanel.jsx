@@ -16,7 +16,7 @@
 // too even when you haven't picked a time.
 import { useState } from 'react';
 import {
-  addDays, addMinutes, atTime, dateFromKey, dateKey, formatHHMM,
+  addDays, addMinutes, atTime, dateFromKey, dateKey, formatHHMM, placementFrom,
   weekStart as weekStartOf, weekdayIndex,
 } from '../../../core/index.js';
 import { buildRecurrence, emptyRecurrence, seedForDate } from '../../recurrenceModel.js';
@@ -31,19 +31,6 @@ import RecurrenceEditor from '../RecurrenceEditor.jsx';
 function defaultDateKey(weekStart, now = new Date()) {
   const end = addDays(weekStart, 7);
   return dateKey(now >= weekStart && now < end ? now : weekStart);
-}
-
-/**
- * Where auto-placement should start looking: now, when the target week is the
- * one we're living in — otherwise the week's own Monday.
- *
- * A break added on Wednesday belongs today, not in Monday's leftover gap. The
- * search used to start at `weekStart` unconditionally, which offered up hours
- * that had already happened.
- */
-function placementFrom(weekStart, now = new Date()) {
-  const end = addDays(weekStart, 7);
-  return now >= weekStart && now < end ? now : weekStart;
 }
 
 /** The next quarter-hour — a sane "when", not 00:00. */

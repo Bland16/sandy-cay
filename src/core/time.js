@@ -73,6 +73,26 @@ export function weekStart(date) {
   return addDays(d, -weekdayIndex(d));
 }
 
+/**
+ * Where a search over a displayed week should START: now, when that week is the
+ * one we are living in — otherwise the week's own Monday.
+ *
+ * ⚠️ AN HOUR THAT HAS PASSED IS NOT AN OPENING. Every panel that searches "this
+ * week" was anchoring at `weekStart`, which is Monday 00:00 — so from Tuesday
+ * onward the results led with hours already lived, and by Sunday there was
+ * nothing else in them. Measured on Sunday 30 Aug: "Find another time" offered
+ * six openings, 08:00 Mon 24 through 08:00 Sat 29, and it only ever shows the
+ * first six — so not one reachable time was on the list.
+ *
+ * It clamps ONLY the current week. Looking at a past week deliberately (to read
+ * back what happened) still shows that week whole, because there `now` is not
+ * inside it and the Monday is the honest answer.
+ */
+export function placementFrom(weekStartDate, now = new Date()) {
+  const end = addDays(weekStartDate, 7);
+  return now >= weekStartDate && now < end ? now : weekStartDate;
+}
+
 /** True if a and b fall on the same local calendar day. */
 export function sameDay(a, b) {
   return dayStart(a).getTime() === dayStart(b).getTime();

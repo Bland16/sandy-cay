@@ -17,7 +17,7 @@ export { defaultConfig, makeConfig } from './config.js';
 export * as time from './time.js';
 // Named time helpers for UI call sites (the `time` namespace stays available too).
 export {
-  weekStart, addDays, atTime, dateKey, dateFromKey, sameDay,
+  weekStart, addDays, atTime, dateKey, dateFromKey, sameDay, placementFrom,
   formatHHMM, hhmmToMinutes, dayStart, addMinutes, minutesBetween,
   isoWeek, isoWeekKey, lastRunDay, untilAfterLastRun, weekdayIndex, dayKeyOf,
 } from './time.js';

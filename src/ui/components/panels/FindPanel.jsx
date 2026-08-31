@@ -2,7 +2,7 @@
 // time-of-day window over this week → findFreeSlots; results list + Copy as text.
 import { useState } from 'react';
 import {
-  addDays, formatHHMM, rankOpenings, ratingsUntilLearned,
+  addDays, formatHHMM, placementFrom, rankOpenings, ratingsUntilLearned,
 } from '../../../core/index.js';
 import { DAY_NAMES } from '../../format.js';
 import PanelHeader from '../PanelHeader.jsx';
@@ -16,7 +16,12 @@ export default function FindPanel({ sched, weekStart, onClose, showToast }) {
   const [to, setTo] = useState('13:30');
 
   const window = useWindow ? { start: from, end: to } : null;
-  const found = sched.findFreeSlots({ from: weekStart, to: addDays(weekStart, 6), durationMin: dur, window });
+  // From now, not from the week's Monday — an hour that has passed is not an
+  // opening to offer, and this list is capped at 30, so past hours crowd out the
+  // reachable ones. A week you are not living in is still shown whole.
+  const found = sched.findFreeSlots({
+    from: placementFrom(weekStart), to: addDays(weekStart, 6), durationMin: dur, window,
+  });
 
   // design/FIND-A-TIME.md. A separate pass over what `findFreeSlots` returned —
   // it stays deliberately unscored (sharp edge #13), and this reorders a copy.
