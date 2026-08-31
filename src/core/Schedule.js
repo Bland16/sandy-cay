@@ -163,13 +163,44 @@ export class Schedule {
     return reals.concat(recurrenceIntervals(this, from, to));
   }
 
+  /**
+   * ⚠️ A CALLER'S RANGE IS A CEILING, NEVER A FLOOR BELOW THE ENGINE'S OWN
+   * HORIZON.
+   *
+   * `AddTaskPanel` bounds a new flexible task to "the viewed week" —
+   * `from … addDays(weekStart, 6)` — which is a sensible default on a Monday
+   * and a DEGENERATE one at the end of the week. Added on the Sunday, that
+   * range is `now … today`: a couple of hours, on the one day the person has
+   * already lived. Nothing fits, so `placeTask` walks its whole ladder, fails
+   * every rung, and reaches the last-resort park — which stacks the task at
+   * `from`, on top of whatever is already sitting there, without moving it.
+   *
+   * Measured on the reported case (Sunday 30 Aug, a full day, deadline the
+   * following Thursday): placed 21:30–22:30 across TWO existing tasks, neither
+   * of them moved. The deadline was four days away and Monday was empty; the
+   * search never looked past midnight because `to` said not to.
+   *
+   * The floor is `maxPlacementLookahead`, and deliberately not something new:
+   * it is the horizon `findBestSlot` ALREADY defaults to when a caller names no
+   * range at all, and the same constant `proximity` is normalised by, so it is
+   * this engine's own word for "the near future". A caller asking for LESS than
+   * that is asking for less than the default, which no caller means.
+   *
+   * It cannot run away, either — `placeTask` still clips the search to
+   * `task.deadline`, so a deadline earlier than the floor still wins and a
+   * distant one buys no more than three days.
+   */
   _place(task, opts = {}) {
     const from = opts.from || new Date();
+    const horizon = addDays(from, this.config.maxPlacementLookahead);
     // The same upper bound `findBestSlot` will use, so the occupied set covers
     // every day the search can actually reach.
-    const to = opts.to ? new Date(opts.to) : addDays(from, this.config.maxPlacementLookahead);
+    let to = opts.to ? new Date(opts.to) : horizon;
+    if (to.getTime() < horizon.getTime()) to = horizon;
     const occupied = opts.occupied || this._occupiedExcluding(task, from, to);
-    return placeTask(this, task, { ...opts, from, occupied });
+    // `to` is passed explicitly — it now differs from `opts.to`, so spreading
+    // `opts` after it would put the narrow range back.
+    return placeTask(this, task, { ...opts, from, to, occupied });
   }
 
   // ---- CRUD --------------------------------------------------------------
