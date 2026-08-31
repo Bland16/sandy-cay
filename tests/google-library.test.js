@@ -30,6 +30,60 @@ const termScale = () => {
     const st = new Date(base.getTime() + i * 43200000);
     s.addFixed({ title: `Scheduled thing ${i}`, startTime: st, endTime: new Date(st.getTime() + 3600000) });
   }
+
+  // ⚠️ AND SO DOES EVERY OTHER COLLECTION, FOR EXACTLY THE SAME REASON.
+  //
+  // The note above spotted this for `tasks` and stopped there. "Carries every
+  // library key through a round trip" loops LIBRARY_KEYS and deep-compares —
+  // but a key this fixture leaves EMPTY compares `[]` against `[]` and passes
+  // no matter what the codec does with it. Audited 2026-08-31, prompted by
+  // "double check commitments are properly stored with Calendar": SEVEN of the
+  // eleven keys were vacuous —
+  //
+  //     zones · retiredTags · commitments · routineInstances
+  //     snapshots · lastSeenWeek · dismissed
+  //
+  // Only buckets, activities, config and model were carrying the test. That is
+  // the same shape as the bug the file's own header warns about, one level up:
+  // the guard existed, was green, and was not looking.
+  //
+  // Every one is added through its real door (`addZone`, `addCommitment`, …)
+  // rather than by poking the field, so the fixture cannot drift from what the
+  // app actually stores.
+  s.addZone({
+    label: 'Study block',
+    matchTags: ['study'],
+    windows: [{ day: 'tue', start: '18:00', end: '22:00' }, { day: 'thu', start: '18:00', end: '22:00' }],
+    exclusive: true,
+  });
+  s.addZone({ label: 'Mornings', matchTags: ['gym'], windows: [{ day: 'mon', start: '06:00', end: '08:00' }], exclusive: false });
+  s.retireTag('tag3');
+  s.addCommitment({
+    title: 'Maths problem sets',
+    tags: ['study', 'maths'],
+    amountMinPerWeek: 240,
+    from: '2026-08-31',
+    until: '2026-12-11',
+    dueDay: 'thu',
+    minSitting: 45,
+    maxSitting: 150,
+    maxPerDay: 2,
+    priority: 5,
+  });
+  s.addCommitment({ title: 'Gym', tags: ['gym'], amountMinPerWeek: 180, from: '2026-08-31', until: '2026-12-11' });
+  s.addRoutineInstance({
+    label: 'Laundry',
+    startTime: new Date(2026, 8, 1, 10, 0, 0, 0),
+    travelMin: 10,
+    steps: [
+      { kind: 'active', label: 'Load the washer', durationMin: 10 },
+      { kind: 'wait', label: 'Wash', durationMin: 45, maxWaitMin: 60 },
+      { kind: 'active', label: 'Move to the dryer', durationMin: 5 },
+    ],
+  });
+  s.snapshot(new Date(2026, 7, 31));
+  s.markWeekSeen(new Date(2026, 7, 31));
+  s.dismissSuggestion('overpack-notice', new Date(2026, 7, 31));
   return s;
 };
 
