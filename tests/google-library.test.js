@@ -7,7 +7,7 @@ import { describe, it, expect } from 'vitest';
 import { Schedule, defaultConfig, seed } from '../src/core/index.js';
 import { byteLength, CHUNK_BYTES } from '../src/core/googleEncode.js';
 import {
-  encodeLibrary, decodeLibrary, libraryFrom, libraryFootprint, missingFromLibrary,
+  encodeLibrary, decodeLibrary, libraryFrom, libraryFootprint, missingFromLibrary, diffLibrary,
   LIBRARY_KEYS, LIBRARY_VERSION,
   GOOGLE_BYTES_PER_EVENT, GOOGLE_PROPS_PER_EVENT, MAX_BYTES_PER_EVENT, MAX_PROPS_PER_EVENT,
 } from '../src/core/googleLibrary.js';
@@ -125,6 +125,64 @@ describe('nothing falls through the gap', () => {
     const back = decodeLibrary(encodeLibrary(json));
     expect(back.ok).toBe(true);
     expect(back.library).toEqual(libraryFrom(json));
+  });
+});
+
+describe('a calendar written before a key existed is not a disagreement', () => {
+  // Reported 2026-09-02: "the calendar keeps disagreeing with itself over
+  // commitments done (each say 0)."
+  //
+  // `diffLibrary` compared `JSON.stringify(v ?? null)`, so a key the remote
+  // library does not carry ("null") never equalled an empty one here ("{}").
+  // The row printed `0 here, 0 there` and the GS-8 gate — correctly treating any
+  // library disagreement as "this device is out of step" — PAUSED THE WHOLE
+  // SYNC. Adding `commitmentDone` in 237c71c made every existing calendar the
+  // old side, so it fired for everyone at once.
+  //
+  // ⚠️ The bug was latent in EVERY key, not just the new one. A library gains
+  // keys over time and a device has to be able to talk to a calendar written
+  // before one existed, so this asserts the property for all of them.
+  it('treats absent and empty as the same answer, for every key', () => {
+    const lib = libraryFrom(new Schedule({ config: defaultConfig }).toJSON());
+    for (const key of LIBRARY_KEYS) {
+      const older = { ...lib };
+      delete older[key];
+      const row = diffLibrary(lib, older).rows.find((r) => r.key === key);
+      // Only meaningful where this side is genuinely empty; a populated key
+      // SHOULD differ from an absent one, which the next test covers.
+      if (row.here === 0) {
+        expect(`${key}: ${row.same}`).toBe(`${key}: true`);
+      }
+    }
+  });
+
+  it('does not pause the sync over a key neither side has data in', () => {
+    const s = new Schedule({ config: defaultConfig });
+    const lib = libraryFrom(s.toJSON());
+    const beforeD13 = { ...lib };
+    delete beforeD13.commitmentDone;
+    expect(diffLibrary(lib, beforeD13).same).toBe(true);
+    expect(diffLibrary(lib, beforeD13).differing).toEqual([]);
+  });
+
+  it('still reports a REAL difference — the guard must not be blunted', () => {
+    // The half that must not be "fixed" as well: an empty side against a
+    // populated one is exactly the stale-device signal GS-8 exists to catch.
+    const s = new Schedule({ config: defaultConfig });
+    s.addCommitment({ title: 'ENGR', amountMinPerWeek: 120, from: '2026-09-07', until: '2026-12-11' });
+    s.markCommitmentWeekDone(s.commitments[0].id, new Date(2026, 8, 7));
+    s.addBucket({ label: 'Study', tags: ['study'], load: { mental: 1 } });
+    const lib = libraryFrom(s.toJSON());
+
+    const older = { ...lib };
+    delete older.commitmentDone;
+    const d = diffLibrary(lib, older);
+    expect(d.same).toBe(false);
+    expect(d.differing.map((r) => r.key)).toContain('commitmentDone');
+
+    // …and an emptied-out buckets list is still a disagreement too.
+    const wiped = { ...lib, buckets: [] };
+    expect(diffLibrary(lib, wiped).same).toBe(false);
   });
 });
 

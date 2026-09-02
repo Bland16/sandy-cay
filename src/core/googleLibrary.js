@@ -322,9 +322,39 @@ export function diffLibrary(here = {}, there = {}) {
     if (typeof v === 'object') return Object.keys(v).length;
     return 1;
   };
+  /**
+   * ⚠️ ABSENT AND EMPTY ARE THE SAME ANSWER, and reading them as different
+   * PAUSED THE WHOLE SYNC. Reported 2026-09-02: "the calendar keeps disagreeing
+   * with itself over commitments done (each say 0)."
+   *
+   * The comparison was `JSON.stringify(v ?? null)`, so a key the remote library
+   * simply does not carry stringified to `"null"` while an empty one here
+   * stringified to `"{}"` — never equal, however empty both were. The row then
+   * printed `0 here, 0 there` and the gate, correctly treating any library
+   * disagreement as "this device is out of step", stopped everything:
+   *
+   *     Sync paused: this device and the calendar disagree about your setup
+   *     (commitmentDone). Nothing has been changed on either side.
+   *
+   * A LATENT HOLE IN EVERY KEY, not a new one — it was simply unreachable while
+   * both sides had been written by builds that knew the same key list. Adding
+   * `commitmentDone` (D-13) made every calendar in existence the "old" side, so
+   * it fired for everyone at once. Any future key would have done the same, and
+   * that is the real lesson: a library gains keys over time, and a device must
+   * be able to talk to a calendar written before one existed.
+   *
+   * So nothing-shaped values are canonicalised before comparing. It cannot hide
+   * a real difference: an empty side against a populated one still differs.
+   */
+  const norm = (v) => {
+    if (v == null) return null;
+    if (Array.isArray(v)) return v.length ? v : null;
+    if (typeof v === 'object') return Object.keys(v).length ? v : null;
+    return v;
+  };
   const rows = LIBRARY_KEYS.map((key) => ({
     key,
-    same: JSON.stringify(here[key] ?? null) === JSON.stringify(there[key] ?? null),
+    same: JSON.stringify(norm(here[key])) === JSON.stringify(norm(there[key])),
     here: sizeOf(here[key]),
     there: sizeOf(there[key]),
   }));
