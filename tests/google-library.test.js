@@ -81,6 +81,9 @@ const termScale = () => {
       { kind: 'active', label: 'Move to the dryer', durationMin: 5 },
     ],
   });
+  // D-13's per-week mark, exercised rather than left empty — the whole point of
+  // this fixture since 7 of 11 keys were found comparing [] against [].
+  s.markCommitmentWeekDone(s.commitments[1].id, new Date(2026, 7, 31));
   s.snapshot(new Date(2026, 7, 31));
   s.markWeekSeen(new Date(2026, 7, 31));
   s.dismissSuggestion('overpack-notice', new Date(2026, 7, 31));

@@ -119,6 +119,19 @@ export class Schedule {
     // app can't remember is a rollover it fires again on every reload.
     this._lastSeenWeek = init.lastSeenWeek || null;
     this._dismissed = init.dismissed ? { ...init.dismissed } : {};
+    // ⚠️ "I finished this early" — WEEKLY-PLANNING D-13. A map of
+    // `${commitmentId}|${weekKey}` → true, meaning THIS commitment's amount for
+    // THAT week is settled, whatever the sittings on the grid add up to.
+    //
+    // A STORED FLAG, and `Commitment.js` explicitly refuses to store one
+    // (`lastFilled`: "a stored flag disagrees with reality the moment you delete
+    // a sitting by hand"). That rule is answered, not ignored: `lastFilled` was
+    // a CACHE OF SOMETHING DERIVABLE, and its failure was disagreeing with a
+    // grid that already held the answer. This is a STATEMENT THE GRID CANNOT
+    // MAKE — you may have done the work in a block that was never a generated
+    // sitting, or away from the app entirely. There is nothing to derive it
+    // from and nothing for it to contradict.
+    this._commitmentDone = init.commitmentDone ? { ...init.commitmentDone } : {};
     this._changeCount = 0;
     // A save from an older model feature-layout can't be scored against the new
     // vector — retrain from the rated tasks now (weights are disposable; the
@@ -532,6 +545,82 @@ export class Schedule {
     Object.assign(c, new Commitment({ ...next, id: c.id }));
     this._touch();
     return c;
+  }
+
+  // ---- D-13: "this week is done" ------------------------------------------
+  //
+  // ⚠️ THE MARK IS STORED, NOT ITS SIDE EFFECT. A "done" implemented by deleting
+  // the remaining sittings and nothing else looks identical the moment you press
+  // it and then quietly comes apart: the next `previewWeek` computes
+  // `placedMin < owedMin`, calls the week `owes` again, and a top-up puts the
+  // work straight back. The spec says to write it this way round.
+
+  /** Key for one commitment's one week. */
+  _doneKey(commitmentId, ws) {
+    return `${commitmentId}|${dateKey(weekStartOf(ws))}`;
+  }
+
+  /** Has this commitment's week been settled by hand? */
+  isCommitmentWeekDone(commitmentId, ws) {
+    return this._commitmentDone[this._doneKey(commitmentId, ws)] === true;
+  }
+
+  /**
+   * "I finished ESF 2 early — this week is done."
+   *
+   * Removes the sittings that have NOT happened yet and leaves the ones that
+   * have (D-16). That split is `Task#isResolved()`, already the engine's word
+   * for "a record, not a plan": `done`/`partial`/`skipped` stay, because the app
+   * does not rewrite what happened; anything unresolved is a plan for work you
+   * have just said is finished, so it goes.
+   *
+   * @returns {{ removed: Task[], kept: Task[] }}
+   */
+  markCommitmentWeekDone(commitmentId, ws) {
+    this._commitmentDone[this._doneKey(commitmentId, ws)] = true;
+    const mine = this.sittingsFor(commitmentId, ws);
+    const removed = [];
+    const kept = [];
+    for (const t of mine) {
+      if (t.isResolved()) kept.push(t);
+      else { this.removeTask(t.id); removed.push(t); }
+    }
+    this._touch();
+    return { removed, kept };
+  }
+
+  /**
+   * Undo it. The week goes back to owing whatever the arithmetic says — which is
+   * NOT necessarily what it owed before, because the unstarted sittings were
+   * removed and are not resurrected. That is honest: un-marking says "I was
+   * wrong, I am not finished", not "put my old plan back". Lay it out again to
+   * get blocks, exactly as D-14's remove leaves you.
+   */
+  unmarkCommitmentWeekDone(commitmentId, ws) {
+    delete this._commitmentDone[this._doneKey(commitmentId, ws)];
+    this._touch();
+    return true;
+  }
+
+  /**
+   * D-14 — "remove this week's blocks". Clears the PLACEMENT, not the debt.
+   *
+   * Shares its whole mechanism with the mark above and differs in one thing: it
+   * stores nothing. Removing unresolved sittings lowers `placedMin`, so D-11's
+   * arithmetic raises `remainingMin` by exactly the same amount and the week
+   * owes again with no code of its own. Resolved sittings stay for the same
+   * reason they do there — you cannot delete work you actually did.
+   */
+  clearCommitmentWeek(commitmentId, ws) {
+    const mine = this.sittingsFor(commitmentId, ws);
+    const removed = [];
+    const kept = [];
+    for (const t of mine) {
+      if (t.isResolved()) kept.push(t);
+      else { this.removeTask(t.id); removed.push(t); }
+    }
+    this._touch();
+    return { removed, kept };
   }
 
   removeCommitment(id) {
@@ -1011,6 +1100,7 @@ export class Schedule {
       snapshots: this._snapshots,
       lastSeenWeek: this._lastSeenWeek,
       dismissed: this._dismissed,
+      commitmentDone: this._commitmentDone,
     };
   }
 
@@ -1035,6 +1125,7 @@ export class Schedule {
       snapshots: json.snapshots,
       lastSeenWeek: json.lastSeenWeek,
       dismissed: json.dismissed,
+      commitmentDone: json.commitmentDone,
     });
   }
 }

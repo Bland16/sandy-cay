@@ -1069,13 +1069,25 @@ work straight back. The mark is what has to be stored, not its side effect.
 
 ## Build order
 
-1. **D-11 + D-12 in `commitmentWeek.js`** — `previewWeek` reports a remainder;
-   `layOutWeek` places it. Pure engine, provable by probe, no UI. Do this alone
-   first: it is where the design will be found wrong if it is.
-2. **D-15 in the sitting path** — split at `minSitting` rather than clamping.
-   Engine, probe-provable.
-3. **D-13 storage** — the per-week mark, `LIBRARY_KEYS`, the round-trip fixture.
-4. **D-14 + the surfaces** — remove, mark done, and the previews.
+1. ✅ **D-11 + D-12 in `commitmentWeek.js`** — `previewWeek` reports a
+   remainder; `layOutWeek` places it. *Shipped 2026-09-01 (`0afd707`).*
+2. ✅ **D-15 in the sitting path** — split at `minSitting` rather than clamping.
+   *Shipped 2026-09-01 (`eeba612`)*, and it turned out to be a silent
+   double-booking fix: the spec's premise about which path clamps was wrong, and
+   the probe caught it before any code was written. See D-15's own correction.
+3. ✅ **D-13 storage** — `_commitmentDone`, a map of
+   `${commitmentId}|${weekKey}` → true, in both serialiser halves and in
+   `LIBRARY_KEYS` (with the fixture exercising it, so it is not the vacuous
+   comparison `cdb551f` found). `previewWeek` lets the mark OVERRIDE the
+   arithmetic while `placedMin` keeps reporting what is really on the grid.
+4. ✅ **D-14 + the surfaces** — `clearCommitmentWeek` shares its mechanism with
+   the mark and stores nothing, so D-11's arithmetic makes the week owe again by
+   itself. Both are in the Cabana as two separate links, per D-16: *removing is
+   mechanical, marking done is a judgement.* Mark-done confirms with the
+   consequence named (how many sessions, how long), because deleting work you
+   have not done is not guessable from a button.
+
+**All four shipped.** 1157 tests green.
 
 ⚠️ **Prove each by printing the placements, not by going green.** This feature's
 own history is the argument: 573 tests could not see either defect §4.4 and §4.5

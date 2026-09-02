@@ -122,6 +122,48 @@ export default function CommitmentsEditor({ sched, mutate, weekStart, now, showT
    * rather than a second guess at them — the same plan-then-apply pair the
    * blocker conversion on this page already uses.
    */
+  /**
+   * D-13 — "I finished this early." Confirms with the consequence NAMED, because
+   * it deletes the sessions you have not done yet and that is not guessable from
+   * a button. §3's preview rule in its smallest form.
+   */
+  const markDone = (c) => {
+    const p = preview.find((x) => x.commitment.id === c.id);
+    const unstarted = (p ? p.sittings : []).filter((t) => !t.isResolved());
+    const left = unstarted.reduce((n, t) => n + t.getDuration(), 0);
+    const ok = window.confirm(
+      [
+        `Mark "${c.title}" done for ${weekSign(weekStart).range}?`,
+        '',
+        unstarted.length
+          ? `${unstarted.length} session${unstarted.length === 1 ? '' : 's'} you have not done yet (${fmtDur(left)}) will be removed.`
+          : 'Nothing is left on the grid to remove.',
+        'Anything you have already done or skipped stays.',
+        '',
+        'You can undo this.',
+      ].join('\n'),
+    );
+    if (!ok) return;
+    const res = mutate((s) => s.markCommitmentWeekDone(c.id, weekStart));
+    showToast(`${c.title} — done this week${res.removed.length ? ` · ${res.removed.length} removed` : ''}`);
+  };
+
+  const undone = (c) => {
+    mutate((s) => s.unmarkCommitmentWeekDone(c.id, weekStart));
+    showToast(`${c.title} — owing again. Lay out the week to get blocks back.`);
+  };
+
+  /**
+   * D-14 — remove the placement, keep the debt. The week owes again by itself:
+   * removing unresolved sittings lowers `placedMin`, so D-11's arithmetic raises
+   * `remainingMin` by the same amount.
+   */
+  const clearWeek = (c) => {
+    const res = mutate((s) => s.clearCommitmentWeek(c.id, weekStart));
+    if (!res.removed.length) { showToast(`Nothing to remove for ${c.title}`); return; }
+    showToast(`${c.title} — ${res.removed.length} block${res.removed.length === 1 ? '' : 's'} removed · the week owes them again`);
+  };
+
   const layOut = () => {
     // ⚠️ THIS BUTTON IS NEVER DISABLED, and that is the fix for a real report:
     // "Nothing appears. No dialog, no toast, nothing."
@@ -372,6 +414,31 @@ export default function CommitmentsEditor({ sched, mutate, weekStart, now, showT
           {owes.length === 0
             ? 'nothing owed.'
             : <><b>{fmtDur(owedMin)}</b> owed across {owes.length} commitment{owes.length === 1 ? '' : 's'}.</>}
+          {preview.map((p) => (p.settled || p.placedMin > 0) && (
+            <span key={`act:${p.commitment.id}`} className="cwacts">
+              {/* D-13 / D-14 — two acts, two buttons, neither pretending to be
+                  the other. Removing is mechanical (undo a layout, the week owes
+                  again); marking done is a judgement (I finished, stop offering
+                  it). Collapsing them is what would turn "easy to remove" into a
+                  way to make a week look clean without deciding anything. */}
+              {p.settled ? (
+                <button type="button" className="linkish soft" onClick={() => undone(p.commitment)}>
+                  {p.commitment.title}: done this week — undo
+                </button>
+              ) : (
+                <>
+                  <button type="button" className="linkish soft" onClick={() => markDone(p.commitment)}>
+                    {p.commitment.title}: mark done
+                  </button>
+                  {p.placedMin > 0 && (
+                    <button type="button" className="linkish soft" onClick={() => clearWeek(p.commitment)}>
+                      remove blocks
+                    </button>
+                  )}
+                </>
+              )}
+            </span>
+          ))}
           {preview.filter((p) => p.placedMin > 0).map((p) => (
             // ⚠️ Never a bare "done". "Already laid out" is a per-week boolean,
             // so a sitting you deleted by hand leaves the week holding less than

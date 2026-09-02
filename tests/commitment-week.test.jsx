@@ -291,6 +291,83 @@ function Harness({ sched, toasts }) {
   );
 }
 
+describe('the Cabana surfaces for D-13 / D-14', () => {
+  const openWeek = (s, toasts) => render(<Harness sched={s} toasts={toasts} />);
+  const clickText = (re) => fireEvent.click(screen.getByText(re));
+
+  it('mark done removes the unstarted session and keeps the done one', () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const s = termWeek();
+    const c = s.addCommitment(COMMIT);
+    layOutWeek(s, MON, MON_6AM);
+    const mine = s.sittingsFor(c.id, MON).sort((a, b) => a.startTime - b.startTime);
+    expect(mine.length).toBeGreaterThan(1);
+    mine[0].completion = 'done';
+
+    const toasts = [];
+    openWeek(s, toasts);
+    clickText(/ENGR project: mark done/);
+
+    const after = s.sittingsFor(c.id, MON);
+    expect(after).toHaveLength(1);
+    expect(after[0].completion).toBe('done');
+    expect(s.isCommitmentWeekDone(c.id, MON)).toBe(true);
+    expect(toasts[0]).toMatch(/done this week/);
+  });
+
+  it('names the consequence before doing it, and cancelling writes nothing', () => {
+    // §3 in its smallest form: deleting sessions you have not done is not
+    // guessable from a button, so the confirm says how many and how long.
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const s = termWeek();
+    const c = s.addCommitment(COMMIT);
+    layOutWeek(s, MON, MON_6AM);
+    const before = s.sittingsFor(c.id, MON).length;
+
+    openWeek(s, []);
+    clickText(/ENGR project: mark done/);
+
+    expect(confirm.mock.calls[0][0]).toMatch(/will be removed/);
+    expect(confirm.mock.calls[0][0]).toMatch(/already done or skipped stays/);
+    expect(s.sittingsFor(c.id, MON)).toHaveLength(before);
+    expect(s.isCommitmentWeekDone(c.id, MON)).toBe(false);
+  });
+
+  it('offers undo once a week is settled, and undoing makes it owe again', () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const s = termWeek();
+    const c = s.addCommitment(COMMIT);
+    layOutWeek(s, MON, MON_6AM);
+    s.sittingsFor(c.id, MON)[0].completion = 'done';
+
+    const toasts = [];
+    openWeek(s, toasts);
+    clickText(/ENGR project: mark done/);
+    clickText(/done this week — undo/);
+
+    expect(s.isCommitmentWeekDone(c.id, MON)).toBe(false);
+    expect(previewWeek(s, MON, MON_6AM)[0].state).toBe('owes');
+  });
+
+  it('remove blocks clears the placement and the week owes again — no mark set', () => {
+    const s = termWeek();
+    const c = s.addCommitment(COMMIT);
+    layOutWeek(s, MON, MON_6AM);
+    expect(previewWeek(s, MON, MON_6AM)[0].remainingMin).toBe(0);
+
+    const toasts = [];
+    openWeek(s, toasts);
+    clickText(/remove blocks/);
+
+    expect(s.sittingsFor(c.id, MON)).toHaveLength(0);
+    expect(previewWeek(s, MON, MON_6AM)[0].remainingMin).toBe(240);
+    // ⚠️ The difference from mark-done, asserted: removing is mechanical and
+    // settles nothing.
+    expect(s.isCommitmentWeekDone(c.id, MON)).toBe(false);
+    expect(toasts[0]).toMatch(/owes them again/);
+  });
+});
+
 describe('the Cabana button', () => {
   it('states what the week owes, and writes nothing to render it', () => {
     const s = termWeek();

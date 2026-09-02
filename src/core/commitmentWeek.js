@@ -64,10 +64,20 @@ export function previewWeek(schedule, ws, now) {
     const placedMin = sittings
       .filter((t) => t.completion !== 'skipped')
       .reduce((n, t) => n + t.getDuration(), 0);
-    const remainingMin = Math.max(0, c.amountMinPerWeek - placedMin);
+    // ⚠️ THE MARK OVERRIDES THE ARITHMETIC (D-13). "I finished ESF 2 early" is a
+    // statement the grid cannot make — the work may have happened in a block
+    // that was never a generated sitting, or away from the app entirely — so
+    // when it is set the week owes nothing regardless of what the sittings add
+    // up to. Everything else here still reports honestly: `placedMin` is what
+    // is actually on the grid, so the surface can still say "2h of 4h laid out"
+    // beside a week you have called finished.
+    const settled = typeof schedule.isCommitmentWeekDone === 'function'
+      && schedule.isCommitmentWeekDone(c.id, start);
+    const remainingMin = settled ? 0 : Math.max(0, c.amountMinPerWeek - placedMin);
     const input = c.engineInputForWeek(start, now);
     let state = 'owes';
-    if (sittings.length && remainingMin === 0) state = 'done';
+    if (settled) state = 'done';
+    else if (sittings.length && remainingMin === 0) state = 'done';
     else if (!input) state = c.coversWeek(start) ? 'passed' : 'outside';
     // A commitment that owes nothing per week owes nothing this week either.
     // Without this it reached the generator with `amountMin: 0`, and
@@ -75,7 +85,7 @@ export function previewWeek(schedule, ws, now) {
     // booked a sitting for work the user had set to zero.
     else if (c.amountMinPerWeek === 0) state = 'outside';
     return {
-      commitment: c, state, input, sittings, placedMin, remainingMin,
+      commitment: c, state, input, sittings, placedMin, remainingMin, settled,
       owedMin: c.amountMinPerWeek,
     };
   });

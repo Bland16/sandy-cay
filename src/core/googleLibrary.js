@@ -63,6 +63,10 @@ export const LIBRARY_KEYS = [
   // exists to prevent, and this would be a particularly bad one: the library
   // copy would quietly resurrect a note deleted in Google, every sync, forever.
   'commitments',
+  // D-13's per-week "I finished this early" marks. In the library because it is
+  // a decision you made, not something derivable from the events — a second
+  // device that did not carry it would start offering work you have settled.
+  'commitmentDone',
   'routineInstances',
   'config',
   'model',
@@ -95,6 +99,7 @@ export const LIBRARY_FIELD = {
   activities: 'activities',
   retiredTags: 'retiredTags',
   commitments: 'commitments',
+  commitmentDone: '_commitmentDone',
   routineInstances: 'routineInstances',
   config: 'config',
   model: 'learning',
