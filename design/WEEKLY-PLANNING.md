@@ -854,3 +854,205 @@ Step 1 is worth doing first and alone — it is provable by probe, and it is whe
 the design will be found to be wrong if it is. **Prove it by printing the
 placements**, not by going green: 573 tests could not see either of the two
 defects this feature's own scoring found (§4.4, §4.5).
+
+---
+
+# 8. The remainder, and removing what you did not do
+
+**Written 2026-08-31**, from a live-use session. The user's words:
+
+> *"I want to make sure it is deliberate and easy to remove. […] a sort of
+> reoptimize only for commitments or remaining time left in the commitments —
+> find what has already passed and add in the rest."*
+
+and, on the risk this whole section runs:
+
+> *"I also want to be considerate of any behavior that can influence
+> procrastination."*
+
+Five decisions, and one constraint that governs all of them.
+
+## The constraint: the debt must survive the convenience
+
+Every feature below makes something easier — topping up, removing, splitting,
+settling. Each one is therefore a place where work could quietly stop existing.
+**Nothing may make work vanish except the user, deliberately, saying so.**
+
+Its counterweight is already law here and must not be broken in the name of the
+above: **§4.3** a shortfall is stated ONCE · **D-3** it must never grow because
+time passed · **§5** forbids "you missed your target" · `previewWeek`'s `passed`
+state owes nothing at all. So the rule in one line: **the app states the truth
+once, and never nags and never accumulates.**
+
+Making work disappear is one failure. Repeating a number at someone is the
+other. This section is the line between them.
+
+## D-11. A week that is PARTLY laid out still owes the difference
+
+`previewWeek` sets `state = 'done'` the moment **any** sitting exists:
+
+```js
+if (sittings.length) state = 'done';
+```
+
+and `layOutWeek` filters to `state === 'owes'`. So a week holding 2h of a 4h
+commitment is treated as handled and can never be topped up — which is exactly
+the "reoptimize for the remaining time" the user asked for and could not get.
+
+The data needed is **already computed and already unused**: `previewWeek`
+returns `placedMin` and `owedMin` on every row, and its own comment says
+
+> *"A week holding 2h of a 4h commitment must SAY so; calling it 'done' would be
+> the app stating something untrue."*
+
+It says it, and then does it. `owes` becomes a **quantity, not a state**, and a
+layout places `owedMin − placedMin`.
+
+⚠️ **Idempotence survives, by a different mechanism.** Today "pressing twice is
+a no-op" (case E2) falls out of the state being `done`. Afterwards it falls out
+of the **remainder being zero** — same behaviour, different reason. Case E4 (a
+hand-moved sitting survives a second press, R-1) also still holds: a sitting you
+dragged is still a sitting, so it still counts toward `placedMin` and the
+remainder shrinks by it.
+
+## D-12. A SKIPPED sitting still owes its time
+
+You did not do it, so the hours are outstanding, and a top-up may re-place them.
+Consistent with `skipped` everywhere else in the engine: §2.4's resolved rule
+has it neither move nor hold its slot.
+
+⚠️ **This is not a catch-up ledger and does not touch §5.** It applies *within
+the week*, and only *until the due day*. Once that day passes, `passed` owes
+nothing — D-3, §4.3 and §5 each independently forbid manufacturing a shortfall
+out of the passage of time. Nothing rolls into next week except through §3.6's
+existing symmetric offer (D-2).
+
+## D-13. "This week is done" — an explicit, reversible mark
+
+The user's idea, and it is what makes D-12 safe to have. Without it, the only
+ways to stop being offered work you have decided against are to do it or to wait
+for the day to pass — which is the app arguing with you. With it, the default
+stays honest and there is exactly one deliberate act that settles a week.
+
+It also records something **nothing else can know**: you may have done the work
+in a block that was never a generated sitting, or away from the app entirely.
+
+⚠️ **The tension, recorded rather than slipped in.** `Commitment.js` explicitly
+refuses to store `lastFilled`:
+
+> *"Derived instead — `sittingsFor(id, weekStart)` asks the grid what is actually
+> there. A stored flag disagrees with reality the moment you delete a sitting by
+> hand."*
+
+A per-week done mark **is** such a flag, so that rule has to be answered rather
+than ignored. It does not apply here, because the two are different kinds of
+fact: `lastFilled` was a **cache of something derivable**, and its failure mode
+was disagreeing with a grid that already held the answer. "I finished early" is
+a **statement the grid cannot answer** — there is nothing to derive it from and
+nothing for it to contradict.
+
+Consequences that follow from storing it:
+- It rides in `LIBRARY_KEYS` so it syncs and round-trips like every other
+  collection — **and the library fixture must exercise it**, per `cdb551f`,
+  where seven of eleven keys were being compared empty-against-empty.
+- It is **reversible**: un-marking returns the week to owing what it owed.
+- It is keyed per commitment *and* per week, so marking one week done says
+  nothing about any other.
+
+## D-14. "Remove this week's blocks" clears the PLACEMENT, not the debt
+
+The week returns to owing its full amount and may be laid out again. Removing is
+an undo of a layout, not a decision about the work.
+
+D-13 and D-14 are a **pair, and the pairing is the design**: removing is
+mechanical, marking done is a judgement. Two acts, two buttons, neither
+pretending to be the other. Collapsing them — letting "remove" also settle the
+week — is what would turn "easy to remove" into a way to make a week look clean
+without deciding anything.
+
+## D-15. Split rather than shrink — commitment sittings ONLY
+
+If an opening holds at least `minSitting`, place what fits **and carry the
+remainder to the next opening that fits**.
+
+Today `placeActivity` does `clamp(opening, durationMin, durationMax)`, so a
+45-minute opening yields 45 minutes and **the rest silently ceases to exist** —
+the clearest instance in the app of work vanishing without anyone saying so.
+`chooseSittings` already splits across gaps respecting `sMin`/`sMax`; the
+machinery exists and simply is not on the "Do it now" path.
+
+⚠️ **Activities are deliberately unchanged.** An activity is *elastic* between
+`durationMin` and `durationMax` — filling 45 of a possible 120 is a complete
+answer, not a partial one, because an activity has no owed amount. A commitment
+does. Revisit only on the user's say-so.
+
+⚠️ **`minSitting` is the anti-fragmentation guard, and it is load-bearing
+here.** Splitting cuts *against* procrastination in one specific way: "I'll do
+it when I have a proper block" is a classic avoidance pattern, and being able to
+start a two-hour job in a forty-five-minute gap defeats it. The opposite failure
+is endless fragmentation into pieces too small to get into real work, which
+feels busy and is not. `minSitting` already expresses that floor; nothing new is
+needed, but nothing may bypass it either.
+
+## Everything here previews before it writes
+
+§3 already requires it — *"an action you cannot preview is one you cannot agree
+to"* — and `planWeek`/`layOutWeek` is the existing plan-then-apply pair, run
+against a throwaway `Schedule.fromJSON(toJSON())` copy so the preview cannot
+disagree with the result. Top-up, remove and mark-done all follow it.
+
+## D-16. RESOLVED 2026-08-31 — the sittings that have not happened yet go
+
+The question was put as "do the blocks stay or clear", and **both options were
+wrong, because the question was scoped to the wrong thing.** The user:
+
+> *"I wouldn't mark a week done, I would mark a specific task done — for
+> instance ESF 2 Homework. I have that split in two sessions. If I finish in the
+> first session, I can mark my week's commitment as done for that week and the
+> second session disappears."*
+
+So it is **one commitment's week**, never the week as a whole — which D-13
+already required ("keyed per commitment *and* per week") but the question's own
+phrasing had lost. And the answer is neither "all stay" nor "all clear":
+
+| the sitting | what happens | why |
+|---|---|---|
+| resolved — `done` / `partial` / `skipped` | **stays** | it is history. It happened (or you declined it), and the app does not rewrite what happened |
+| unresolved | **removed** | it is a plan for work that is now finished. Keeping it would put a block on your grid for a thing you have told the app you have done |
+
+That split needs no new concept: it is `Task#isResolved()`, added on 2026-08-31
+for §2.4's history rule, which is already the engine's word for "this is a
+record, not a plan".
+
+### The consequence that makes D-13 and D-14 one mechanism
+
+Both remove sittings, and **both remove only the unresolved ones** — you can
+never delete a sitting you completed, because that is lived data and because
+those hours genuinely were spent. The two differ in one thing only:
+
+- **D-14 "remove this week's blocks"** — the debt returns. It needs no code of
+  its own to do that: removing unresolved sittings lowers `placedMin`, so D-11's
+  arithmetic raises `remainingMin` by exactly the same amount, automatically.
+- **D-13 "this week is done"** — the debt is settled. `remainingMin` is forced
+  to 0 by the mark, whatever the arithmetic would otherwise say.
+
+So the removal half is shared and the mark is the only thing that overrides the
+sum. ⚠️ **Write it that way round.** A "done" implemented by deleting the
+remaining sittings *and nothing else* would look identical the moment you press
+it and then quietly come apart: the next `previewWeek` would compute
+`placedMin < owedMin`, call the week `owes` again, and a top-up would put the
+work straight back. The mark is what has to be stored, not its side effect.
+
+## Build order
+
+1. **D-11 + D-12 in `commitmentWeek.js`** — `previewWeek` reports a remainder;
+   `layOutWeek` places it. Pure engine, provable by probe, no UI. Do this alone
+   first: it is where the design will be found wrong if it is.
+2. **D-15 in the sitting path** — split at `minSitting` rather than clamping.
+   Engine, probe-provable.
+3. **D-13 storage** — the per-week mark, `LIBRARY_KEYS`, the round-trip fixture.
+4. **D-14 + the surfaces** — remove, mark done, and the previews.
+
+⚠️ **Prove each by printing the placements, not by going green.** This feature's
+own history is the argument: 573 tests could not see either defect §4.4 and §4.5
+found, and this session's four live-use bugs all passed a 1108-test suite.

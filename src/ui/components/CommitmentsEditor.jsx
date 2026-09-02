@@ -107,7 +107,11 @@ export default function CommitmentsEditor({ sched, mutate, weekStart, now, showT
   // declared further down works, but only by accident of call order.
   const preview = previewWeek(sched, weekStart, clock);
   const owes = preview.filter((p) => p.state === 'owes');
-  const owedMin = owes.reduce((n, p) => n + p.owedMin, 0);
+  // ⚠️ THE REMAINDER, not the full amount (WEEKLY-PLANNING D-11). Since a
+  // partly-laid-out week is `owes` again, summing `owedMin` here would announce
+  // "4h owed" for a week already holding 2h of it — overstating what the button
+  // is about to do, which is the same untruth D-11 fixed in the engine.
+  const owedMin = owes.reduce((n, p) => n + p.remainingMin, 0);
 
   /**
    * D-3's manual path: the week is EMPTY until asked, and this is the asking.
@@ -368,11 +372,18 @@ export default function CommitmentsEditor({ sched, mutate, weekStart, now, showT
           {owes.length === 0
             ? 'nothing owed.'
             : <><b>{fmtDur(owedMin)}</b> owed across {owes.length} commitment{owes.length === 1 ? '' : 's'}.</>}
-          {preview.filter((p) => p.state === 'done').map((p) => (
+          {preview.filter((p) => p.placedMin > 0).map((p) => (
             // ⚠️ Never a bare "done". "Already laid out" is a per-week boolean,
             // so a sitting you deleted by hand leaves the week holding less than
             // it owes — and the app saying "done" would be stating something
             // untrue (COMMITMENT-USE-CASES E3).
+            //
+            // Filtered on `placedMin > 0` rather than on `state === 'done'`,
+            // because since D-11 a partly-laid-out week is `owes` again — and
+            // that is exactly the week this line exists to describe. Keying it
+            // to the `done` state would have hidden it in the one case E3 is
+            // about, while the total above counts only what is left. Both
+            // numbers are now stated, and they agree.
             <span key={p.commitment.id} className="cwdone">
               {p.commitment.title}: {fmtDur(p.placedMin)} of {fmtDur(p.owedMin)} laid out.
             </span>

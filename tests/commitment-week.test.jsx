@@ -72,9 +72,14 @@ describe('previewWeek — looking, which must never write', () => {
     expect(byTitle).toEqual({ later: 'outside', over: 'outside', missed: 'passed' });
   });
 
-  it('reports a partly-laid-out week as PLACED vs OWED, never a bare "done"', () => {
+  it('reports a partly-laid-out week as PLACED vs OWED, and still OWING', () => {
     // Case E3. Delete a sitting by hand and the week holds less than it owes;
     // "done" would be the app stating something untrue.
+    //
+    // ⚠️ THIS ASSERTED `state === 'done'` UNTIL 2026-08-31 — the very thing its
+    // own name forbade. The state said done and only the numbers beside it
+    // disagreed. WEEKLY-PLANNING D-11 makes `done` mean COVERED, so a week
+    // short of its amount is `owes` again and can be topped up.
     const s = termWeek();
     const c = s.addCommitment(COMMIT);
     layOutWeek(s, MON, MON_6AM);
@@ -83,10 +88,71 @@ describe('previewWeek — looking, which must never write', () => {
     s.removeTask(mine[0].id);
 
     const p = previewWeek(s, MON, MON_6AM)[0];
-    expect(p.state).toBe('done');
+    expect(p.state).toBe('owes');
     expect(p.owedMin).toBe(240);
     expect(p.placedMin).toBeLessThan(240);
     expect(p.placedMin).toBeGreaterThan(0);
+    expect(p.placedMin + p.remainingMin).toBe(240);
+  });
+
+  it('tops the week back up to its full amount when asked again (D-11)', () => {
+    // The whole point of the change: a week you deleted a sitting from is not
+    // finished, and pressing the button again fills the gap it left.
+    const s = termWeek();
+    const c = s.addCommitment(COMMIT);
+    layOutWeek(s, MON, MON_6AM);
+    s.removeTask(s.sittingsFor(c.id, MON)[0].id);
+    expect(previewWeek(s, MON, MON_6AM)[0].placedMin).toBeLessThan(240);
+
+    layOutWeek(s, MON, MON_6AM);
+    const p = previewWeek(s, MON, MON_6AM)[0];
+    expect(p.placedMin).toBe(240);
+    expect(p.remainingMin).toBe(0);
+    expect(p.state).toBe('done');
+  });
+
+  it('is still a no-op on a week that is already covered (E2)', () => {
+    // Idempotence now holds by ARITHMETIC (the remainder is zero) rather than
+    // by the state being `done`. Same behaviour, different reason — and this is
+    // the test that proves the substitution did not break it.
+    const s = termWeek();
+    const c = s.addCommitment(COMMIT);
+    layOutWeek(s, MON, MON_6AM);
+    const before = s.sittingsFor(c.id, MON).map((t) => `${t.id}@${t.startTime.toISOString()}`).sort();
+
+    layOutWeek(s, MON, MON_6AM);
+    const after = s.sittingsFor(c.id, MON).map((t) => `${t.id}@${t.startTime.toISOString()}`).sort();
+    expect(after).toEqual(before);
+  });
+
+  it('counts a SKIPPED sitting as unfilled, so the week still owes it (D-12)', () => {
+    // You did not do it, so the hours are outstanding — consistent with
+    // `skipped` everywhere else in the engine. Counting it left a week that
+    // skipped every session reporting itself fully covered.
+    const s = termWeek();
+    const c = s.addCommitment(COMMIT);
+    layOutWeek(s, MON, MON_6AM);
+    const mine = s.sittingsFor(c.id, MON).sort((a, b) => a.startTime - b.startTime);
+    const skipped = mine[0].getDuration();
+    mine[0].completion = 'skipped';
+
+    const p = previewWeek(s, MON, MON_6AM)[0];
+    expect(p.state).toBe('owes');
+    expect(p.placedMin).toBe(240 - skipped);
+    expect(p.remainingMin).toBe(skipped);
+  });
+
+  it('a DONE sitting is filled time and does not come back', () => {
+    // The other half of D-12, and what keeps it from being a nag: work you
+    // actually did is covered and is never re-offered.
+    const s = termWeek();
+    const c = s.addCommitment(COMMIT);
+    layOutWeek(s, MON, MON_6AM);
+    for (const t of s.sittingsFor(c.id, MON)) t.completion = 'done';
+
+    const p = previewWeek(s, MON, MON_6AM)[0];
+    expect(p.state).toBe('done');
+    expect(p.remainingMin).toBe(0);
   });
 });
 
