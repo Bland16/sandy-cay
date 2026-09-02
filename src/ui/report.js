@@ -17,6 +17,7 @@ import {
   snapshot, snapshotDiff, isoWeekKey, addDays, dateKey, weekStart as weekStartOf,
   driftCheck, starvationCheck, skipStreakCheck, pinnedRatioNote, durationFitSuggestion,
   splitPeriod, endRecurrence, spendRestore, learnedCapacity,
+  energyTrajectory, energyCalibration, LOAD_AXES, dayWindowBounds,
 } from '../core/index.js';
 import { fmtDur } from './format.js';
 
@@ -371,6 +372,84 @@ function buildDeadlineBuffer(sched, weekTasks) {
   };
 }
 
+/**
+ * The week's seven energy trajectories — the PLANNED curve for each day, with
+ * what actually happened marked on it (the user's call, 2026-09-02).
+ *
+ * ⚠️ PLANNED, NOT LIVED, AND DELIBERATELY SO. `energyTrajectory` walks every
+ * task on the day except skipped ones, rated or not — so the line is the day you
+ * INTENDED. The marks are the day you had. Drawing only completed work would
+ * answer a different question ("what did I spend?", which the week totals
+ * already answer) and would quietly erase the evening you planned and did not
+ * reach — which is exactly the comparison worth seeing.
+ *
+ * ⚠️ NO CEILING IS DRAWN UNTIL ONE IS EARNED. `learnedCapacity` is null until
+ * ratings span `calibrationWeeks` distinct weeks (P-2), and a ring that appeared
+ * later would mean every earlier week's chart had been lying. `calibrated` is
+ * carried so the view can say "still learning" instead of inventing a limit.
+ *
+ * `depth` is the sum of |reserve| across the axes — how deep the day is
+ * altogether, which is the F-4 reading Find-a-time already settled on: where the
+ * day ENDS UP, not what each step adds.
+ */
+export function buildTrajectories(sched, ws) {
+  const cal = energyCalibration(sched);
+  const capacity = learnedCapacity(sched);
+  const days = [];
+  for (let i = 0; i < 7; i += 1) {
+    const date = addDays(ws, i);
+    const { points, low } = energyTrajectory(sched, date);
+    const bounds = dayWindowBounds(sched.config, date);
+    const depthOf = (r) => LOAD_AXES.reduce((n, a) => n + Math.abs(r[a]), 0);
+    // ⚠️ The walk starts at zero. `energyTrajectory` samples at each task's END,
+    // so without an explicit origin the first task's cost would look like the
+    // day's starting state and the line would begin partway down.
+    const curve = [{ at: bounds.start, depth: 0 }]
+      .concat(points.map((p) => ({ at: p.at, depth: depthOf(p.reserve) })));
+
+    // What happened, in the vocabulary the task panel already uses: = ↑ ↓.
+    // ⚠️ SHAPE, NEVER COLOUR. P-1 — "neither arrow is a judgement, no warning
+    // colour on a rating" — and the dataviz validator independently rejects the
+    // obvious red/green pair anyway (ΔE 3.9 under deuteranopia, far below the
+    // floor). Shape carries all of it, so a colourblind reader loses nothing.
+    const marks = [];
+    for (const t of sched.getTasksForDay(date)) {
+      if (t.chunking) continue;
+      const sat = t.satisfaction;
+      if (!sat || typeof sat.overall !== 'number') continue;
+      const e = sat.energy;
+      marks.push({
+        at: t.endTime,
+        title: t.title,
+        overall: sat.overall,
+        kind: e === 1 ? 'up' : e === -1 ? 'down' : 'level',
+        depth: (curve.find((c) => c.at.getTime() === t.endTime.getTime()) || {}).depth ?? null,
+      });
+    }
+    days.push({
+      dayIndex: i,
+      date,
+      windowStart: bounds.start,
+      windowEnd: bounds.end,
+      curve,
+      marks,
+      low: depthOf(low),
+      end: curve.length ? curve[curve.length - 1].depth : 0,
+    });
+  }
+  const deepest = days.reduce((n, d) => Math.max(n, d.low, d.end), 0);
+  return {
+    days,
+    deepest,
+    calibrated: cal.calibrated,
+    weeksRated: cal.weeksRated,
+    weeksNeeded: cal.weeksNeeded,
+    capacity,
+    any: deepest > 0,
+    ratedCount: days.reduce((n, d) => n + d.marks.length, 0),
+  };
+}
+
 export function buildWrapReport(sched, weekStartDate) {
   const ws = weekStartOf(weekStartDate);
   const weekTasks = sched.getTasksForWeek(ws);
@@ -395,6 +474,8 @@ export function buildWrapReport(sched, weekStartDate) {
       // (P-2), and the chart must draw no ceiling while it is — a ring that
       // appears later would mean the earlier weeks' charts were lying.
       energy: { ...spendRestore(sched, weekTasks), capacity: learnedCapacity(sched) },
+      // The shape of each day, with the ratings marked on it.
+      trajectories: buildTrajectories(sched, ws),
     },
     insight: buildInsight(sched),
     suggestions: buildSuggestions(sched, ws, weekLoad, weekTasks),

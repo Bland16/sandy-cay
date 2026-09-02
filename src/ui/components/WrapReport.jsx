@@ -11,7 +11,7 @@
 // bars racing a target, no "0%" where the honest answer is "—".
 import { useEffect, useMemo, useState } from 'react';
 import { buildWrapReport, applySuggestion } from '../report.js';
-import { fmtDur, DAY_NAMES } from '../format.js';
+import { fmtDur, DAY_NAMES, DAY_FULL } from '../format.js';
 import EnergyShape from './EnergyShape.jsx';
 import Icon from '../Icon.jsx';
 
@@ -69,6 +69,118 @@ function SandBars({ load }) {
         </div>
       ))}
     </div>
+  );
+}
+
+/**
+ * The day's shape — the PLANNED energy curve with what actually happened marked
+ * on it. Seven small multiples, one per day (asked for 2026-09-02).
+ *
+ * ⚠️ SMALL MULTIPLES, NOT ONE CHART ACROSS THE WEEK. The reserve resets each
+ * morning, so laying seven days end to end would draw a continuity that does not
+ * exist. A day is the unit the curve actually has.
+ *
+ * ⚠️ ONE SHARED Y SCALE across all seven, or Monday's exhaustion and Saturday's
+ * hour would draw the same picture. The number under each day says which is
+ * which for anyone reading the shapes alone.
+ *
+ * ⚠️ THE MARKS ARE SHAPES, NEVER COLOURS, and two independent rules say so.
+ * P-1: "neither arrow is a judgement — no warning colour on a rating", which is
+ * the rule the task panel's own = ↑ ↓ control already follows, so this borrows
+ * its vocabulary rather than inventing a second one. And the dataviz validator
+ * rejects the obvious red/green pair outright — ΔE 3.9 under deuteranopia,
+ * against a floor of 8 — so colour would have carried nothing for a colourblind
+ * reader even if it were allowed. Shape carries all of it.
+ *
+ * DOWN means the task drained you, UP means it gave something back, LEVEL means
+ * neither. None of them is good or bad.
+ */
+function DayShapes({ trajectories }) {
+  const t = trajectories;
+  if (!t || !t.any) {
+    return <p className="rp-dim">No load on this week’s tags yet — nothing to draw a shape from.</p>;
+  }
+  const W = 108;
+  const H = 56;
+  const PAD = 3;
+  const scale = Math.max(1, t.deepest);
+
+  return (
+    <>
+      <div className="rp-shapes">
+        {t.days.map((d) => {
+          const span = Math.max(1, d.windowEnd - d.windowStart);
+          const x = (at) => PAD + ((at - d.windowStart) / span) * (W - PAD * 2);
+          const y = (depth) => PAD + (depth / scale) * (H - PAD * 2);
+          // A step line, because the walk samples at each task's END — the cost
+          // is not spread smoothly through the task, it lands when it lands.
+          const step = [];
+          d.curve.forEach((c, i) => {
+            if (i > 0) step.push(`${x(c.at).toFixed(1)},${y(d.curve[i - 1].depth).toFixed(1)}`);
+            step.push(`${x(c.at).toFixed(1)},${y(c.depth).toFixed(1)}`);
+          });
+          const area = d.curve.length > 1
+            ? `M${step[0]} L${step.slice(1).join(' L')} L${x(d.curve[d.curve.length - 1].at).toFixed(1)},${PAD} Z`
+            : '';
+          const label = `${DAY_FULL[d.dayIndex]}: ${d.end === 0 ? 'nothing scheduled' : `${d.end.toFixed(1)} load-hours deep by the end`}`;
+          return (
+            <figure className="rp-shape" key={d.dayIndex}>
+              <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label}>
+                <line className="rp-shape-zero" x1={PAD} y1={PAD} x2={W - PAD} y2={PAD} />
+                {area && <path className="rp-shape-fill" d={area} />}
+                {step.length > 1 && <polyline className="rp-shape-line" points={step.join(' ')} />}
+                {d.marks.map((m, i) => {
+                  const mx = x(m.at);
+                  const my = m.depth == null ? PAD : y(m.depth);
+                  const g = m.kind === 'up' ? -3.4 : m.kind === 'down' ? 3.4 : 0;
+                  return m.kind === 'level' ? (
+                    <line key={i} className="rp-shape-mark" x1={mx - 3} y1={my} x2={mx + 3} y2={my}>
+                      <title>{`${m.title} — neither, ${m.overall}/5`}</title>
+                    </line>
+                  ) : (
+                    <polygon
+                      key={i}
+                      className="rp-shape-mark"
+                      points={`${mx - 3.2},${my - g} ${mx + 3.2},${my - g} ${mx},${my + g}`}
+                    >
+                      <title>{`${m.title} — ${m.kind === 'up' ? 'gave something back' : 'drained me'}, ${m.overall}/5`}</title>
+                    </polygon>
+                  );
+                })}
+              </svg>
+              <figcaption>
+                <span className="rp-bar-day">{DAY_NAMES[d.dayIndex].slice(0, 3)}</span>
+                <span className="rp-bar-val">{d.end > 0 ? d.end.toFixed(1) : '—'}</span>
+              </figcaption>
+            </figure>
+          );
+        })}
+      </div>
+      <p className="rp-shapes-key">
+        The line is the day you <b>planned</b>; deeper is more spent.
+        {t.ratedCount > 0 && <> The marks are what you said afterwards — <span className="rp-gl">▼</span> drained me, <span className="rp-gl">▲</span> gave something back, <span className="rp-gl">—</span> neither.</>}
+        {' '}
+        {t.calibrated
+          ? 'Your own ceiling is known, so “deep” is measured against you.'
+          : `No ceiling is drawn: that needs energy ratings across ${t.weeksNeeded} weeks and there ${t.weeksRated === 1 ? 'is 1' : `are ${t.weeksRated}`} so far.`}
+      </p>
+      <table className="rp-table rp-shapes-table">
+        <caption className="rp-dim">The same seven days as numbers.</caption>
+        <thead>
+          <tr><th>day</th><th>deepest</th><th>by the end</th><th>rated</th></tr>
+        </thead>
+        <tbody>
+          {t.days.map((d) => (
+            <tr key={d.dayIndex}>
+              <td>{DAY_NAMES[d.dayIndex].slice(0, 3)}</td>
+              <td>{d.low > 0 ? d.low.toFixed(1) : '—'}</td>
+              <td>{d.end > 0 ? d.end.toFixed(1) : '—'}</td>
+              <td>{d.marks.length || '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </>
   );
 }
 
@@ -207,6 +319,9 @@ export default function WrapReport({ sched, weekStart, version, onBack, onOpenTa
 
               <h3>What it took, and what it gave back</h3>
               <EnergyShape energy={stats.energy} />
+
+              <h3>How each day ran down</h3>
+              <DayShapes trajectories={stats.trajectories} />
 
               <div className="rp-cols">
                 <div>
