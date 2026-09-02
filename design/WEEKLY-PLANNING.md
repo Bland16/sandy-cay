@@ -975,11 +975,35 @@ without deciding anything.
 If an opening holds at least `minSitting`, place what fits **and carry the
 remainder to the next opening that fits**.
 
-Today `placeActivity` does `clamp(opening, durationMin, durationMax)`, so a
-45-minute opening yields 45 minutes and **the rest silently ceases to exist** —
-the clearest instance in the app of work vanishing without anyone saying so.
-`chooseSittings` already splits across gaps respecting `sMin`/`sMax`; the
-machinery exists and simply is not on the "Do it now" path.
+⚠️ **CORRECTED 2026-09-01, BEFORE ANY CODE WAS WRITTEN.** The paragraph that
+stood here said "Do it now" CLAMPS to the opening and the remainder ceases to
+exist. That is `placeActivity` — the LIBRARY ACTIVITY path — and it is not the
+path a commitment sitting takes. A sitting is an existing task, and existing
+tasks go through `WhatToDoPanel#doItNow`, which clamped nothing:
+
+- it moved the **full** duration into the opening, overflowing whatever bounded
+  it;
+- `resolveDropConflicts` correctly answered `rejected: true, snapBack: true`;
+- and `doItNow` read only `outcome.displaced`, **never `rejected`** — so nothing
+  snapped back, and the toast reported success.
+
+Measured on the probe that caught it:
+
+```
+opening 11:15–12:00 (45m) · sitting 120m · Advisor PINNED at 12:00
+placed  11:15–13:15  → overlapping Advisor, rejected:true,
+                       nothing snapped back, toast said it worked
+```
+
+So D-15 is a **silent double-booking fix** as much as a feature, and the two are
+one fix: **a piece that fits cannot overflow.** Honouring the rejection is what
+makes the remaining cases — a sitting that may not be split, a plain task, an
+activity — fail honestly instead of double-booking.
+
+`chooseSittings` already splits across gaps respecting `sMin`/`sMax`; that
+machinery is for GENERATING a week and is deliberately not reused here, because
+this splits one existing sitting against one known opening and needs no search:
+the remainder simply stays in the slot the schedule had already found for it.
 
 ⚠️ **Activities are deliberately unchanged.** An activity is *elastic* between
 `durationMin` and `durationMax` — filling 45 of a possible 120 is a complete

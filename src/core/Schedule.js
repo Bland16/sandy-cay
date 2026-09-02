@@ -40,6 +40,7 @@ import { getWeekLoad as runWeekLoad, getTagBreakdown as runTagBreakdown, snapsho
 import { whatToDo as runWhatToDo } from './whatToDo.js';
 import { suggestActivities as runSuggest, placeActivity as runPlaceActivity } from './suggest.js';
 import { energyBudget as runEnergyBudget, energyCalibration as runEnergyCalibration, reserveAt } from './energy.js';
+import { planSittingSplit as runPlanSittingSplit, splitSitting as runSplitSitting } from './generate.js';
 import { overpackCheck } from './detectors.js';
 
 const UPDATE_WHITELIST = [
@@ -847,6 +848,20 @@ export class Schedule {
   /** "Do it now" for a library activity: instantiate it into the opening. */
   placeActivity(activity, start, openingMin) {
     return runPlaceActivity(this, activity, start, openingMin);
+  }
+
+  /** Would "Do it now" split this sitting to fit the opening? (D-15.) Writes
+   *  nothing — this is the question the panel asks before it acts. */
+  planSittingSplit(task, opening) {
+    return runPlanSittingSplit(this, task, opening);
+  }
+
+  /** Split it: the task becomes the piece you are starting, a sibling holds the
+   *  rest. Returns null when it is not a splittable case. */
+  splitSitting(task, opening) {
+    const res = runSplitSitting(this, task, opening);
+    if (res) this._touch();
+    return res;
   }
 
   /** Deterministic energy budget for a day (design/ENERGY-MODEL.md, L-1). */

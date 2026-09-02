@@ -381,6 +381,96 @@ export function generateSittings(schedule, commitment, opts = {}) {
  * same day indices — the identical "no sibling awareness" flaw the engine
  * evaluation found in `scoring.js`, relocated into the generator.
  */
+/**
+ * Split a commitment SITTING so the part you can do now fits the opening you
+ * actually have, and the rest survives (WEEKLY-PLANNING D-15).
+ *
+ * The user's shape: *"if the minimum time of a session is included in the block
+ * even if the actual next task block is longer it should cut up the task into
+ * two."* You have 45 minutes before a meeting and a 2-hour homework sitting
+ * this afternoon — do 45 minutes of it now, and keep the other 75.
+ *
+ * ⚠️ THE SPEC'S OWN PREMISE WAS WRONG AND THE PROBE CORRECTED IT. D-15 was
+ * written saying "Do it now" CLAMPS to the opening and the remainder ceases to
+ * exist. That is true of `placeActivity` (library activities), which is NOT this
+ * path. An existing sitting goes through `WhatToDoPanel#doItNow`, which clamps
+ * nothing: it moved the FULL duration into the opening, overflowed whatever
+ * bounded it, and — because that panel reads only `outcome.displaced` and never
+ * `outcome.rejected` — left the sitting sitting on top of a pinned meeting
+ * while the toast reported success. Measured:
+ *
+ *     opening 11:15-12:00 (45m) · sitting 120m · Advisor pinned at 12:00
+ *     placed  11:15-13:15  → overlaps Advisor, rejected:true, nothing snapped back
+ *
+ * So this is a double-booking fix as much as a feature, and splitting is what
+ * makes the two the same fix: a piece that fits cannot overflow.
+ *
+ * ⚠️ BOTH HALVES MUST CLEAR `minSitting`. That is the anti-fragmentation floor
+ * the commitment already carries, and it is load-bearing here: splitting is good
+ * against "I'll do it when I have a proper block", and bad when it shaves a
+ * 2-hour job into fragments too small to get into. A 60m sitting against a 45m
+ * opening would leave a 15m tail, so with a 30m minimum it does NOT split —
+ * the caller falls back and, now that rejection is honoured, refuses cleanly.
+ *
+ * ⚠️ THE REMAINDER STAYS WHERE THE SITTING ALREADY WAS. It is a slot the
+ * schedule had already found and nothing else has taken, so keeping it moves
+ * exactly one thing (the piece you are about to do) and surprises nobody. It is
+ * also why this needs no placement search and cannot fail halfway.
+ *
+ * Writes nothing unless it returns a plan.
+ *
+ * @returns {?{ now: {start, end, minutes}, rest: {start, end, minutes} }}
+ *   null when this is not a splittable case at all.
+ */
+export function planSittingSplit(schedule, task, opening) {
+  if (!task || !opening || !task.startTime || !task.endTime) return null;
+  const commitment = (schedule.commitments || []).find((c) => c.id === task.parentId);
+  if (!commitment) return null; // not a sitting — activities and plain tasks are unchanged
+  const total = task.getDuration();
+  const room = Math.max(0, Math.round(opening.minutes));
+  if (total <= room) return null; // it already fits; nothing to split
+  const floor = commitment.effectiveMinSitting();
+  const head = Math.min(room, commitment.maxSitting || room);
+  const tail = total - head;
+  if (head < floor || tail < floor) return null; // one of the halves would be a fragment
+  return {
+    now: { start: new Date(opening.start), end: addMinutes(new Date(opening.start), head), minutes: head },
+    rest: { start: new Date(task.startTime), end: addMinutes(new Date(task.startTime), tail), minutes: tail },
+  };
+}
+
+/**
+ * Apply `planSittingSplit`: the ORIGINAL task becomes the piece you are about to
+ * do, and a sibling is created for the remainder.
+ *
+ * The original keeps its identity for the piece being started, because that is
+ * the one the user just acted on and the one that will carry the rating. The
+ * remainder is a new sitting of the same commitment — same title, tags,
+ * priority, deadline and `parentId` — so `sittingsFor` still finds it and D-11's
+ * arithmetic still counts it. Nothing is lost and the week still owes the same.
+ */
+export function splitSitting(schedule, task, opening) {
+  const plan = planSittingSplit(schedule, task, opening);
+  if (!plan) return null;
+  const rest = new Task({
+    title: task.title,
+    tags: [...(task.tags || [])],
+    type: task.type,
+    priority: task.priority,
+    parentId: task.parentId,
+    startTime: plan.rest.start,
+    endTime: plan.rest.end,
+    deadline: task.deadline,
+    ...(task.load ? { load: task.load } : {}),
+  });
+  if (typeof schedule._uniqueId === 'function') schedule._uniqueId(rest);
+  schedule.tasks.push(rest);
+  task.startTime = plan.now.start;
+  task.endTime = plan.now.end;
+  task.placedBy = 'user';
+  return { started: task, rest, plan };
+}
+
 export function generateAll(schedule, commitments, opts = {}) {
   const now = opts.now || new Date();
   const scored = commitments.map((c) => {
