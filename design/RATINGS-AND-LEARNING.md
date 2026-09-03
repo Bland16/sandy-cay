@@ -1,5 +1,20 @@
 # Ratings that never arrive — one door in, for everything the model learns from
 
+> **⚠️ STATUS CORRECTED 2026-09-03: THIS IS BUILT.** The header below said
+> "Nothing built" for three weeks after it shipped, and that cost real work — a
+> reader this session concluded from it that a recurring-heavy user faces a
+> *permanent* cold start, which is false. `Schedule#ratedSamples()` exists
+> (`Schedule.js:434`), `retrain` uses it (`:1068`), `energyCalibration` uses it
+> (`energy.js:73`), and `tests/rated-samples.test.js` guards it.
+>
+> One consumer was missed until now and is also fixed: `learnedCapacity` still
+> walked `schedule.tasks` thirty lines below the calibration gate that had been
+> routed through the door, so the gate opened while the estimator behind it
+> stayed blind (`b1bb52e`). §4's "two stores, one reader" argument was right and
+> incompletely applied — check every reader, not the one the bug was found in.
+>
+> The §6 findings — recency weighting, drift across a term — remain open.
+
 **Session 8, 2026-08-13. Status: SPEC. Nothing built.** Written after a review
 probe found that **a rating given to a recurring session reaches nothing that
 learns.** This is not a tuning problem or a model-quality problem; it is a

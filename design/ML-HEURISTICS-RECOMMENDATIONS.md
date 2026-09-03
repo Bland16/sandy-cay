@@ -9,6 +9,95 @@ Every claim below marked **✅ verified** was checked against source directly, n
 taken from an agent report. Two agent claims were checked and **rejected**; they
 are recorded at the bottom so nobody re-derives them.
 
+---
+
+## STATUS — what is built, and what this document now gets wrong
+
+**Updated 2026-09-03 after implementation.** Read this before the rest; several
+recommendations below have been overtaken by measurement, and two of this
+document's own claims turned out to be false when run.
+
+### Built
+
+| Recommendation | Commit |
+|---|---|
+| §4.1 the sign, family-centring, evidence gate, plain labels | `f50fd95` |
+| §4.2 `observations` for every column, and serialized | `f50fd95` |
+| §4.2 NaN rating costs one sample, not the model | `f50fd95` |
+| §1.2 `moveCount` removed, layout v5, structural length guard | `f50fd95` |
+| §3.5 `learnedCapacity` per-axis + routed through `ratedSamples()` | `b1bb52e` |
+| §0.0 the energy term at the candidate slot | `3722fd9` |
+| §3.0 bias initialised at the weighted mean | `98fd7d0` |
+| §4.4 cross-validated skill as the authority gate | `db98f12` |
+
+Probes written, and re-runnable: `probe-energy-weight.mjs`,
+`probe-learn-fit.mjs`, `probe-learn-baselines.mjs`.
+
+### ⚠️ Corrections to this document
+
+**§0.1 is wrong that λ = 0.1 is "functionally zero".** Measured
+(`probe-learn-fit.mjs` §3), raising it 0.1 → 16 halves the spread of the time
+weights, 0.740 → 0.288. It bites. What it never does is move the intercept — so
+it was never the fix for the flat-data leak, which is what §0.1 and §0.3 use it
+to explain. **Those are two different problems that looked like one**, and the
+one-line bias fix in §3.0 solves the leak completely while λ shrinks real signal
+and invented signal alike.
+
+**§0.3's numbers understate the leak.** Re-measured on thirty identical ratings:
+**six** columns over the display floor, not "roughly two of three sentences" —
+including `day:wed` at 0.025 from six observations.
+
+**The `w.preference` ramp (§3.1/§3.3) is superseded, not deferred.** It scales
+authority with *evidence volume*. `db98f12` scales it with *demonstrated skill*
+instead, which is strictly better targeted: measured, a user with forty ratings
+and no real preference produces a fit that predicts held-out ratings **worse
+than a constant** (MAE 0.0431 vs 0.0260). No volume-based ramp can see that
+case — the ratings are all there. Build the ramp only if the skill gate proves
+too coarse.
+
+**The closed-form solve (§2) is now a smaller prize than it looks.** Its headline
+benefit here was fixing the intercept leak, and `98fd7d0` fixes that in one line.
+What remains — determinism, free leave-one-out for λ, per-weight standard errors
+— is still real and still worth doing, but it is no longer blocking anything
+honest.
+
+### New finding, not in the analysis below
+
+**The model does not always earn its blend weight.** Held-out MAE,
+leave-one-group-out (`probe-learn-baselines.mjs`):
+
+| persona | model | no model | tag×time mean |
+|---|---|---|---|
+| MORNING — simple additive preference | 0.1107 | 0.2175 | 0.1180 *(ties)* |
+| DOMINANT — one strong tag | **0.0553** | 0.0942 | 0.0929 |
+| NULL — no preference at all | 0.0431 | **0.0260** | 0.0415 |
+| CROSSED — tag×hour interaction | 0.0894 | **0.0682** | 0.0966 |
+
+On MORNING it merely **ties** the shrunken tag×time mean — which is
+`getSatisfactionMatrix`, the table the wrap report already prints. It wins
+clearly only on DOMINANT. On the other two, doing nothing is better.
+
+That is the case for the skill gate, and it is also a standing question the
+docs' original framing did not anticipate: for a large class of users the
+cell-mean baseline is as good as the model and explains itself in one sentence.
+
+### Method traps hit while measuring, recorded so they are not repeated
+
+- **Grouping by the cell the baseline estimates makes the baseline untestable.**
+  Grouping folds by `tag@hour` meant the held-out cell was by construction never
+  in training, so the cell mean always fell back to its prior and printed
+  numbers identical to the global mean, down every row. It reads as a tie; it is
+  a harness that cannot see the estimator it exists to test. Group by *series*.
+- **σ = 0.08 makes a flat persona degenerate.** Every rating rounds to 3, every
+  estimator predicts 0.5, every MAE is exactly 0.0000.
+- **Passing `startTime` to `addFlexible` skips scored placement entirely**
+  (HANDOFF #12/#13), so a placement probe measures nothing and reports zero
+  moved at every weight.
+- **Shaping one day proves nothing when the placer can walk to an unshaped one.**
+  A sitting went to an empty Tuesday 08:00 — the most proximate slot *and* the
+  freshest — so the two terms agreed and the test was blind even at a weight of
+  1.5. Load every day in the search window.
+
 **Anchor decisions (user, 2026-09-02):**
 
 1. Remove the `moveCount` heuristic — *"sometimes I move the tasks when I make

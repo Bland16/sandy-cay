@@ -7,7 +7,33 @@ chosen. Probe: `probe-energy-candidates.mjs`.
 
 ## Recommendation
 
-> ### Build **H4 — relative depth (C1) for energy, GATED on the task having any load, plus sibling spacing for clustering.**
+> ### ⚠️ SUPERSEDED BY THIS DOCUMENT'S OWN LATER EVIDENCE — BUILT 2026-09-03 AS C3, NOT C1.
+>
+> The H4 recommendation below was written before the C3 fixture and before D-1
+> was settled, and both overturn it. **Read "The C3 fixture" and "D-1 is settled
+> on evidence" before building anything from this section.** In short:
+>
+> - **C1 is structurally blind to the case that matters.** Where every day
+>   carries the same 2h block — mornings on half, evenings on the other half —
+>   the day's total dip is *identical* either way and only the order differs. C1
+>   saw nothing (sat down fresh 0/5); C3 chose correctly (5/5).
+> - **C3's quantity is slot-shaped**, so it cannot live in a day chooser at all,
+>   which is why D-1 moved the term into `scoring.js` at the candidate slot.
+> - The **gate survives intact** and is the part of H4 that was right: a task
+>   carrying no load gets no opinion.
+>
+> Caveat 2 below — "whether that information should decide is a judgement, and
+> it is the user's" — was put to the user on 2026-09-03 and answered: *"the fact
+> that an event was unsatisfying is useless in the absence of my energy level
+> prior to it."* Settled.
+>
+> Shipped as `w.energy` (SPEC §2.3), weight measured in
+> `design/probes/probe-energy-weight.mjs` rather than taken from this document,
+> which never set one — every number here predates D-1's move.
+>
+> Sibling spacing for clustering is **not** built.
+
+> ### ~~Build **H4 — relative depth (C1) for energy, GATED on the task having any load, plus sibling spacing for clustering.**~~
 
 ```
 score(day) =  ( |L(t)| > 0 ? 1 − |dip⁺(day)| / max|dip⁺| over candidates : 0 )   ← energy

@@ -119,9 +119,22 @@ class Schedule {
 score(slot) = w.proximity · (1 − |slot.start − origin| / lookaheadHorizon)
             + w.balance   · (1 − dayFillRatioAfterPlacement)
             + w.stability · stabilityBonus(placedBy === 'user')
-            + w.preference· modelScore(task, slot)          // §5; 0 until ≥10 ratings
+            + w.preference· modelScore(task, slot)          // §5; 0 until earned
+            + w.buffer    · bufferScore(slot.end, deadline, runwayStart)
+            + w.energy    · (1 − arrivalDepletion(slot.start, task.load))
 // highest wins; ties → earlier. Weights renormalized; Cabana sliders.
 ```
+
+**`w.energy` — how depleted you ARRIVE at the slot** (added 2026-09-03, settling
+D-1 in `design/ENERGY-PLACEMENT-EVAL.md`). The quantity is the reserve at
+sit-down, weighted by the axes the task actually draws on, over per-axis
+capacity. It is **gated**: a task carrying no load gets no opinion rather than
+inheriting a preference from the day's state, which in a weighted sum means a
+constant across every candidate. Note the eval document's *headline* recommends
+C1, the day's total dip; its later evidence overturns that — on a fixture where
+every day carries the same block, mornings on half and evenings on the other,
+the day's dip is identical and only the order differs. Weight measured, not
+chosen: `design/probes/probe-energy-weight.mjs`.
 
 ### 2.4 autoSchedule()
 1. Anchors: fixed, pinned, protected-tag (post-placement), materialized recurrence occurrences.
@@ -188,7 +201,25 @@ This occurrence (skip exception) / This and future (`effectiveUntil: now`) / Ent
 >
 > ⚠️ **Known divergence, not yet resolved:** this section says `timingFit≠0` doubles the sample weight *"on time features"*. `learning.js` doubles the **whole sample** — every tag, duration and dayFill column too. Per-feature sample weighting is not expressible in a single weighted least-squares fit, so one of the two has to give. Recorded, not silently reconciled.
 **Model:** ridge linear regression, plain-JS gradient descent, weights inspectable → Cabana renders plain-language preferences.
-**Output:** `modelScore(task, slot)∈[0,1]` → `w.preference` (default 0.15; forced 0 until ≥10 ratings).
+**Output:** `modelScore(task, slot)∈[0,1]` → `w.preference` (default 0.15; forced 0 until the model has **earned** it — see below).
+
+> **Authority is earned by being right, not by rating count** (added 2026-09-03).
+> `≥10 ratings` remains the floor, and a second gate sits above it: `train`
+> runs grouped cross-validation (folds by `parentId`, so a whole recurring
+> series leaves together) and stores R² against the mean predictor. A fit that
+> does not beat predicting your average, on ratings it did not see, contributes
+> nothing.
+>
+> This exists because a count cannot see the case that matters. Measured
+> (`design/probes/probe-learn-baselines.mjs`), a user with forty ratings and no
+> real preference gets a fit whose held-out MAE is **0.0431 against 0.0260 for
+> no model at all** — it fits noise, clears every count-based gate, and then
+> steers every placement with what it found. An additive fit on interacting
+> preferences loses to a constant the same way. `trained` only ever meant
+> "gradient descent produced finite numbers".
+>
+> A **null** skill means "too little to split honestly", not "no skill": a small
+> dataset is not punished for being small, and only a measured failure gates.
 **Retraining:** week rollover (before Wrap report) + Cabana "Retrain now" (shows sample count).
 
 ---

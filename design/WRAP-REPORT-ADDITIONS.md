@@ -12,6 +12,37 @@ the same addition without seeing each other's work, it is listed first.
 
 ---
 
+## STATUS — what is built
+
+**Updated 2026-09-03 after implementation.**
+
+| Item | Commit |
+|---|---|
+| Prerequisite 1 — blocked days have no capacity (+ `blocked` per day, for A1) | `f50fd95` |
+| Prerequisite 2 — the insight sign, evidence gate, plain labels | `f50fd95` |
+| Prerequisite 3 — the P-1 print violation: exits now print as text | `bfa0daa` |
+| Prerequisite 4 — `deadlineBufferHours` declared | `bfa0daa` |
+| Prerequisite 5 — the deadline sentence that could be false | `bfa0daa` |
+| Prerequisite 6 — `fmtBuf` printing "0h" | `bfa0daa` |
+| Prerequisite 7 — the dead ternary and the bare `0` | `bfa0daa` |
+| Prerequisite 8 — the empty day's 2px sliver | `bfa0daa` |
+| Prerequisite 10 — the stale `google.js` origins comment | `bfa0daa` |
+| Prerequisite 11 — dead CSS, dead helpers, the stale print comment | `f50fd95`, `bfa0daa` |
+| **Tier 2 restorations** — Breathing room, the matrix *with cell counts*, plan-vs-actual reframed | `bfa0daa` |
+| A22/A23 partial — the capacity reference and its numeral | `f50fd95` |
+| A27–A29 — repeating table headers, unsplittable KPI row, `--hair` on paper | `bfa0daa` |
+
+The sand bars, the energy butterfly, the insight sentence and the restored
+sections are now covered by tests (`wrap-sand-bars.test.jsx`,
+`ui-energy-shape.test.jsx`, `learning-guards.test.js`) — the point being that
+"nothing failed when they were cut" is exactly why they were cut.
+
+**Still open:** A1 (day notes — the data now reaches the view model via
+`blocked`, nothing renders it yet), A2 (the commitment ledger), A3 (the day
+timeline strip), and the rest of Tiers 3–5. A35/A36 are designed, not built.
+
+---
+
 ## Two claims that did NOT survive verification
 
 Recorded so nobody re-derives them.
