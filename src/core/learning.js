@@ -209,7 +209,37 @@ export class LearningModule {
 
     const dim = samples.length > 0 ? samples[0].x.length : 0;
     const w = new Array(dim).fill(0);
-    let b = 0;
+    // ⚠️ START THE INTERCEPT AT THE WEIGHTED MEAN, NOT AT ZERO.
+    //
+    // Every one-hot block (time, weekday, duration) sums to 1, so each block is
+    // collinear with the intercept and nothing in the data identifies the split
+    // between them. From b = 0 the descent has to carry the whole level up
+    // through that null space, which converges FAR slower than the signal
+    // directions — so at the fixed 400 epochs the level has not arrived and the
+    // shortfall is sitting in the one-hot columns, indistinguishable from
+    // learned preference.
+    //
+    // Measured (probe-learn-fit.mjs), 30 ratings that are all identical — a
+    // person with no preference whatsoever:
+    //
+    //     epochs      bias   largest |weight|   the report would print
+    //        400     0.135        0.126         "leans toward study"
+    //      5,000     0.225        0.119         "leans toward study"
+    //     50,000     0.473        0.012         "leans toward study"
+    //    200,000     0.500        0.000         (nothing)   ← the truth
+    //
+    // Six columns cleared the display floor at 400, including `day:wed` from
+    // six observations. Starting at the mean puts the level where it belongs
+    // before the first step, so the columns have nothing left to absorb. This
+    // is not a speed-up: it is the difference between the model reporting a
+    // preference it invented and reporting none.
+    //
+    // Note this is a DIFFERENT problem from lambda. Raising lambda shrinks the
+    // invented weights and the real ones alike; it never moves the intercept.
+    const wSum = samples.reduce((acc, sm) => acc + sm.weight, 0) || 1;
+    let b = samples.length
+      ? samples.reduce((acc, sm) => acc + sm.weight * sm.y, 0) / wSum
+      : 0;
     if (samples.length === 0) {
       this.weights = w;
       this.gates = new Array(dim).fill(1);

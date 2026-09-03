@@ -403,3 +403,54 @@ describe('the energy term — how depleted you arrive (D-1, C3)', () => {
     expect(b.startTime.getHours()).toBeLessThan(13);
   });
 });
+
+describe('a user with no preference is told they have none', () => {
+  beforeEach(() => resetIds());
+
+  // ⚠️ THE INTERCEPT LEAK. Every one-hot block sums to 1, so each is collinear
+  // with the unpenalised bias and nothing identifies the split. From b = 0 the
+  // descent carries the level up through that null space, which converges far
+  // slower than the signal directions — so at 400 epochs the level had not
+  // arrived and the shortfall sat in the one-hot columns, indistinguishable
+  // from learned preference.
+  //
+  // Measured before the fix, on thirty IDENTICAL ratings: bias 0.135, and
+  // tag:study 0.126 / dur:45-90 0.105 / priority 0.076 / day:wed 0.025 — six
+  // columns over the display floor, from data containing one tag, one priority
+  // and one rating value. The report would have printed "leans toward study".
+  const flat = () => {
+    const s = new Schedule({ config: defaultConfig });
+    s.buckets.push(new Bucket({ label: 'Study', tags: ['study'] }));
+    for (let i = 0; i < 30; i += 1) s.tasks.push(rated(`f${i}`, i % 5, 9 + (i % 4), 3));
+    s.retrain();
+    return s;
+  };
+
+  it('puts the level in the intercept, not in the columns', () => {
+    const s = flat();
+    expect(s.learning.bias).toBeCloseTo(0.5, 6); // a 3 of 5, exactly
+    for (const w of s.learning.inspect()) {
+      expect(Math.abs(w.weight)).toBeLessThan(0.01);
+    }
+  });
+
+  it('the report says nothing rather than inventing a preference', async () => {
+    const { buildWrapReport } = await import('../src/ui/report.js');
+    const { insight } = buildWrapReport(flat(), MON());
+    expect(insight.cold).toBe(false); // 30 ratings — it is past the floor
+    expect(insight.top).toHaveLength(0); // and it still has nothing to say
+  });
+
+  // The fix must not buy its honesty by flattening real signal too.
+  it('still finds a preference that is genuinely there', () => {
+    const s = new Schedule({ config: defaultConfig });
+    s.buckets.push(new Bucket({ label: 'Study', tags: ['study'] }));
+    const HRS = [9, 12, 15, 19];
+    for (let i = 0; i < 32; i += 1) s.tasks.push(rated(`d${i}`, i % 5, HRS[i % 4], 4));
+    for (let i = 0; i < 14; i += 1) s.tasks.push(rated(`n${i}`, i % 7, 22, 1));
+    s.retrain();
+
+    const night = s.learning.inspect().find((w) => w.label === 'time:night');
+    expect(night.weight).toBeLessThan(-0.3); // measured ≈ −0.59
+  });
+});
