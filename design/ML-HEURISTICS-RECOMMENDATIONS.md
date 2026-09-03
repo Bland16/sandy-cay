@@ -198,7 +198,7 @@ not.
 
 | Column | Why | Verified |
 |---|---|---|
-| **`moveCount`** (`learning.js:83,86,96`) | User directive. Conflates a deliberate 15-minute nudge with engine displacement. Inert at placement. In `whatToDo` it actively downranks repeatedly-shoved work — fighting `starvationCheck`, whose whole job is to surface it. | ✅ |
+| **`moveCount`** (`learning.js:83,86,96`) | User directive. **It counts only the user's own drags — never engine displacement** (§1.3b), so it is not *partly* contaminated by a creation-time nudge, it is entirely made of nudges. Inert at placement. In `whatToDo` it actively downranks repeatedly-shoved work — fighting `starvationCheck`, whose whole job is to surface it. | ✅ |
 | **`placedByUser`** (`learning.js:82`) | **The same nudge sets it** — `Task.moveTo` writes `placedBy='user'` (`Task.js:135`) *and* increments `moveCount` (`:136`). **Plus real leakage:** completing a task from inside its block passes `endTime: cut` (`App.jsx:342`), and `updateTask` does `if (timeChanged) t.placedBy = 'user'` (`Schedule.js:346`) — **finishing early sets the feature.** Also forced constant for occurrences (`Schedule.js:451`), and double-counts `w.stability` (`scoring.js:116`). | ✅ |
 | **`priority`** (`learning.js:78`) | User-controlled, defaults to 3 so near-constant (collinear with the intercept), inert at placement, and double-counted in `whatToDo` — which adds an explicit priority term *and* a preference term already containing one, possibly with opposite sign. | ✅ |
 
@@ -233,6 +233,86 @@ Removing it is a schema change with real blast radius for zero benefit — and i
 is the raw material for an honest replacement later (an engine-only counter;
 `placeAt(…, {countMove:true})` is already the engine-only door and nothing
 currently passes it).
+
+### 1.3b Considered and declined: gate `moveCount` instead of removing it
+
+**Asked 2026-09-03:** *"can we instead alter it to only add if it is moved 10
+minutes after initial placement?"* — i.e. keep the feature, but stop counting the
+nudge-at-creation.
+
+**Answer: gate the counter if you like, but the feature still goes.** The two are
+separate decisions and they come out differently.
+
+#### What `moveCount` actually counts ✅ verified
+
+It is incremented only by `moveTo` (`Task.js:136`, `countMove` defaults **true**),
+and `moveTo` has exactly **one caller in the codebase**:
+
+```
+src/ui/useCardInteraction.js:396   t.moveTo(newStart)   // R-1: manual action wins
+```
+
+`placeAt` defaults `countMove = false`, and **no caller anywhere passes `true`**:
+
+```
+placement.js:394    task.placeAt(best.slot.start)     // autoSchedule
+ripple.js:144       t.placeAt(newStart)
+gapActions.js:211   pick.task.placeAt(pick.slot.start)
+```
+
+**So `moveCount` does not mean "how often this got shoved around." It means "how
+often the user dragged this."** It has never once counted engine displacement.
+The column is not partly contaminated by creation-time nudges — it is entirely
+made of user drags, of which the creation nudge is one kind.
+
+#### Why the gate does not rescue the feature
+
+Three reasons, none of which is contamination:
+
+1. **Inert at placement.** `moveNorm` is a task-level constant — identical for
+   every candidate slot — so it cannot move the arg-max (§1.1). A gated
+   `moveCount` is a cleaner number that still cannot affect where anything goes.
+2. **Harmful where it isn't inert.** In `whatToDo` it downranks work that has
+   been moved often, fighting `starvationCheck`, whose entire purpose is to
+   surface that work. The gate does not touch this.
+3. **Narrating it is moral bookkeeping.** A learned weight on "how often you
+   hand-move this," told back to the user, is a claim about their rescheduling
+   behaviour — the P-1 line.
+
+Plus §1.1: at p ≈ n, a column that cannot affect placement and cannot be safely
+narrated is pure cost.
+
+#### The gate itself: needs a timestamp the app does not have
+
+✅ verified — **there is no creation timestamp on `Task`.** No `createdAt`, no
+`addedAt`, no `Date.now()` anywhere in the file. A 10-minutes-since-placement
+gate would require a new persisted field, touching both serialization halves —
+the exact shape of the `freq`-loss sharp edge already recorded in this codebase.
+
+#### The cheaper version of the same instinct
+
+The distinction actually wanted — *"I tweaked this as I made it"* versus *"this
+kept getting moved"* — is already available at the call site, with no clock and
+no migration, because the two run through **two different doors**:
+
+| Door | Who | Counts today |
+|---|---|---|
+| `moveTo` | the user's drag | `moveCount` |
+| `placeAt` | the engine (autoSchedule, ripple, gap actions) | **nothing** |
+
+And the engine-side signal partly exists already: `displacedCount`,
+`rippleCount`, `carriedCount` — and `starvationCheck` reads
+`displacedCount + carriedCount`, **not** `moveCount` (`detectors.js:61`).
+
+**Recommendation:** drop `moveNorm` from the model as planned; keep recording
+`history.moveCount`; and if the "app kept moving this" signal is wanted complete,
+pass `{countMove: true}` from the three `placeAt` sites into an engine-side
+counter. No timestamp, no migration.
+
+If the creation-nudge-vs-later-reschedule distinction is still wanted as a stored
+fact, it does need the timestamp — but the prior question is what would consume
+it. It cannot help placement, and for detectors `displacedCount` is the better
+input.
 
 ### 1.4 FIX — columns already present and already wrong
 

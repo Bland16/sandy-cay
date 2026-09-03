@@ -324,18 +324,147 @@ list them instead).
 
 ---
 
-## Needs a product decision
+## A35 / A36 — designed 2026-09-03 (user)
 
-### A35. Last week as the denominator
-Turns a folder of PDFs into a series. But `design/SPEC-COMB-2026-08.md:176`
-states as a *property* of the report: *"the wrap report never looks further back
-than the week it covers."* This changes that. **Sign-off, not implementation.**
+Both were "needs a product decision." The user has now given direction on each.
 
-### A36. A "lay next week out" action on the report
-⚠️ `HANDOFF.md:485-488`: *"It will move the user's gym and be wrong to. They
+### A35. Which week is the denominator?
+
+> *"I'm not sure if it should be last week or the last week with a similar
+> payload/workload."*
+
+**The instinct is right and adjacent-week is the wrong answer.** Comparing finals
+week against reading week manufactures a shortfall out of the calendar — the
+purest P-1 failure available, because the "decline" is an artefact of the term,
+not of the person.
+
+But "the most similar week" carries a tautology risk that has to be designed out:
+**if you select the comparison week by scheduled hours and then report on
+scheduled hours, you have said nothing.** The comparison is guaranteed to come
+back "about the same," by construction.
+
+**The resolution — similarity is defined on what you did NOT choose; comparison
+is on what you did.**
+
+| Defines the cohort (structural, not chosen this week) | Compared across it (lived) |
+|---|---|
+| days blocked / day-window capacity | what got done |
+| commitments due, and their `amountMinPerWeek` | how it felt (shells) |
+| deadline density in the week | gap compression |
+| day notes marking term phase (finals, reading week) | where the hours went, by tag |
+
+Those two lists must stay disjoint. A quantity may define the cohort or be
+compared across it, never both.
+
+**Prefer a cohort median over a single matched week.** One "most similar week" is
+n=1 and as noisy as the thing it is measuring. The median of the matched cohort
+is robust, degrades gracefully (at n=1 it *is* that week), and has a nameable
+denominator.
+
+**And the report must name the cohort, in the sentence.** An unnamed denominator
+is the exact defect this whole document exists to prevent.
+
+> *"Compared with your three other full teaching weeks, this one held about two
+> hours more study and rated about the same."*
+
+**Gate:** below 2 matched weeks, print nothing — do not fall back to "last week"
+silently, and do not fall back to a median over dissimilar weeks. The
+EnergyShape rule applies: declining to narrate an absence claims nothing.
+
+⚠️ Still a genuine spec change: `design/SPEC-COMB-2026-08.md:176` states as a
+*property* of the report that *"the wrap report never looks further back than the
+week it covers."* That sentence has to be amended or this cannot be built.
+
+---
+
+### A36. "Lay next week out" — from tags, not named activities
+
+> *"if I have a social lunch around noon most weeks instead of using real names
+> just use lunch social etc — add in my commitments routines ideas with tags
+> instead of set activities."*
+
+**This is the design that makes the feature safe.** The recorded danger was
+`HANDOFF.md:485-488`: *"It will move the user's gym and be wrong to. They
 deliberately placed Mon 16:15 / Wed 19:00 / Sat 14:00 against their hard days;
-the generator spreads evenly."* If built, it must run `planWeek`'s naming preview
-and must **not** be the report's `.cta`.
+the generator spreads evenly."*
+
+A tag-shape layout **does not spread evenly** — it proposes blocks *where the
+pattern actually recurs*. Mining the user's own week for "gym, Mon ~16:00 / Wed
+~19:00 / Sat ~14:00, 5 of the last 6 weeks" reproduces the deliberate placement
+instead of overwriting it, because the deliberate placement **is** the evidence.
+The tag framing turns the hazard into the mechanism.
+
+#### The unit: normalized tag set × weekday × time bucket
+
+Mine the trailing N weeks. For each task take its **sorted tag set** — so
+`lunch`+`social` is one thing, distinct from `social` in the evening — its
+weekday, and its time bucket. Count how many *distinct weeks* contain at least
+one such block. Emit the ones clearing a recurrence threshold.
+
+Output is a skeleton of **unnamed shape blocks**:
+
+```
+MON   study · 2h, ~09:00          (5 of last 6 weeks)
+      lunch · social, ~12:00      (6 of last 6)
+      gym, ~16:15                 (5 of last 6)
+WED   gym, ~19:00                 (5 of last 6)
+SAT   gym, ~14:00                 (4 of last 6)
+```
+
+Never "Lunch with Sarah." The app genuinely does not know you will have lunch
+with Sarah; it knows you reliably spend an hour on `lunch`+`social` around noon.
+**Saying only what it knows is the honest version and also the more useful one** —
+a shape you fill in beats a guess you have to correct.
+
+#### Why tags, and not the activity library ✅ verified
+
+`activityUsage` (`activityList.js:32`) already does trailing-window frequency —
+but it keys on `activityId` and **explicitly skips every task without one**
+(`:37`). It can only see library-instantiated items, and most of a real week is
+not that. Tag mining sees the whole week.
+
+It also matches the app's own model everywhere else: energy derives from tags,
+zones claim tags, buckets carry load by tag. `Commitment.js:35` already argues
+exactly this — *"tags touch, so a commitment tagged `study` already has the right
+character."*
+
+*(This reverses the rejection of `activityUsage` in the Rejected list above. It
+was rejected for the **report**, where its 90-day window is not the week. For
+**next week's shape** a trailing window is precisely right — the unit just has to
+be tags rather than activity ids.)*
+
+#### Commitments and routines fold in natively
+
+- **Commitments** carry `tags` (`Commitment.js:70`) and `amountMinPerWeek`
+  (`:75`). So a commitment emits *"study · 4h across the week"* as an amount in
+  its usual shape, without the layout having to pick sittings. Its `dueDay`
+  (`:100`) constrains where the shape may fall.
+- **Routines** carry tags through their source `Activity` (`Activity.js:73`),
+  plus a frozen step program. So a routine emits its **chain shape** — active
+  touchpoints with the passive waits between them — under its tags, not its step
+  labels.
+
+#### The safety mechanism already exists ✅ verified
+
+`planWeek(schedule, ws, now)` (`commitmentWeek.js:160`) is
+`layOutWeek(Schedule.fromJSON(schedule.toJSON()), ws, now)` — it lays out a week
+**on a deep copy** and returns the result without touching the live schedule.
+That is exactly the non-destructive preview the handoff demanded, already built
+and already exported (`index.js:42`).
+
+#### Rules it must obey
+
+1. **Proposal, never an action.** It renders a shape; the user places it. Per the
+   handoff, it must not be the report's `.cta`.
+2. **P-2 gate with named evidence.** Only propose a pattern present in ≥N of the
+   last M weeks, and **print the count** — "5 of your last 6 weeks". A pattern
+   below threshold is not shown, not shown greyed out.
+3. **P-1 framing.** It describes next week's *shape*, never last week's
+   shortfall. "Most weeks you…" not "you usually manage to…".
+4. **Blocked days and day notes are respected**, since they are already known for
+   the week being laid out — do not propose a Thursday shape into Thanksgiving.
+5. **Never invent a time it has not seen.** The time bucket comes from where the
+   pattern actually sat, not from where the packer would prefer it.
 
 ---
 
