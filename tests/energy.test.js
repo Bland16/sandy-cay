@@ -53,16 +53,65 @@ describe('energy battery (order-aware reserve)', () => {
     return s;
   };
 
-  it('drains the reserve in time order and flags the deepest dip (once calibrated)', () => {
+  // Three rated days on a tag no bucket carries: enough to open the GLOBAL
+  // calibration gate, and no per-axis evidence at all.
+  const calibrateWithoutLoad = calibrate;
+
+  // Three rated days that each actually spend on mental — 3h of work at +2/hr,
+  // so each day's dip is 6 and `mental` genuinely earns a ceiling of 6.
+  const calibrateOnMental = (s) => {
+    for (const d of [1, 8, 15]) {
+      for (let i = 0; i < 3; i += 1) {
+        s.addFixed({ title: `W${d}-${i}`, tags: ['work'], startTime: D(d, 7 + i), endTime: D(d, 8 + i) });
+      }
+      const t = s.addFixed({ title: `r${d}`, tags: ['x'], startTime: D(d, 12), endTime: D(d, 13) });
+      t.completion = 'done'; t.satisfaction = { overall: 3, energy: 0 };
+    }
+  };
+
+  it('drains the reserve in time order and flags the deepest dip', () => {
     const s = workRestSched();
-    for (let i = 0; i < 5; i += 1) s.addFixed({ title: `W${i}`, tags: ['work'], startTime: D(15, 7 + i), endTime: D(15, 8 + i) }); // 5h straight
-    calibrate(s);
-    const b = s.energyBudget(D(15, 12));
+    for (let i = 0; i < 5; i += 1) s.addFixed({ title: `W${i}`, tags: ['work'], startTime: D(22, 7 + i), endTime: D(22, 8 + i) }); // 5h straight
+    calibrateOnMental(s);
+    const b = s.energyBudget(D(22, 12));
     expect(b.mental.net).toBe(10); // total spend: 5h × +2/hr
     expect(b.mental.low).toBe(-10); // reserve bottoms at −10 (drained straight through)
-    expect(b.mental.capacity).toBe(8);
-    expect(b.mental.over).toBe(true); // −low 10 > cap 8
-    expect(b.mental.remaining).toBe(-2); // 8 + (−10)
+    expect(b.mental.capacity).toBe(6); // LEARNED from three 3h days, not the config prior of 8
+    expect(b.mental.over).toBe(true); // −low 10 > cap 6
+    expect(b.mental.remaining).toBe(-4); // 6 + (−10)
+  });
+
+  // ⚠️ P-2, PER AXIS. Calibration is global — ratings across N weeks — but
+  // evidence is per-axis. This used to hand back `config.energy.capacity` for
+  // an axis with no evidence, which `energyBudget` turns into `remaining`
+  // headroom and the card prints as "in the red" in warning colour, for an axis
+  // the user has never spent a minute on. A verdict against an invented ceiling
+  // is the fabricated ceiling P-2 forbids, and P-1 forbids the colour.
+  it('never substitutes the configured prior for an axis with no evidence', () => {
+    const s = workRestSched();
+    for (let i = 0; i < 5; i += 1) s.addFixed({ title: `W${i}`, tags: ['work'], startTime: D(15, 7 + i), endTime: D(15, 8 + i) });
+    calibrateWithoutLoad(s); // opens the global gate, earns nothing
+
+    expect(s.energyCalibration().calibrated).toBe(true);
+    const b = s.energyBudget(D(15, 12));
+    // The physics is still reported — it is observed, not invented.
+    expect(b.mental.low).toBe(-10);
+    // The ceiling is not, and neither is any verdict derived from one.
+    expect(b.mental.capacity).toBeNull();
+    expect(b.mental.over).toBe(false);
+    expect(b.mental.remaining).toBeNull();
+    for (const a of ['physical', 'social', 'creative']) {
+      expect(b[a].capacity).toBeNull();
+      expect(b[a].over).toBe(false);
+    }
+  });
+
+  it('learns one axis without inventing the other three', () => {
+    const s = workRestSched();
+    calibrateOnMental(s); // spends on mental only
+    const cap = learnedCapacity(s);
+    expect(cap.mental).toBe(6);
+    for (const a of ['physical', 'social', 'creative']) expect(cap[a]).toBeNull();
   });
 
   it('rest BETWEEN blocks keeps the reserve shallow; rest AFTER does not (the point of the battery)', () => {

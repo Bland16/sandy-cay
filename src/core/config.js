@@ -62,8 +62,17 @@ export const defaultConfig = {
   // Energy battery (design/ENERGY-MODEL.md; design/RECONCILIATION.md P-2). Capacity is
   // LEARNED from your energy ratings (energy.js#learnedCapacity) once there are ratings
   // across ≥ calibrationWeeks distinct weeks; before that the card shows a "still learning"
-  // shape, never a fabricated ceiling. `capacity` here is only the PRIOR/fallback used for
-  // an axis that lacks enough evidence days — in load-hours of reserve debt.
+  // shape, never a fabricated ceiling. In load-hours of reserve debt.
+  //
+  // ⚠️ THIS IS A SCORING PRIOR, NOT A DISPLAY FALLBACK — corrected 2026-09-03,
+  // because the two sentences this comment used to carry contradicted each
+  // other. `learnedCapacity` returns null for an axis without evidence and
+  // never substitutes this; otherwise three mental-only ratings would open the
+  // global calibration gate and hand back an invented ceiling for the other
+  // three axes, which `energyBudget` turns into headroom and `EnergyCard`
+  // prints as "in the red" in warning colour. Read it via `capacityPrior()`
+  // where a term needs a denominator from week one and the number is never
+  // shown; never where it would be rendered, compared, or judged against.
   energy: { capacity: { mental: 8, physical: 6, social: 5, creative: 5 }, calibrationWeeks: 3 },
   // Activity library list ergonomics (EDITOR-REDESIGN §7.1). frequencyDays is the
   // trailing window "most used" counts over — recent habits, not lifetime totals.

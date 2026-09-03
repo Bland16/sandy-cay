@@ -378,8 +378,17 @@ describe('L-1 energy UI', () => {
   });
 
   // Calibrate the energy budget: energy ratings across three distinct weeks.
+  //
+  // ⚠️ THE RATED DAYS MUST ACTUALLY SPEND ON THE AXIS. Opening the global gate
+  // is not enough — `learnedCapacity` needs per-axis evidence and returns null
+  // for an axis without it, rather than substituting `config.energy.capacity`.
+  // These three days each spend 3h × +2/hr on mental, so mental earns a ceiling
+  // of 6 and the other three axes honestly stay unlearned.
   const calibrate = (s) => {
     for (const d of [1, 8, 15]) {
+      for (let i = 0; i < 3; i += 1) {
+        s.addFixed({ title: `cal${d}-${i}`, tags: ['work'], startTime: D(d, 7 + i), endTime: D(d, 8 + i) });
+      }
       const r = s.addFixed({ title: `rate${d}`, tags: ['x'], startTime: D(d, 5), endTime: D(d, 6) });
       r.completion = 'done'; r.satisfaction = { overall: 3, energy: 0 };
     }
@@ -399,12 +408,31 @@ describe('L-1 energy UI', () => {
     resetIds();
     const s = new Schedule({ config: wide() });
     s.addBucket({ label: 'Work', tags: ['work'], load: { mental: 2 } }); // +2/hr, cap 8
-    for (let i = 0; i < 5; i += 1) s.addFixed({ title: `W${i}`, tags: ['work'], startTime: D(15, 7 + i), endTime: D(15, 8 + i) }); // 5h straight
-    calibrate(s);
-    render(<EnergyCard sched={s} now={D(15, 12)} />);
+    calibrate(s); // earns mental a ceiling of 6 from three 3h days
+    // A heavier day than any it learned from: 5h straight → the reserve bottoms
+    // at −10 against a ceiling of 6. Observed against an earned number, which is
+    // what makes "in the red" physics rather than a scold.
+    for (let i = 0; i < 5; i += 1) s.addFixed({ title: `W${i}`, tags: ['work'], startTime: D(22, 7 + i), endTime: D(22, 8 + i) });
+    render(<EnergyCard sched={s} now={D(22, 12)} />);
 
     expect(screen.getByText('mental')).toBeTruthy();
-    expect(screen.getAllByText('in the red').length).toBeGreaterThan(0); // reserve bottoms at −10 < −cap
+    expect(screen.getAllByText('in the red').length).toBeGreaterThan(0);
+  });
+
+  it('says nothing about an axis it has no evidence for, even once calibrated', () => {
+    resetIds();
+    const s = new Schedule({ config: wide() });
+    s.addBucket({ label: 'Work', tags: ['work'], load: { mental: 2 } });
+    calibrate(s); // mental only — physical, social and creative are never spent
+    render(<EnergyCard sched={s} now={D(15, 12)} />);
+
+    // Calibration is global, evidence is per-axis. An axis with none may not be
+    // handed the configured prior and then judged against it.
+    const budget = s.energyBudget(D(15, 12));
+    for (const a of ['physical', 'social', 'creative']) {
+      expect(budget[a].capacity).toBeNull();
+      expect(budget[a].over).toBe(false);
+    }
   });
 
   it('an activity carries its own energy via the wave, or inherits its bucket', () => {

@@ -48,7 +48,16 @@ export function loadForTask(schedule, task) {
 const HOUR = 3600000;
 const durationHours = (t) => Math.max(0, (t.endTime - t.startTime) / HOUR);
 
-function capacityFor(schedule) {
+/**
+ * The configured PRIOR — a starting guess at each axis's ceiling.
+ *
+ * ⚠️ NEVER RENDER THIS AS A LEARNED CEILING. It is legitimate as a denominator
+ * for SCORING, where it is arithmetic the user never sees and where a term has
+ * to work from the first week. It is not legitimate anywhere the number is
+ * shown, compared against, or turned into a verdict — that is the fabricated
+ * ceiling P-2 forbids. `learnedCapacity` deliberately does not fall back to it.
+ */
+export function capacityPrior(schedule) {
   const cap = (schedule.config.energy && schedule.config.energy.capacity) || {};
   const out = {};
   for (const a of LOAD_AXES) out[a] = Number.isFinite(cap[a]) ? cap[a] : 6;
@@ -215,24 +224,54 @@ export function reserveAt(schedule, now = new Date()) {
  */
 export function learnedCapacity(schedule) {
   if (!energyCalibration(schedule).calibrated) return null;
-  const prior = capacityFor(schedule);
-  const days = new Map(); // dayKey → tasks that day
-  for (const t of schedule.tasks) {
-    if (t.chunking || t.completion === 'skipped') continue;
+
+  // ⚠️ BOTH STORES, via the one door. This walked `schedule.tasks`, where a
+  // materialized occurrence has never lived — so for a recurring-heavy user
+  // `energyCalibration` (fixed) opened the gate while this function, thirty
+  // lines below it, could not see a single one of their ratings and every axis
+  // fell through to the prior. That is the bug design/RATINGS-AND-LEARNING.md
+  // exists to fix, in the function it did not check.
+  const ratedDays = new Map(); // dayKey → { date, energies[] }
+  for (const t of schedule.ratedSamples()) {
+    const s = t.satisfaction;
+    if (t.completion !== 'done' || !s || typeof s.energy !== 'number') continue;
     const k = dateKey(t.startTime);
-    (days.get(k) || days.set(k, []).get(k)).push(t);
+    if (!ratedDays.has(k)) ratedDays.set(k, { date: t.startTime, energies: [] });
+    ratedDays.get(k).energies.push(s.energy);
   }
+
   const okDips = { mental: [], physical: [], social: [], creative: [] };
-  for (const tasks of days.values()) {
-    const rated = tasks.filter((t) => t.satisfaction && typeof t.satisfaction.energy === 'number');
-    if (rated.length === 0) continue; // no energy signal this day
-    const meanEnergy = rated.reduce((s, t) => s + t.satisfaction.energy, 0) / rated.length;
+  for (const { date, energies } of ratedDays.values()) {
+    const meanEnergy = energies.reduce((s, e) => s + e, 0) / energies.length;
     if (meanEnergy < 0) continue; // a drained day — its dip is beyond capacity, not evidence of tolerance
+    // The DAY's real load, not just its rated items: `getTasksForDay`
+    // materializes occurrences, so the walk sees what the day actually held.
+    // This is the same source `energyBudget` walks, which is the consumer that
+    // compares its dip against the number returned here.
+    const tasks = schedule.getTasksForDay(date)
+      .filter((t) => !t.chunking && t.completion !== 'skipped');
     const { low } = reserveWalk(schedule, tasks);
     for (const a of LOAD_AXES) if (-low[a] > 0) okDips[a].push(-low[a]);
   }
+
+  // ⚠️ PER-AXIS, AND null WHERE UNEARNED — never the configured prior.
+  // Calibration is global (ratings across N weeks) but evidence is per-axis, so
+  // three mental-only ratings used to open the gate and then hand back the
+  // PRIOR for physical, social and creative — which `energyBudget` turns into
+  // `remaining` headroom and `EnergyCard` prints as "in the red" in warning
+  // colour, for an axis the user has never spent a minute on. A verdict against
+  // an invented ceiling is exactly what P-2 forbids, and P-1 forbids the colour.
+  // `energyBudget` already handles a null axis (capacity null → over false,
+  // remaining null), which is the honest "still learning" state for that axis.
   const out = {};
-  for (const a of LOAD_AXES) out[a] = okDips[a].length >= 2 ? Math.max(...okDips[a]) : prior[a];
+  for (const a of LOAD_AXES) {
+    // NOTE: `Math.max` is the highest-variance order statistic and is monotone
+    // in n, so a learned ceiling can only ever ratchet UPWARD and can never
+    // contract when tolerance drops. A high quantile with a larger evidence
+    // floor is the better estimator; it changes user-visible numbers, so it is
+    // left for the evaluation harness (design/ML-HEURISTICS-RECOMMENDATIONS.md).
+    out[a] = okDips[a].length >= 2 ? Math.max(...okDips[a]) : null;
+  }
   return out;
 }
 
