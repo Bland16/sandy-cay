@@ -17,6 +17,7 @@ import {
   snapshot, snapshotDiff, isoWeekKey, addDays, dateKey, weekStart as weekStartOf,
   driftCheck, starvationCheck, skipStreakCheck, pinnedRatioNote, durationFitSuggestion,
   splitPeriod, endRecurrence, spendRestore, learnedCapacity, humanLabel, isNarratable,
+  previewWeek,
 } from '../core/index.js';
 import { fmtDur } from './format.js';
 
@@ -414,6 +415,96 @@ function buildDeadlineBuffer(sched, weekTasks) {
   };
 }
 
+/**
+ * What the week CONTAINED, as facts — day notes and blocked days (A1;
+ * design/DAY-NOTES.md D-4, RESOLVED 2026-08-11 and unbuilt until now).
+ *
+ * ⚠️ THE COPY RULE IS D-4'S OWN, AND IT IS THE LINE THIS SECTION EXISTS TO
+ * WALK: "a fact explains, a story excuses. 'Thanksgiving fell on Thursday' is a
+ * fact. 'You did less because of Thanksgiving' is the report doing your
+ * thinking for you, and 'understandably quiet week' is sympathy — both are the
+ * judgement §7.1 forbids. State the day, state the count, stop."
+ *
+ * So this returns nouns and counts and never a reason. The view must not join
+ * them to anything with "because".
+ *
+ * Why it earns its place ahead of richer sections: a zero-height Thursday on
+ * the sand bars currently reads as a failure. One caption turns it into a
+ * decision the user made. That is the highest P-1 return per line in the
+ * report, and the data has been loaded and invisible the whole time.
+ */
+function buildWeekContext(sched, ws) {
+  const notes = [];
+  const seen = new Set();
+  const blockedDays = [];
+  for (let i = 0; i < 7; i += 1) {
+    const date = addDays(ws, i);
+    if (sched.isDayBlocked && sched.isDayBlocked(date)) blockedDays.push(i);
+    for (const n of sched.notesForDate(date)) {
+      // A range spanning several days is ONE note, named once — "Reading week"
+      // is not five findings. `dayIndex` is where it first lands in this week.
+      if (seen.has(n.id)) continue;
+      seen.add(n.id);
+      notes.push({ id: n.id, label: n.label, kind: n.kind, dayIndex: i });
+    }
+  }
+  // Consecutive blocked days read as one span: "Thursday–Friday", not a list.
+  const spans = [];
+  for (const i of blockedDays) {
+    const last = spans[spans.length - 1];
+    if (last && last.to === i - 1) last.to = i;
+    else spans.push({ from: i, to: i });
+  }
+  return {
+    notes,
+    blockedCount: blockedDays.length,
+    blockedSpans: spans,
+    any: notes.length > 0 || blockedDays.length > 0,
+  };
+}
+
+/**
+ * What the week OWED and what it held — the commitment ledger (A2).
+ *
+ * ⚠️ THE DENOMINATOR IS A NUMBER THE USER TYPED. `amountMinPerWeek` is neither
+ * invented (so P-2 is satisfied without argument) nor a grade (so P-1 is), and
+ * unlike a project total it belongs to the week the report is about. It is the
+ * best denominator in the app and the report had never heard of it. Commit
+ * 0afd707 taught the engine that a week holding 2h of a 4h commitment is not
+ * done; nothing said so afterwards.
+ *
+ * ⚠️ `state` IS NOT READ, AND MUST NOT BE. `previewWeek` derives it from
+ * `engineInputForWeek(start, now)`, which is `now`-relative — so a RETROSPECTIVE
+ * call, which is the only kind this report makes, marks every commitment
+ * `passed` regardless of what happened. `placedMin`, `remainingMin`, `settled`
+ * and `owedMin` are all computed above it and independently of it, so those are
+ * the four fields taken here.
+ *
+ * ⚠️ A LEDGER, NEVER A SHORTFALL. "1h 30m of 2h laid out" states two facts the
+ * user can check. "You missed 30m" is the same arithmetic as an accusation, and
+ * `previewWeek`'s own rule — "a shortfall must never be manufactured by the
+ * passage of time" — is the reason `remainingMin` is reported as hours that were
+ * never laid out rather than hours you failed to do.
+ */
+function buildCommitments(sched, ws) {
+  if (!Array.isArray(sched.commitments) || sched.commitments.length === 0) return null;
+  const rows = previewWeek(sched, ws, new Date())
+    .filter((r) => r.commitment.coversWeek(ws) && r.owedMin > 0)
+    .map((r) => ({
+      id: r.commitment.id,
+      title: r.commitment.title,
+      owedMin: r.owedMin,
+      placedMin: r.placedMin,
+      remainingMin: r.remainingMin,
+      // The user's own mark that the week is finished, which the grid cannot
+      // know — the work may have happened away from the app entirely (D-13).
+      // It overrides the arithmetic, and the arithmetic is still reported.
+      settled: r.settled,
+      sittings: r.sittings.filter((t) => t.completion !== 'skipped').length,
+    }));
+  return rows.length > 0 ? rows : null;
+}
+
 export function buildWrapReport(sched, weekStartDate) {
   const ws = weekStartOf(weekStartDate);
   const weekTasks = sched.getTasksForWeek(ws);
@@ -438,6 +529,10 @@ export function buildWrapReport(sched, weekStartDate) {
       // (P-2), and the chart must draw no ceiling while it is — a ring that
       // appears later would mean the earlier weeks' charts were lying.
       energy: { ...spendRestore(sched, weekTasks), capacity: learnedCapacity(sched) },
+      // What the week held that was not a task (A1 / DAY-NOTES D-4).
+      context: buildWeekContext(sched, ws),
+      // What the week owed, against a number the user typed (A2).
+      commitments: buildCommitments(sched, ws),
     },
     insight: buildInsight(sched),
     suggestions: buildSuggestions(sched, ws, weekLoad, weekTasks),

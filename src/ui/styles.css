@@ -1473,6 +1473,11 @@ button:focus-visible, .dhopen:focus-visible, .card:focus-visible, .slot:focus-vi
   width: 100%; min-height: 0; border: 2px solid var(--ink); border-bottom: none; border-radius: 4px 4px 0 0;
   background: repeating-linear-gradient(180deg, rgba(232,185,77,.55) 0 3px, rgba(232,185,77,.32) 3px 6px);
 }
+
+/* What the week contained, under the sand bars. Facts, so it reads as a caption
+   on the chart and never as a verdict beside it (DAY-NOTES.md D-4). */
+.rp-context { font-size: 10px; color: var(--ink-soft); margin: 2px 0 10px; line-height: 1.5; }
+.rp-context b { color: var(--ink); font-weight: 700; }
 .rp-bar-day { font-size: 9px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); }
 .rp-bar-val { font-family: var(--font-type); font-size: 8.5px; color: var(--ink-soft); }
 

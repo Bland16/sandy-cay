@@ -12,7 +12,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup, screen, fireEvent } from '@testing-library/react';
 import App from '../src/App.jsx';
-import { Schedule, Task, defaultConfig, weekStart as weekStartOf, addDays } from '../src/core/index.js';
+import { Schedule, Task, DayNote, defaultConfig, weekStart as weekStartOf, addDays, dateKey } from '../src/core/index.js';
 import { STORAGE_KEY } from '../src/ui/useEngine.js';
 
 beforeEach(() => {
@@ -221,5 +221,173 @@ describe('§7.1 — the printed sheet keeps its exits (P-1)', () => {
       expect(onPaper).toBeTruthy();
       expect(onPaper.textContent.trim().length).toBeGreaterThan(0);
     }
+  });
+});
+
+// A1 — what the week CONTAINED, as facts (design/DAY-NOTES.md D-4, RESOLVED
+// 2026-08-11 and unbuilt until 2026-09-03). The live file holds 21 day notes and
+// 12 full-day blockers; none of it reached the report.
+describe('§7.1 — the week says what it contained, and stops there', () => {
+  it('names a day note beside the day it fell on', () => {
+    const s = new Schedule({ config: defaultConfig });
+    s.dayNotes.push(new DayNote({ label: 'Thanksgiving', kind: 'holiday', from: addDays(ws(), 3) }));
+    s.tasks.push(new Task({ title: 'A', type: 'fixed', startTime: at(0, 9), endTime: at(0, 11) }));
+    persist(s);
+
+    render(<App />);
+    openReport();
+
+    const ctx = document.querySelector('.rp-context');
+    expect(ctx).toBeTruthy();
+    expect(ctx.textContent).toMatch(/Thanksgiving/);
+    expect(ctx.textContent).toMatch(/Thursday/);
+  });
+
+  it('counts blocked days and names them as a span, not a list', () => {
+    const s = new Schedule({ config: defaultConfig });
+    s.blockDay(addDays(ws(), 3));
+    s.blockDay(addDays(ws(), 4)); // consecutive → one span
+    s.tasks.push(new Task({ title: 'A', type: 'fixed', startTime: at(0, 9), endTime: at(0, 11) }));
+    persist(s);
+
+    render(<App />);
+    openReport();
+
+    const text = document.querySelector('.rp-context').textContent;
+    expect(text).toMatch(/2 days blocked/);
+    expect(text).toMatch(/Thu(rsday)?–Fri(day)?/);
+  });
+
+  // ⚠️ D-4's line: "a fact explains, a story excuses." The report may say the
+  // day was blocked; it may not say the week was quiet BECAUSE it was, and it
+  // may not offer sympathy. Both are the judgement §7.1 forbids.
+  it('offers no reason, no excuse and no sympathy', () => {
+    const s = new Schedule({ config: defaultConfig });
+    s.dayNotes.push(new DayNote({ label: 'Reading week', from: addDays(ws(), 0), to: addDays(ws(), 4) }));
+    for (let d = 0; d < 5; d += 1) s.blockDay(addDays(ws(), d));
+    persist(s);
+
+    render(<App />);
+    openReport();
+
+    const sheet = document.querySelector('.rp-sheet').textContent;
+    expect(sheet).not.toMatch(/because/i);
+    expect(sheet).not.toMatch(/understandabl|no wonder|makes sense that|don't worry/i);
+  });
+
+  it('names a multi-day note once, not once per day it covers', () => {
+    const s = new Schedule({ config: defaultConfig });
+    s.dayNotes.push(new DayNote({ label: 'Reading week', from: addDays(ws(), 0), to: addDays(ws(), 4) }));
+    s.tasks.push(new Task({ title: 'A', type: 'fixed', startTime: at(5, 9), endTime: at(5, 11) }));
+    persist(s);
+
+    render(<App />);
+    openReport();
+
+    const hits = document.querySelector('.rp-context').textContent.match(/Reading week/g) || [];
+    expect(hits).toHaveLength(1);
+  });
+
+  it('says nothing at all on a week that contained nothing unusual', () => {
+    const s = new Schedule({ config: defaultConfig });
+    s.tasks.push(new Task({ title: 'A', type: 'fixed', startTime: at(0, 9), endTime: at(0, 11) }));
+    persist(s);
+
+    render(<App />);
+    openReport();
+
+    expect(document.querySelector('.rp-context')).toBeNull();
+  });
+});
+
+// A2 — the commitment ledger. `Commitment.amountMinPerWeek` is the only
+// denominator in the report the USER typed: not invented (P-2) and not a grade
+// (P-1), and it belongs to the week the sheet covers. Commit 0afd707 taught the
+// engine that a week holding 2h of a 4h commitment is not done; nothing said so.
+describe('§7.1 — what the week owed, against a number you set', () => {
+  const withCommitment = (extra = {}) => {
+    const s = new Schedule({ config: defaultConfig });
+    s.addCommitment({
+      title: 'Maths homework', tags: ['study'], amountMinPerWeek: 240,
+      from: dateKey(addDays(ws(), -30)), until: dateKey(addDays(ws(), 60)),
+      ...extra,
+    });
+    return s;
+  };
+
+  it('states the amount set and the amount laid out, both', () => {
+    const s = withCommitment();
+    const c = s.commitments[0];
+    // Two hours of the four actually on the grid.
+    for (let i = 0; i < 2; i += 1) {
+      const t = s.addFixed({
+        title: `Maths ${i}`, tags: ['study'],
+        startTime: at(i, 9), endTime: at(i, 10),
+      });
+      t.parentId = c.id; // how sittingsFor finds them
+    }
+    persist(s);
+
+    render(<App />);
+    openReport();
+
+    expect(screen.getByText(/what the week owed/i)).toBeTruthy();
+    expect(screen.getByText('Maths homework')).toBeTruthy();
+    expect(screen.getByText(/the weekly amount you chose/i)).toBeTruthy();
+  });
+
+  // ⚠️ THE TRAP. previewWeek's `state` comes from engineInputForWeek(start, now)
+  // and is `now`-relative, so a RETROSPECTIVE call — the only kind this report
+  // makes — marks every commitment `passed`. The ledger must read placedMin,
+  // remainingMin, settled and owedMin, which are computed independently of it.
+  it('reports the same ledger for a week long past as for this one', async () => {
+    const { buildWrapReport } = await import('../src/ui/report.js');
+    const s = withCommitment({ from: dateKey(addDays(ws(), -400)) });
+    const old = weekStartOf(addDays(ws(), -350));
+    const rows = buildWrapReport(s, old).stats.commitments;
+    expect(rows).toBeTruthy();
+    expect(rows[0].owedMin).toBe(240); // the amount set, not zeroed by time
+    expect(rows[0].remainingMin).toBe(240); // never laid out — not "failed"
+  });
+
+  it('never turns the remainder into a shortfall or a percentage', () => {
+    const s = withCommitment();
+    // ⚠️ The week needs at least one task. `isEmpty` is `real.length === 0`, so
+    // a week that owed four hours and laid out none of them currently renders
+    // the empty-week page — "nothing to report and nothing to fix" — which is
+    // false: the commitment is exactly what there was to report. Recorded in
+    // design/WRAP-REPORT-ADDITIONS.md rather than changed here, because the
+    // empty-week page is a deliberate P-1 decision and this is a product call.
+    s.tasks.push(new Task({ title: 'Something', type: 'fixed', startTime: at(0, 9), endTime: at(0, 10) }));
+    persist(s);
+
+    render(<App />);
+    openReport();
+
+    const sheet = document.querySelector('.rp-sheet').textContent;
+    expect(sheet).toMatch(/never laid out/);
+    expect(sheet).not.toMatch(/missed|behind|short of|you owe|failed/i);
+    expect(sheet).not.toMatch(/\d+% of your commitment/i);
+  });
+
+  it('leads with the user\'s own mark when they called the week finished', async () => {
+    const { buildWrapReport } = await import('../src/ui/report.js');
+    const s = withCommitment();
+    s.markCommitmentWeekDone(s.commitments[0].id, ws());
+    const rows = buildWrapReport(s, ws()).stats.commitments;
+    expect(rows[0].settled).toBe(true);
+    expect(rows[0].remainingMin).toBe(0); // the mark overrides the arithmetic
+    expect(rows[0].owedMin).toBe(240); // and the arithmetic is still reported
+  });
+
+  it('says nothing at all when there are no commitments', () => {
+    const s = new Schedule({ config: defaultConfig });
+    s.tasks.push(new Task({ title: 'A', type: 'fixed', startTime: at(0, 9), endTime: at(0, 11) }));
+    persist(s);
+
+    render(<App />);
+    openReport();
+
+    expect(screen.queryByText(/what the week owed/i)).toBeNull();
   });
 });

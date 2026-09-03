@@ -11,7 +11,7 @@
 // bars racing a target, no "0%" where the honest answer is "—".
 import { useEffect, useMemo, useState } from 'react';
 import { buildWrapReport, applySuggestion } from '../report.js';
-import { fmtDur, DAY_NAMES } from '../format.js';
+import { fmtDur, DAY_NAMES, DAY_FULL } from '../format.js';
 import EnergyShape from './EnergyShape.jsx';
 import Icon from '../Icon.jsx';
 
@@ -242,6 +242,43 @@ export default function WrapReport({ sched, weekStart, version, onBack, onOpenTa
               <h2>The shape of the week</h2>
               <SandBars load={stats.load} />
 
+              {/* What the week CONTAINED, as facts (A1; DAY-NOTES.md D-4).
+                  ⚠️ NOUNS AND COUNTS, NEVER A REASON. D-4's own rule: "a fact
+                  explains, a story excuses. 'Thanksgiving fell on Thursday' is
+                  a fact. 'You did less because of Thanksgiving' is the report
+                  doing your thinking for you, and 'understandably quiet week'
+                  is sympathy — both are the judgement §7.1 forbids. State the
+                  day, state the count, stop." So nothing here may be joined to
+                  the bars above with "because".
+
+                  It sits directly under the chart because that is what it
+                  repairs: a zero-height Thursday reads as a failure until the
+                  sheet says the day was blocked, and then it reads as a
+                  decision. The data has been loaded and invisible all along. */}
+              {stats.context.any && (
+                <p className="rp-context">
+                  {stats.context.notes.map((n, i) => (
+                    <span key={n.id}>
+                      {i > 0 && ' · '}
+                      <b>{n.label}</b> fell on {DAY_FULL[n.dayIndex]}
+                    </span>
+                  ))}
+                  {stats.context.blockedCount > 0 && (
+                    <span>
+                      {stats.context.notes.length > 0 && ' · '}
+                      {stats.context.blockedCount}{' '}
+                      {stats.context.blockedCount === 1 ? 'day' : 'days'} blocked (
+                      {stats.context.blockedSpans
+                        .map((s) => (s.from === s.to
+                          ? DAY_NAMES[s.from]
+                          : `${DAY_NAMES[s.from]}–${DAY_NAMES[s.to]}`))
+                        .join(', ')}
+                      )
+                    </span>
+                  )}
+                </p>
+              )}
+
               <h3>What it took, and what it gave back</h3>
               <EnergyShape energy={stats.energy} />
 
@@ -281,6 +318,50 @@ export default function WrapReport({ sched, weekStart, version, onBack, onOpenTa
                     </table>
                   )}
               </div>
+
+              {/* What the week owed, and what it held (A2).
+                  ⚠️ A LEDGER, NOT A SHORTFALL. `owedMin` is a number the user
+                  typed, which makes it the only denominator in the report that
+                  is neither invented (P-2) nor a grade (P-1), and it belongs to
+                  the week the sheet is about. Two facts they can check —
+                  "1h 30m of 2h laid out" — and never "you missed 30m", which is
+                  the same arithmetic worn as an accusation.
+
+                  `remainingMin` is stated as hours that were never LAID OUT, not
+                  hours failed: previewWeek's own rule is that a shortfall must
+                  never be manufactured by the passage of time. And `settled` —
+                  the user's mark that the week is finished, which the grid
+                  cannot know — leads, with the arithmetic still reported beside
+                  it rather than suppressed. */}
+              {stats.commitments && (
+                <div className="rp-sub">
+                  <h3>What the week owed</h3>
+                  <table className="rp-table">
+                    <thead>
+                      <tr><th>commitment</th><th>set</th><th>laid out</th><th>sittings</th></tr>
+                    </thead>
+                    <tbody>
+                      {stats.commitments.map((c) => (
+                        <tr key={c.id}>
+                          <td>{c.title}</td>
+                          <td>{fmtDur(c.owedMin)}</td>
+                          <td>
+                            {c.placedMin > 0 ? fmtDur(c.placedMin) : <span className="rp-dim">—</span>}
+                            {c.settled && <span className="rp-dim"> · you called it finished</span>}
+                            {!c.settled && c.remainingMin > 0 && (
+                              <span className="rp-dim"> · {fmtDur(c.remainingMin)} never laid out</span>
+                            )}
+                          </td>
+                          <td>{c.sittings > 0 ? c.sittings : <span className="rp-dim">—</span>}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p className="rp-dim">
+                    “Set” is the weekly amount you chose for each of these.
+                  </p>
+                </div>
+              )}
 
               {/* Breathing room (§7.1 "break compression"). Restored verbatim
                   apart from the ratio: it was collateral damage from collapsing

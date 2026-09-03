@@ -37,9 +37,30 @@ sections are now covered by tests (`wrap-sand-bars.test.jsx`,
 `ui-energy-shape.test.jsx`, `learning-guards.test.js`) — the point being that
 "nothing failed when they were cut" is exactly why they were cut.
 
-**Still open:** A1 (day notes — the data now reaches the view model via
-`blocked`, nothing renders it yet), A2 (the commitment ledger), A3 (the day
-timeline strip), and the rest of Tiers 3–5. A35/A36 are designed, not built.
+**A1 and A2 are now built** (`2bed2b0`+). Day notes and blocked days print as
+facts under the sand bars, governed by D-4's copy rule and guarded by a test
+that fails on "because" or on sympathy. The commitment ledger states the amount
+set beside the amount laid out, reading `placedMin`/`remainingMin`/`settled`/
+`owedMin` and deliberately NOT `state`, which is `now`-relative and marks every
+commitment `passed` on a retrospective call.
+
+**Still open:** A3 (the day timeline strip), and the rest of Tiers 3–5. A35/A36
+are designed, not built.
+
+### New, found while building A2
+
+**An empty week that owed commitments says "nothing to report", and that is
+false.** `isEmpty` is `real.length === 0`, so a week where a 4h commitment was
+set and the grid laid out none of it renders the empty-week page: *"Nothing was
+scheduled this week. A quiet week is a week. There's nothing to report and
+nothing to fix."* The commitment is exactly what there was to report, and
+"nothing to fix" is wrong in the one direction that matters — the packer found
+no room, which is a fact about the plan and not about the person.
+
+Not changed unilaterally: the empty-week page is a deliberate P-1 decision and
+its wording was chosen carefully. The fix is probably to let `isEmpty` mean
+"nothing scheduled AND nothing owed", and give the owed-but-unplaced week its
+own sentence. **Product call.**
 
 ---
 
