@@ -311,6 +311,12 @@ export class LearningModule {
     this.bias = b;
     this.trained = true;
     this.diverged = false;
+
+    // ⚠️ `assessSkill: false` IS LOAD-BEARING, NOT AN OPTIMISATION.
+    // `_assessSkill` fits a throwaway model per fold, and each of those calls
+    // `train` — so without this guard the first retrain recurses until the
+    // stack gives out. The fold fits do not need their own skill estimate.
+    this.skill = opts.assessSkill === false ? null : this._assessSkill(rated);
     return this;
   }
 
@@ -332,6 +338,68 @@ export class LearningModule {
    *  between "0 because you have never tried this" and "0 because it is
    *  genuinely neutral". A caller that ranks on `weight` alone will rank an
    *  untried sitting length above one you have tried and disliked. */
+  /**
+   * Does this fit beat predicting your average, on ratings it did not see?
+   *
+   * ⚠️ THE ONLY GATE HERE THAT MEASURES WHETHER THE MODEL IS *RIGHT*. Everything
+   * else — `coldStartRatings`, the per-column observation counts — measures how
+   * much the user has typed. `trained` means only "gradient descent ran and
+   * produced finite numbers", so a fit worse than a constant has always carried
+   * exactly the same authority as a good one.
+   *
+   * Measured (probe-learn-baselines.mjs), held-out MAE by leave-one-group-out:
+   *
+   *   persona    model    no model   verdict
+   *   MORNING    0.1107   0.2175     model wins
+   *   DOMINANT   0.0553   0.0942     model wins
+   *   NULL       0.0431   0.0260     NO MODEL WINS   ← fitting noise
+   *   CROSSED    0.0894   0.0682     NO MODEL WINS   ← additive fit, crossed truth
+   *
+   * A user with no real preference gets a model that fits noise and then steers
+   * their week with it; an additive model on interacting preferences does worse
+   * than a constant. Both are cases where the honest contribution is zero, and
+   * neither is visible from the sample count.
+   *
+   * ⚠️ GROUPED FOLDS. Leaving out one OCCURRENCE of a recurring series while its
+   * siblings stay in training measures "can you predict Tuesday gym from eleven
+   * other Tuesday gyms", which is trivially yes. Folds are by `parentId ?? id`,
+   * so a whole series leaves together. Capped at `SKILL_FOLDS` to bound cost.
+   */
+  _assessSkill(rated) {
+    const K = 6;
+    if (rated.length < K * 2) return null; // too little to split honestly
+    const groupOf = (t) => t.parentId || t.id;
+    const groups = [...new Set(rated.map(groupOf))];
+    if (groups.length < 3) return null; // one or two series is not a test set
+    const folds = Array.from({ length: Math.min(K, groups.length) }, () => []);
+    groups.forEach((g, i) => folds[i % folds.length].push(g));
+
+    let errModel = 0;
+    let errMean = 0;
+    let n = 0;
+    for (const held of folds) {
+      const inFold = new Set(held);
+      const train = rated.filter((t) => !inFold.has(groupOf(t)));
+      const test = rated.filter((t) => inFold.has(groupOf(t)));
+      if (train.length === 0 || test.length === 0) continue;
+      // A throwaway fit on the fold — vocabulary and all, since choosing the
+      // vocabulary over the full set before splitting would leak.
+      const sub = new LearningModule(this.config);
+      sub.train(train, { assessSkill: false });
+      const ys = train.map((t) => clamp((t.satisfaction.overall - 1) / 4, 0, 1));
+      const mu = ys.reduce((s, v) => s + v, 0) / ys.length;
+      for (const t of test) {
+        const truth = clamp((t.satisfaction.overall - 1) / 4, 0, 1);
+        const pred = sub.trained ? sub.modelScore(t, null) : mu;
+        errModel += (pred - truth) ** 2;
+        errMean += (mu - truth) ** 2;
+        n += 1;
+      }
+    }
+    if (n === 0 || errMean === 0) return null;
+    return 1 - errModel / errMean; // R² against the mean predictor
+  }
+
   inspect() {
     return this.labels.map((label, i) => ({
       label,
@@ -361,6 +429,9 @@ export class LearningModule {
       // `trained: false`, which every consumer reads as "cold start" — so a
       // model killed by one bad rating reported "12 of 10 ratings so far".
       diverged: !!this.diverged,
+      // Held-out skill, so a reload does not silently restore authority a
+      // measured-unskilled model had lost until the next retrain.
+      skill: typeof this.skill === 'number' ? this.skill : null,
     };
   }
 
@@ -385,6 +456,7 @@ export class LearningModule {
       m.observations = Array.isArray(json.observations) && json.observations.length
         ? [...json.observations] : null;
       m.diverged = !!json.diverged;
+      m.skill = typeof json.skill === 'number' ? json.skill : null;
       // ⚠️ STRUCTURAL GUARD, because the version constant cannot detect its own
       // staleness. Removing a column without bumping MODEL_LAYOUT_VERSION fails
       // SILENTLY: `modelScore` walks the shorter feature vector against the

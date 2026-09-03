@@ -454,3 +454,81 @@ describe('a user with no preference is told they have none', () => {
     expect(night.weight).toBeLessThan(-0.3); // measured ≈ −0.59
   });
 });
+
+describe('authority is earned by being right, not by rating count', () => {
+  beforeEach(() => resetIds());
+
+  // Ratings arranged as SERIES, the way a real week is: several recurring
+  // things, each rated a few times. `_assessSkill` folds by parentId, so a
+  // whole series leaves together — holding out one occurrence while its
+  // siblings stay in training measures "can you predict Tuesday gym from
+  // eleven other Tuesday gyms", which is trivially yes and means nothing.
+  const seriesUser = (utility, seed = 3) => {
+    let r = seed;
+    const rnd = () => ((r = (r * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+    const s = new Schedule({ config: defaultConfig });
+    s.buckets.push(new Bucket({ label: 'B', tags: ['study', 'gym', 'admin'] }));
+    const TAGS = ['study', 'gym', 'admin'];
+    const HOURS = [9, 13, 19, 22];
+    for (let series = 0; series < 10; series += 1) {
+      const tag = TAGS[series % TAGS.length];
+      const hour = HOURS[series % HOURS.length];
+      const parent = new Task({
+        title: `p${series}`, tags: [tag], type: 'fixed',
+        startTime: at(series % 5, hour), endTime: at(series % 5, hour + 1),
+      });
+      s.tasks.push(parent);
+      for (let k = 0; k < 4; k += 1) {
+        const t = new Task({
+          title: `p${series}-${k}`, tags: [tag], type: 'fixed',
+          startTime: at(k % 5, hour), endTime: at(k % 5, hour + 1),
+        });
+        t.parentId = parent.id;
+        t.completion = 'done';
+        const u = utility(tag, hour) + (rnd() - 0.5) * 0.3;
+        t.satisfaction = { overall: Math.max(1, Math.min(5, Math.round(1 + 4 * u))) };
+        s.tasks.push(t);
+      }
+    }
+    s.retrain();
+    return s;
+  };
+
+  it('keeps its authority when the fit genuinely predicts held-out ratings', () => {
+    const s = seriesUser((tag, hour) => (hour <= 9 ? 0.85 : 0.2));
+    expect(s.learning.trained).toBe(true);
+    expect(s.learning.skill).toBeGreaterThan(0);
+    expect(s._weights().preference).toBeGreaterThan(0);
+    expect(s._modelIsTrustworthy()).toBe(true);
+  });
+
+  // ⚠️ THE CASE NO COUNT-BASED GATE CAN SEE. Forty ratings — four times the
+  // cold-start floor — from someone with no real preference at all. The fit
+  // passes every headcount, fits the noise, and would steer every placement.
+  it('gives up its authority when the fit is no better than an average', () => {
+    const s = seriesUser(() => 0.5);
+    expect(s.learning.sampleCount).toBeGreaterThan(defaultConfig.coldStartRatings);
+    expect(s.learning.trained).toBe(true); // "trained" only means the fit ran
+    expect(s.learning.skill).toBeLessThanOrEqual(0);
+    expect(s._weights().preference).toBe(0);
+    expect(s._modelScore(s.tasks[1], null)).toBe(0);
+  });
+
+  it('does not punish a small honest dataset for being small', () => {
+    // Too little to split into folds: skill is null, meaning "not assessed",
+    // which must not read as "no skill".
+    const s = new Schedule({ config: defaultConfig });
+    s.buckets.push(new Bucket({ label: 'Study', tags: ['study'] }));
+    for (let i = 0; i < 12; i += 1) s.tasks.push(rated(`t${i}`, i % 5, 9, 4));
+    s.retrain();
+    expect(s.learning.skill).toBeNull();
+    expect(s._modelIsTrustworthy()).toBe(true);
+  });
+
+  it('survives a reload, so a reload cannot restore authority the fit lost', () => {
+    const s = seriesUser(() => 0.5);
+    const revived = Schedule.fromJSON(JSON.parse(JSON.stringify(s.toJSON())));
+    expect(revived.learning.skill).toBeLessThanOrEqual(0);
+    expect(revived._weights().preference).toBe(0);
+  });
+});

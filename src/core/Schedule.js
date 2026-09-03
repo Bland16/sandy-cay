@@ -140,14 +140,37 @@ export class Schedule {
   }
 
   // ---- weight / model helpers used by placement -------------------------
+  /**
+   * ⚠️ TWO GATES, AND THEY ASK DIFFERENT QUESTIONS.
+   *
+   * `coldStartRatings` asks how much the user has typed. `learning.skill` asks
+   * whether the fit actually beats predicting their average on ratings it did
+   * not see — measured by grouped cross-validation inside `train`.
+   *
+   * The second one exists because the first cannot see the case that matters.
+   * Measured (probe-learn-baselines.mjs), a user with NO real preference gets a
+   * model with held-out MAE 0.0431 against 0.0260 for no model at all: it fits
+   * noise, passes every count-based gate, and then steers their week with it.
+   * An additive fit on interacting preferences (study good early, gym good
+   * late) loses to a constant the same way. Neither is visible from a headcount.
+   *
+   * `skill` is null when there is too little to split honestly — that is "not
+   * assessed", not "no skill", and it is treated as passing so a small honest
+   * dataset is not punished for being small. Only a measured failure gates.
+   */
+  _modelIsTrustworthy() {
+    if (this.learning.sampleCount < this.config.coldStartRatings) return false;
+    return !(typeof this.learning.skill === 'number' && this.learning.skill <= 0);
+  }
+
   _weights() {
     const w = { ...this.config.weights };
-    if (this.learning.sampleCount < this.config.coldStartRatings) w.preference = 0;
+    if (!this._modelIsTrustworthy()) w.preference = 0;
     return normalizeWeights(w);
   }
 
   _modelScore(task, slot) {
-    if (this.learning.sampleCount < this.config.coldStartRatings) return 0;
+    if (!this._modelIsTrustworthy()) return 0;
     return this.learning.modelScore(task, slot);
   }
 
