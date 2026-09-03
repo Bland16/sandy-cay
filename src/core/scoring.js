@@ -6,6 +6,7 @@
 //               + w.stability · stabilityBonus(placedBy === 'user')
 //               + w.preference· modelScore(task, slot)      // 0 until ≥10 ratings
 //               + w.buffer    · bufferScore(slot.end, deadline, runwayStart)
+//               + w.energy    · (1 − arrivalDepletion(slot.start, task.load))
 //
 // Highest wins; ties → earlier slot (broken by the caller's ordering).
 
@@ -19,10 +20,13 @@ export function normalizeWeights(weights) {
     stability: weights.stability ?? 0,
     preference: weights.preference ?? 0,
     buffer: weights.buffer ?? 0,
+    energy: weights.energy ?? 0,
   };
-  const sum = w.proximity + w.balance + w.stability + w.preference + w.buffer;
+  const sum = w.proximity + w.balance + w.stability + w.preference + w.buffer + w.energy;
   if (sum <= 0) {
-    return { proximity: 0.2, balance: 0.2, stability: 0.2, preference: 0.2, buffer: 0.2 };
+    return {
+      proximity: 0.2, balance: 0.2, stability: 0.2, preference: 0.2, buffer: 0.2, energy: 0,
+    };
   }
   return {
     proximity: w.proximity / sum,
@@ -30,6 +34,7 @@ export function normalizeWeights(weights) {
     stability: w.stability / sum,
     preference: w.preference / sum,
     buffer: w.buffer / sum,
+    energy: w.energy / sum,
   };
 }
 
@@ -114,6 +119,11 @@ export function score(p) {
     w.balance * balanceScore(p.dayFillAfter) +
     w.stability * (p.stability || 0) +
     w.preference * (p.modelScore || 0) +
-    (w.buffer || 0) * bufferScore(p.slotEnd, p.deadline, p.runwayStart)
+    (w.buffer || 0) * bufferScore(p.slotEnd, p.deadline, p.runwayStart) +
+    // Arriving fresh scores high. `arrivalDepletion` returns null for a task
+    // that spends nothing, and null here becomes a constant 0 across every
+    // candidate for that task — present in the sum, unable to move a ranking,
+    // which is what "no opinion" has to mean in a weighted score.
+    (w.energy || 0) * (p.arrivalDepletion == null ? 0 : 1 - p.arrivalDepletion)
   );
 }

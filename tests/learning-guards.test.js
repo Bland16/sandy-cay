@@ -8,6 +8,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   Schedule, Task, Bucket, resetIds, getWeekLoad, weekStart as weekStartOf, addDays,
   humanLabel, isNarratable, MODEL_LAYOUT_VERSION, LearningModule,
+  arrivalDepletionFor, loadForTask,
 } from '../src/core/index.js';
 import { defaultConfig } from '../src/core/config.js';
 
@@ -285,5 +286,120 @@ describe('humanLabel — plain language, generated from the feature constants', 
     expect(isNarratable('placedByUser')).toBe(false);
     expect(isNarratable('tag:study')).toBe(true);
     expect(isNarratable('time:evening')).toBe(true);
+  });
+});
+
+describe('the energy term — how depleted you arrive (D-1, C3)', () => {
+  beforeEach(() => resetIds());
+
+  // A week of heavy mornings and a long restorative afternoon, so the reserve
+  // is deep by midday and recovered by evening. The DAY's total dip is the same
+  // either way — which is exactly why C1 (day depth) was blind here and C3
+  // (reserve at sit-down) was not.
+  const spentMornings = () => {
+    const s = new Schedule({ config: defaultConfig });
+    s.addBucket({ label: 'Study', tags: ['study'], load: { mental: 2 } });
+    s.addBucket({ label: 'Rest', tags: ['rest'], load: { mental: -1.5, physical: -1 } });
+    for (let i = 0; i < 3; i += 1) {
+      s.addFixed({ title: `AM${i}`, tags: ['study'], startTime: at(0, 8 + i), endTime: at(0, 9 + i) });
+    }
+    s.addFixed({ title: 'Rest', tags: ['rest'], startTime: at(0, 15), endTime: at(0, 17) });
+    return s;
+  };
+
+  it('reads deeper mid-morning than after a rest, on the same day', () => {
+    const s = spentMornings();
+    const dep = arrivalDepletionFor(s);
+    const load = loadForTask(s, { tags: ['study'] });
+    const spent = dep(at(0, 13), load);
+    const recovered = dep(at(0, 19), load);
+    expect(spent).toBeGreaterThan(recovered); // the whole point of C3 over C1
+    expect(spent).toBeLessThanOrEqual(1);
+    expect(recovered).toBeGreaterThanOrEqual(0);
+  });
+
+  // ⚠️ THE GATE. A task that spends nothing cannot make any day worse, so it
+  // must have no opinion rather than inheriting a preference from the day's own
+  // state. null becomes a constant across every candidate, which cannot move a
+  // ranking — that is what "no opinion" has to mean inside a weighted sum.
+  it('has no opinion about a task that carries no load', () => {
+    const s = spentMornings();
+    const dep = arrivalDepletionFor(s);
+    expect(dep(at(0, 13), loadForTask(s, { tags: ['no-bucket-carries-this'] }))).toBeNull();
+    expect(dep(at(0, 13), null)).toBeNull();
+  });
+
+  it('weighs the axes the task actually draws on', () => {
+    const s = new Schedule({ config: defaultConfig });
+    s.addBucket({ label: 'Study', tags: ['study'], load: { mental: 2 } });
+    s.addBucket({ label: 'Gym', tags: ['gym'], load: { physical: 2 } });
+    for (let i = 0; i < 3; i += 1) {
+      s.addFixed({ title: `AM${i}`, tags: ['study'], startTime: at(0, 8 + i), endTime: at(0, 9 + i) });
+    }
+    const dep = arrivalDepletionFor(s);
+    // Three hours of mental work drains mental and leaves physical untouched,
+    // so a gym session at 13:00 should not read as "you arrive wrecked".
+    const mental = dep(at(0, 13), loadForTask(s, { tags: ['study'] }));
+    const physical = dep(at(0, 13), loadForTask(s, { tags: ['gym'] }));
+    expect(mental).toBeGreaterThan(physical);
+    expect(physical).toBe(0);
+  });
+
+  it('is bounded in [0,1] even when the day is far past any ceiling', () => {
+    const s = new Schedule({ config: defaultConfig });
+    s.addBucket({ label: 'Study', tags: ['study'], load: { mental: 2 } });
+    for (let i = 0; i < 14; i += 1) {
+      s.addFixed({ title: `H${i}`, tags: ['study'], startTime: at(0, 8 + i), endTime: at(0, 9 + i) });
+    }
+    const v = arrivalDepletionFor(s)(at(0, 22), loadForTask(s, { tags: ['study'] }));
+    expect(v).toBeLessThanOrEqual(1);
+    expect(v).toBeGreaterThanOrEqual(0);
+  });
+
+  // ⚠️ THE FIXTURE HAS TO MAKE THE TERMS DISAGREE. An earlier version put the
+  // freshest slot first, where proximity already wanted to go — so both
+  // configurations landed identically and the test proved nothing. Here the
+  // EARLY free slot is the depleted one and the late one is recovered, so
+  // proximity and energy pull opposite ways and the outcome says which won.
+  //
+  //   08:00–11:00  study, mental +2/hr   → reserve −6 by 11:00 (depletion .75)
+  //   11:00–13:00  FREE, and depleted    ← proximity wants this
+  //   13:00–15:00  rest,  mental −1.5/hr → reserve −3 by 15:00 (depletion .375)
+  //   15:00–       FREE, and recovered   ← energy wants this
+  //
+  // ⚠️ AND EVERY DAY IN THE SEARCH WINDOW MUST CARRY IT. A first attempt loaded
+  // Monday only; the sitting went to an empty Tuesday 08:00, which is both the
+  // most proximate slot AND the freshest, so the two terms agreed and the test
+  // was blind at every weight — including 1.5. Shaping one day proves nothing
+  // when the placer can walk to an unshaped one.
+  const conflicting = (energyWeight) => {
+    const s = new Schedule({
+      config: { ...defaultConfig, weights: { ...defaultConfig.weights, energy: energyWeight } },
+    });
+    s.addBucket({ label: 'Study', tags: ['study'], load: { mental: 2 } });
+    s.addBucket({ label: 'Rest', tags: ['rest'], load: { mental: -1.5, physical: -1 } });
+    for (let d = 0; d < 5; d += 1) {
+      for (let i = 0; i < 3; i += 1) {
+        s.addFixed({ title: `AM${d}-${i}`, tags: ['study'], startTime: at(d, 8 + i), endTime: at(d, 9 + i) });
+      }
+      s.addFixed({ title: `Rest${d}`, tags: ['rest'], startTime: at(d, 13), endTime: at(d, 15) });
+    }
+    return s;
+  };
+
+  it('places a loaded sitting somewhere less depleted than it would without the term', () => {
+    const place = (s) => s.addFlexible({ title: 'Flex', tags: ['study'], durationMin: 60, from: at(0, 8) });
+
+    const withTerm = conflicting(defaultConfig.weights.energy);
+    const without = conflicting(0);
+    const a = place(withTerm);
+    const b = place(without);
+
+    const depA = arrivalDepletionFor(withTerm)(a.startTime, loadForTask(withTerm, a));
+    const depB = arrivalDepletionFor(without)(b.startTime, loadForTask(without, b));
+    expect(depA).toBeLessThan(depB);
+    // And it is the later, recovered slot that won — not merely a different one.
+    expect(a.startTime.getHours()).toBeGreaterThanOrEqual(15);
+    expect(b.startTime.getHours()).toBeLessThan(13);
   });
 });

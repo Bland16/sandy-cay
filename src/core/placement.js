@@ -17,6 +17,7 @@ import {
 } from './time.js';
 import { walkGaps, breakMinForFill } from './gaps.js';
 import { score } from './scoring.js';
+import { arrivalDepletionFor, loadForTask } from './energy.js';
 import { expandRecurrence } from './recurrence.js';
 
 /**
@@ -263,6 +264,13 @@ export function findBestSlot(schedule, task, opts = {}) {
   const ignoreBreaks = !!opts.ignoreBreaks;
   const lookaheadHorizonMin = config.maxPlacementLookahead * 24 * 60;
   const weights = schedule._weights();
+  // D-1 (design/ENERGY-PLACEMENT-EVAL.md): how depleted you ARRIVE at the slot,
+  // evaluated per candidate — the quantity is slot-shaped and cannot live in a
+  // day chooser. Built once here because the factory hoists `learnedCapacity`,
+  // which walks every rated sample and every rated day; per-slot that walk
+  // would run once per candidate. `taskLoad` is likewise fixed for the search.
+  const depletionAt = arrivalDepletionFor(schedule);
+  const taskLoad = loadForTask(schedule, task);
 
   let best = null;
   const lastDay = dayStart(to);
@@ -313,6 +321,7 @@ export function findBestSlot(schedule, task, opts = {}) {
           dayFillAfter,
           stability,
           modelScore: ms,
+          arrivalDepletion: depletionAt(slot.start, taskLoad),
           // Finish-early preference: a fifth of the RUNWAY clear of the
           // deadline, where the runway starts at `from` — the moment the plan is
           // being made. Nothing about the task's own size enters into it, so a

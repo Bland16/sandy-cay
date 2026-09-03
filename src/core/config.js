@@ -42,7 +42,26 @@ export const defaultConfig = {
   // that horizon only `balance` still discriminates, which is why long-runway
   // work bunches into the first days — see WEEKLY-PLANNING §4.5.
   // Renormalised with the rest, so these are ratios, not percentages.
-  weights: { proximity: 0.5, balance: 0.35, stability: 0.15, preference: 0.15, buffer: 0.4 },
+  // `energy` — how depleted you ARRIVE at the slot, on the axes the task draws
+  // on (design/ENERGY-PLACEMENT-EVAL.md D-1, settled on evidence: the term
+  // belongs in scoring.js at the candidate slot, and its quantity is C3,
+  // reserve-at-sit-down, not C1's day dip). Gated: a task that spends nothing
+  // gets no opinion rather than inheriting one from the day's state.
+  //
+  // ⚠️ 0.15 IS MEASURED, NOT CHOSEN — probe-energy-weight.mjs. On a week of
+  // heavy mornings and recovered evenings the effect SATURATES immediately:
+  //
+  //     w.energy   placements moved   mean arrival depletion
+  //       0.00            0                  1.000
+  //       0.10            5                  0.675
+  //       0.50            5                  0.675   ← buys nothing more
+  //
+  // So the term wants the smallest weight that captures it. Above ~0.35 the
+  // renormalisation drops `buffer` under 0.2 and quietly overrules the user's
+  // own "a strong preference" for finishing early — that is the ceiling, and
+  // scoring-buffer.test.js holds it as a tripwire. 0.15 is the saturation point
+  // plus margin, and matches `preference`.
+  weights: { proximity: 0.5, balance: 0.35, stability: 0.15, preference: 0.15, buffer: 0.4, energy: 0.15 },
   urgencyFactor: 1.5,
   evacuationPenalty: 120, // minutes-equivalent cost of forcing one evacuation (OD-8)
   strategyBias: 0.8, // cause-bias factor for chooseConflictStrategy (OD-8)

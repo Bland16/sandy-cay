@@ -92,16 +92,27 @@ describe('bufferScore — one fifth of the RUNWAY, not of the task', () => {
 });
 
 describe('the weight sits alongside the others', () => {
+  const total = (w) => w.proximity + w.balance + w.stability + w.preference + w.buffer + w.energy;
+
   it('renormalizes to sum 1 with buffer included', () => {
     const w = normalizeWeights(defaultConfig.weights);
-    const sum = w.proximity + w.balance + w.stability + w.preference + w.buffer;
-    expect(sum).toBeCloseTo(1, 10);
+    expect(total(w)).toBeCloseTo(1, 10);
     expect(w.buffer).toBeGreaterThan(0.2); // "a strong preference", per the user
   });
 
+  // ⚠️ THIS IS A CEILING ON `energy`, and it is the user's, not an arbitrary
+  // one. Every weight is renormalised against the sum, so adding to any term
+  // takes from all the others. Holding buffer above 0.2 — the user's own "a
+  // strong preference" — means `energy` cannot exceed about 0.35 without
+  // quietly overruling a decision they already made.
+  it('a heavier energy weight would erode the buffer preference', () => {
+    const at = (e) => normalizeWeights({ ...defaultConfig.weights, energy: e }).buffer;
+    expect(at(0.25)).toBeGreaterThan(0.2);
+    expect(at(0.8)).toBeLessThan(0.2); // for the record, and as a tripwire
+  });
+
   it('an all-zero weight set still degrades to something usable', () => {
-    const w = normalizeWeights({});
-    expect(w.proximity + w.balance + w.stability + w.preference + w.buffer).toBeCloseTo(1, 10);
+    expect(total(normalizeWeights({}))).toBeCloseTo(1, 10);
   });
 
   it('DISCRIMINATES between two slots identical on every other axis', () => {

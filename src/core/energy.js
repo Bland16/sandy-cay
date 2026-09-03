@@ -207,6 +207,65 @@ export function dipIfPlaced(schedule, slot, draft) {
 
 /** How depleted each axis is right now — the reserve after the tasks already under
  *  way today (startTime ≤ now). Steers suggestions away from deepening a bottomed axis. */
+/**
+ * How depleted you ARRIVE at a slot, on the axes this task actually draws on.
+ * ∈ [0,1] — 0 is fresh, 1 is at or past your ceiling. `null` means "no opinion".
+ *
+ * This is C3, "reserve at sit-down", settled on evidence in
+ * design/ENERGY-PLACEMENT-EVAL.md. C1 — the DAY's total dip — was the earlier
+ * front-runner and lost, because it is structurally blind to the thing that
+ * matters: on a fixture where every day carries the same 2h block, mornings on
+ * half the days and evenings on the other half, the day's total dip is
+ * IDENTICAL either way and only the order differs. C1 saw nothing and chose
+ * 0,1,2,3,4 (sat down fresh 0/5); C3 chose 7,8,9,10,11 (5/5).
+ *
+ * ⚠️ GATED ON THE TASK'S OWN LOAD. A task that spends nothing cannot make any
+ * day worse, so it gets no opinion rather than inheriting a preference from the
+ * day's state — returning null, which the caller turns into a constant across
+ * every candidate slot, so it cannot move a ranking.
+ *
+ * ⚠️ AXES ARE WEIGHTED BY WHAT THE TASK SPENDS. Arriving physically wrecked is
+ * not an argument against reading; the question is how depleted you are on the
+ * axes this particular thing draws on.
+ *
+ * ⚠️ THE DENOMINATOR IS PER-AXIS CAPACITY, learned where it has been earned and
+ * the configured prior where it has not. That fallback is legitimate HERE and
+ * nowhere it would be shown: this number is arithmetic the user never sees, and
+ * the term has to work in week one. See `capacityPrior`.
+ */
+export function arrivalDepletionFor(schedule) {
+  // ⚠️ HOISTED DELIBERATELY. `learnedCapacity` walks every rated sample and
+  // every rated day's tasks; calling it from inside `findBestSlot`'s per-slot
+  // loop would run that walk once per candidate. Capacity cannot change during
+  // a placement, so it is computed once here and closed over.
+  const learned = learnedCapacity(schedule);
+  const prior = capacityPrior(schedule);
+  const capOf = (a) => (learned && Number.isFinite(learned[a]) ? learned[a] : prior[a]) || 1;
+
+  return function depletionAt(at, load) {
+    const l = load ? normalizeLoad(load) : null;
+    if (!l) return null;
+    let weightSum = 0;
+    for (const a of LOAD_AXES) weightSum += Math.abs(l[a]);
+    if (weightSum <= 0) return null; // characterless task — no opinion
+
+    const reserve = reserveAt(schedule, at);
+    let acc = 0;
+    for (const a of LOAD_AXES) {
+      const w = Math.abs(l[a]);
+      if (w <= 0) continue;
+      const spent = Math.max(0, -reserve[a]); // reserve ≤ 0; deeper is more negative
+      acc += w * Math.min(1, spent / capOf(a));
+    }
+    return acc / weightSum;
+  };
+}
+
+/** One-shot form, for callers outside a placement loop. */
+export function arrivalDepletion(schedule, at, load) {
+  return arrivalDepletionFor(schedule)(at, load);
+}
+
 export function reserveAt(schedule, now = new Date()) {
   const tasks = schedule.getTasksForDay(now)
     .filter((t) => !t.chunking && t.completion !== 'skipped' && t.startTime.getTime() <= now.getTime());
