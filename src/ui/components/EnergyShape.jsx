@@ -1,99 +1,37 @@
-// EnergyShape — the week's spend and restore, overlaid (design/energy-radar-mockups.html).
+// EnergyShape — the week's spend and restore (design/energy-radar-mockups.html).
 //
-// Why both charts and not one. They answer the same question in two registers:
-// the DIAMOND is for shape recognition — you learn what your own week looks like
-// and notice the week that isn't that shape — while the BUTTERFLY is exact, so
-// the numbers can be read rather than decoded. The report is the one surface
-// with room for both, and it is printed, where "read it exactly" matters most.
+// ONE chart, not two. A radar "diamond" stood beside the butterfly until
+// 2026-09-02, on the argument that it was for shape recognition while the
+// butterfly was for exactness. It was cut, on its own file's reasoning: the two
+// rendered the SAME eight numbers and the totals line below made three. Its
+// justification — "you learn what your own week looks like" — needs many weeks
+// of prior reports to pay off, and nobody has them. Meanwhile `capacity` is null
+// until calibration, so it drew four empty rings around a blob with no
+// reference: the defect that also sank the day-shapes section below it.
+//
+// The comparative reading it was reaching for is real and unserved. It needs a
+// strip of WEEKS on a shared absolute axis, not one glyph per week — see
+// design/WRAP-REPORT-ADDITIONS.md. Do not restore the radar to get it.
 //
 // ⚠️ Three rules this chart has to obey, all of them learned the hard way here:
 //
-//   1. NEVER meaning by colour alone (§10). Two translucent overlapping polygons
-//      with no numerals is exactly that, and this project has already shipped
+//   1. NEVER meaning by colour alone (§10). This project has already shipped
 //      that bug once — the report's empty rating shells were a sand tint at full
 //      opacity, so a 2-shell rating read as 5 to the person holding the page. So
-//      every axis prints `spent/restored`, restore is DASHED as well as green,
-//      and the butterfly states both numbers outright.
+//      every row states both numbers outright.
+//      ⚠️ In greyscale --pinned (spend) and --rest (restore) are 173 and 176 of
+//      255 — a contrast ratio of 1.03:1, i.e. the same grey on paper. Left/right
+//      position and the `restored ◀ / ▶ spent` header carry the whole meaning.
+//      The dashed treatment that used to back this up left with the diamond, so
+//      do not lean on hue here; texture is the fix (styles.css).
 //   2. NO invented ceiling (P-2). `learnedCapacity` is null until roughly three
-//      weeks of ratings calibrate it. While it is null the diamond draws no ring
-//      and says why — a chart that quietly grows a ceiling in March would mean
-//      every chart printed before it was lying.
+//      weeks of ratings calibrate it, and nothing here draws one.
 //   3. NOT coral (P-1). Coral is for scheduling physics, never for moral
-//      bookkeeping, and a heavy week is not a fault. Spend is sand, restore is
-//      the app's own --rest green.
-//
-// The diamond is four axes, which is coarser than a hexagon — two high axes and
-// two low read as a slash. That is a known cost, accepted deliberately: the
-// butterfly beside it carries the precision the shape gives up.
+//      bookkeeping, and a heavy week is not a fault.
 
 import { LOAD_AXES } from '../../core/index.js';
 
-const SIZE = 188;
-const R = SIZE * 0.33;
-const CX = SIZE / 2;
-const CY = SIZE / 2;
-
 const fx = (n) => (Math.round(n * 10) / 10).toFixed(1);
-
-/** Axis i's point at radius `r`. Mental top, then clockwise. */
-function axisPoint(i, r) {
-  const ang = -Math.PI / 2 + i * ((2 * Math.PI) / LOAD_AXES.length);
-  return [CX + r * Math.cos(ang), CY + r * Math.sin(ang)];
-}
-
-const poly = (pts) => pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
-
-function ringPoly(r) {
-  return poly(LOAD_AXES.map((_, i) => axisPoint(i, r)));
-}
-
-function valuePoly(axes, key, max) {
-  return poly(LOAD_AXES.map((a, i) => axisPoint(i, (Math.min(axes[a][key], max) / max) * R)));
-}
-
-/**
- * The diamond. `capacity` is the learned per-axis ceiling or null — null draws
- * no ring at all, which is the honest state until ratings earn one.
- */
-function Diamond({ axes, max, capacity }) {
-  // One ring per axis would be four rings; the ceiling is drawn only when every
-  // axis has one, so a partial calibration cannot imply a shape it hasn't got.
-  const capRing = capacity && LOAD_AXES.every((a) => Number.isFinite(capacity[a]))
-    ? LOAD_AXES.map((a, i) => axisPoint(i, (Math.min(capacity[a], max) / max) * R))
-    : null;
-
-  return (
-    <svg
-      className="rp-diamond"
-      viewBox={`0 0 ${SIZE} ${SIZE}`}
-      role="img"
-      aria-label={LOAD_AXES.map((a) => `${a}: spent ${fx(axes[a].spend)}, restored ${fx(axes[a].restore)}`).join('; ')}
-    >
-      {[0.25, 0.5, 0.75, 1].map((f) => (
-        <polygon key={f} className="rp-dgrid" points={ringPoly(R * f)} />
-      ))}
-      {LOAD_AXES.map((a, i) => {
-        const [x, y] = axisPoint(i, R);
-        return <line key={a} className="rp-dgrid" x1={CX} y1={CY} x2={x.toFixed(1)} y2={y.toFixed(1)} />;
-      })}
-      {capRing && <polygon className="rp-dcap" points={poly(capRing)} />}
-      <polygon className="rp-dspend" points={valuePoly(axes, 'spend', max)} />
-      <polygon className="rp-drestore" points={valuePoly(axes, 'restore', max)} />
-      {LOAD_AXES.map((a, i) => {
-        const [x, y] = axisPoint(i, R + 17);
-        return (
-          <g key={a}>
-            <text className="rp-daxis" x={x.toFixed(1)} y={y.toFixed(1)}>{a}</text>
-            {/* The numerals are not decoration — see rule 1 above. */}
-            <text className="rp-dnum" x={x.toFixed(1)} y={(y + 10).toFixed(1)}>
-              {fx(axes[a].spend)}/{fx(axes[a].restore)}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
 
 /** Restore left, spend right, one row per axis. Exact, and it prints. */
 function Butterfly({ axes, max }) {
@@ -142,7 +80,6 @@ export default function EnergyShape({ energy }) {
   return (
     <div className="rp-energy">
       <div className="rp-echarts">
-        <Diamond axes={axes} max={max} capacity={capacity} />
         <Butterfly axes={axes} max={max} />
       </div>
       {/* The totals, and nothing else. The chart's rationale is documented at the

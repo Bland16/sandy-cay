@@ -11,7 +11,7 @@ export { Zone } from './Zone.js';
 export { Bucket } from './Bucket.js';
 export { Activity } from './Activity.js';
 export { Schedule } from './Schedule.js';
-export { LearningModule } from './learning.js';
+export { LearningModule, humanLabel, isNarratable, MODEL_LAYOUT_VERSION } from './learning.js';
 export { StorageAdapter, exportState, summarizeImport, pickBackend } from './storage.js';
 export { defaultConfig, makeConfig } from './config.js';
 export * as time from './time.js';

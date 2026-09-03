@@ -19,20 +19,87 @@ import { clamp } from './time.js';
 // meaningless now that the column carries values — so force a clean retrain.
 // `fromJSON` already sets `needsRetrain` on a mismatch and `Schedule`'s
 // constructor already acts on it; ratings persist on the tasks, so nothing is lost.
-export const MODEL_LAYOUT_VERSION = 4;
+// 5 (2026-09-03): dropped `moveCount` (user's call). It counted ONLY the user's
+// own drags — `moveTo` has one caller (useCardInteraction, the drag) and nothing
+// ever passes `countMove:true` to `placeAt` — so it never once measured engine
+// displacement, and a deliberate nudge at creation ("15 minutes earlier, it was
+// placed late") was indistinguishable from a reschedule. It was also inert at
+// placement (task-level constant: identical for every candidate slot, so it
+// cannot move the arg-max), it fought `starvationCheck` in `whatToDo` by
+// downranking exactly the work that detector exists to surface, and narrating
+// it is moral bookkeeping (P-1). `history.moveCount` is still RECORDED — only
+// the feature is gone. See design/ML-HEURISTICS-RECOMMENDATIONS.md §1.3b.
+export const MODEL_LAYOUT_VERSION = 5;
 
 export const TIME_BUCKETS = ['early', 'morning', 'midday', 'afternoon', 'evening', 'night'];
 // Finer low end than before ([45,90,150,240]): "< 45" was one bucket, so the
 // model couldn't tell a 15m task from a 40m one. Now 7 buckets, including < 15.
 const DURATION_EDGES = [15, 30, 45, 90, 150, 240]; // → 7 buckets
 
+// The bucket edges as DATA, so `humanLabel` below can state them without a
+// second, hand-typed copy drifting out of sync with the one that does the work.
+// `night` is everything else — it wraps midnight, so it has no [lo, hi) row.
+const TIME_BUCKET_HOURS = [[5, 8], [8, 11], [11, 14], [14, 17], [17, 21]];
+
 export function timeBucket(hour) {
-  if (hour >= 5 && hour < 8) return 0;
-  if (hour >= 8 && hour < 11) return 1;
-  if (hour >= 11 && hour < 14) return 2;
-  if (hour >= 14 && hour < 17) return 3;
-  if (hour >= 17 && hour < 21) return 4;
+  for (let i = 0; i < TIME_BUCKET_HOURS.length; i += 1) {
+    if (hour >= TIME_BUCKET_HOURS[i][0] && hour < TIME_BUCKET_HOURS[i][1]) return i;
+  }
   return 5;
+}
+
+const DAY_LABELS = ['Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays', 'Sundays'];
+const hr = (h) => (h % 12 === 0 ? 12 : h % 12);
+const mins = (m) => (m % 60 === 0 ? `${m / 60} hour${m === 60 ? '' : 's'}` : `${m} minutes`);
+
+/**
+ * A feature label as a person would say it. SPEC §5 asks the Cabana for
+ * "plain-language preferences" and §7.1 for "plain language" — both surfaces
+ * were printing the raw internal string, so a wrap report could read "the model
+ * leans toward dur:45-90".
+ *
+ * ⚠️ GENERATED from `TIME_BUCKETS`, `TIME_BUCKET_HOURS` and `DURATION_EDGES`,
+ * never retyped. A parallel table is the `dayFillAtCompletion` bug shape: two
+ * descriptions of one thing, one of them silently wrong after the next edit.
+ */
+export function humanLabel(label) {
+  const s = String(label ?? '');
+  if (s.startsWith('tag:')) return s.slice(4); // the user's own word
+  if (s.startsWith('time:')) {
+    const i = TIME_BUCKETS.indexOf(s.slice(5));
+    if (i < 0) return s;
+    if (i === TIME_BUCKETS.length - 1) return `late evenings (${hr(21)} onward)`;
+    const [lo, hi] = TIME_BUCKET_HOURS[i];
+    return `${TIME_BUCKETS[i]}s (${hr(lo)}–${hr(hi)})`;
+  }
+  if (s.startsWith('day:')) {
+    const i = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].indexOf(s.slice(4));
+    return i < 0 ? s : DAY_LABELS[i];
+  }
+  if (s.startsWith('dur:')) {
+    const r = s.slice(4);
+    if (r.startsWith('<')) return `sittings under ${mins(DURATION_EDGES[0])}`;
+    if (r.startsWith('>')) return `sittings over ${mins(DURATION_EDGES[DURATION_EDGES.length - 1])}`;
+    const [lo, hi] = r.split('-');
+    return `${lo}–${hi} minute sittings`;
+  }
+  return s;
+}
+
+/**
+ * Columns that may be spoken to the user, even when they carry weight.
+ *
+ * `priority` is a claim about the user's own labelling, not their life.
+ * `dayFill` has a weight that flips sign between retrains, so it is not a
+ * sentence. `placedByUser` narrates the user's relationship with the app, and
+ * its negative reading is a P-1 hazard on its face. All three stay in the FIT —
+ * they are real confound controls — and none of them gets a sentence.
+ *
+ * What remains is exactly the four families a person can act on by choosing
+ * WHEN and WHAT to schedule.
+ */
+export function isNarratable(label) {
+  return /^(tag|time|day|dur):/.test(String(label ?? ''));
 }
 
 function durationBucket(min) {
@@ -80,10 +147,9 @@ export class LearningModule {
     // the model on a day that never happened.
     const dayFill = task.dayFillAtCompletion ?? 0;
     const placedByUser = task.placedBy === 'user' ? 1 : 0;
-    const moveNorm = Math.min(task.history.moveCount, 10) / 10;
     return [
       ...tagInd, ...time, ...day, ...dur,
-      priorityNorm, dayFill, placedByUser, moveNorm,
+      priorityNorm, dayFill, placedByUser,
     ];
   }
 
@@ -93,7 +159,7 @@ export class LearningModule {
       ...TIME_BUCKETS.map((t) => `time:${t}`),
       ...['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].map((d) => `day:${d}`),
       ...['dur:<15', 'dur:15-30', 'dur:30-45', 'dur:45-90', 'dur:90-150', 'dur:150-240', 'dur:>240'],
-      'priority', 'dayFill', 'placedByUser', 'moveCount',
+      'priority', 'dayFill', 'placedByUser',
     ];
     // The gated set. It was empty after the role rip-out, so the gating
     // machinery below no-opped — and the DURATION buckets were the columns that
@@ -114,7 +180,15 @@ export class LearningModule {
    * the slot). timingFit ≠ 0 doubles the sample weight (SPEC §5).
    */
   train(ratedTasks, opts = {}) {
-    const rated = ratedTasks.filter((t) => t.satisfaction && typeof t.satisfaction.overall === 'number');
+    // ⚠️ `Number.isFinite`, NOT `typeof === 'number'` — because `typeof NaN` IS
+    // 'number'. One rating with a NaN `overall` passed this filter, propagated
+    // through `clamp` (Math.max/Math.min return NaN), took every weight with it,
+    // and the divergence guard below then refused to ship the fit — so a single
+    // corrupt rating disabled learning permanently, with no error anywhere and a
+    // UI that said "cold start". A bad rating should cost one sample.
+    const rated = ratedTasks.filter(
+      (t) => t.satisfaction && Number.isFinite(t.satisfaction.overall),
+    );
     this.sampleCount = rated.length;
     // Build tag vocabulary (top-N by frequency, deterministic tiebreak by name).
     const counts = new Map();
@@ -150,13 +224,20 @@ export class LearningModule {
     const minSamples = this.config.learning.interactionMinSamples ?? 4;
     const gates = new Array(dim).fill(1);
     const interaction = new Set(this.interactionIdx);
+    // ⚠️ COUNTED FOR EVERY COLUMN, not just the gated ones. This loop used to
+    // walk `interactionIdx`, so `observations` was populated for the 7 duration
+    // columns and left at 0 for the other ~20 — while `inspect()`'s docstring
+    // below promises the count is what distinguishes "0 because you have never
+    // tried this" from "0 because it is genuinely neutral". For tags, times and
+    // weekdays it delivered neither, and both narration surfaces rank on
+    // `|weight|` alone as a result. Counting is free; gating stays scoped.
     const observations = new Array(dim).fill(0);
-    for (const j of this.interactionIdx) {
+    for (let j = 0; j < dim; j += 1) {
       let n = 0;
       for (const sm of samples) if (sm.x[j] !== 0) n += 1;
       observations[j] = n;
-      if (n < minSamples) gates[j] = 0;
     }
+    for (const j of this.interactionIdx) if (observations[j] < minSamples) gates[j] = 0;
     this.observations = observations;
     for (const sm of samples) for (const j of this.interactionIdx) if (gates[j] === 0) sm.x[j] = 0;
 
@@ -241,6 +322,15 @@ export class LearningModule {
       sampleCount: this.sampleCount,
       trained: this.trained,
       labels: [...this.labels],
+      // ⚠️ SERIALIZED, because `inspect()` leans on it. Without this the count
+      // read 0 for every column after any reload — so the untried/neutral
+      // distinction the docstring calls load-bearing survived exactly until the
+      // page was refreshed, and both narration surfaces got the degraded copy.
+      observations: this.observations ? [...this.observations] : [],
+      // Why the model is quiet, not just that it is. A diverged fit sets
+      // `trained: false`, which every consumer reads as "cold start" — so a
+      // model killed by one bad rating reported "12 of 10 ratings so far".
+      diverged: !!this.diverged,
     };
   }
 
@@ -262,6 +352,21 @@ export class LearningModule {
       m.sampleCount = json.sampleCount || 0;
       m.trained = json.trained || false;
       m.labels = json.labels || [];
+      m.observations = Array.isArray(json.observations) && json.observations.length
+        ? [...json.observations] : null;
+      m.diverged = !!json.diverged;
+      // ⚠️ STRUCTURAL GUARD, because the version constant cannot detect its own
+      // staleness. Removing a column without bumping MODEL_LAYOUT_VERSION fails
+      // SILENTLY: `modelScore` walks the shorter feature vector against the
+      // longer stored weights, the leading columns still line up, and there is
+      // no crash and no NaN — just quiet drift in every placement, plus a
+      // phantom row in the Cabana because `inspect()` maps over `labels`.
+      // Disagreeing lengths can only mean a layout change, so retrain.
+      if (m.weights.length !== m.labels.length) {
+        m.needsRetrain = true;
+        m.weights = [];
+        m.trained = false;
+      }
       m.layoutVersion = json.layoutVersion;
       m.interactionIdx = []; // no interaction terms in the base model (role rip-out)
     }

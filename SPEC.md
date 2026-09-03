@@ -182,7 +182,11 @@ This occurrence (skip exception) / This and future (`effectiveUntil: now`) / Ent
 
 **Boundary:** learns *where/when placements satisfy you*; never suggests tasks.
 **Data:** structured satisfaction (§1.1) + implicit history counters. Facets optional always.
-**Features:** top-N tag indicators, time-of-day bucket (6), day-of-week, duration bucket, priority, day-fill at completion, placedBy, moveCount. Target: overall∈[0,1]; `timingFit≠0` doubles sample weight on time features.
+**Features:** top-N tag indicators, time-of-day bucket (6), day-of-week, duration bucket, priority, day-fill at completion, placedBy. Target: overall∈[0,1]; `timingFit≠0` doubles sample weight on time features.
+
+> **`moveCount` was removed as a feature 2026-09-03** (model layout v5). It counted *only* the user's own drags — `moveTo` has one caller and nothing passes `countMove:true` to `placeAt` — so it never measured engine displacement, and a deliberate nudge at creation was indistinguishable from a reschedule. It was also inert at placement (a task-level constant cannot move the arg-max) and narrating it is moral bookkeeping (P-1). `history.moveCount` is still **recorded**; only the feature is gone. See `design/ML-HEURISTICS-RECOMMENDATIONS.md` §1.3b.
+>
+> ⚠️ **Known divergence, not yet resolved:** this section says `timingFit≠0` doubles the sample weight *"on time features"*. `learning.js` doubles the **whole sample** — every tag, duration and dayFill column too. Per-feature sample weighting is not expressible in a single weighted least-squares fit, so one of the two has to give. Recorded, not silently reconciled.
 **Model:** ridge linear regression, plain-JS gradient descent, weights inspectable → Cabana renders plain-language preferences.
 **Output:** `modelScore(task, slot)∈[0,1]` → `w.preference` (default 0.15; forced 0 until ≥10 ratings).
 **Retraining:** week rollover (before Wrap report) + Cabana "Retrain now" (shows sample count).

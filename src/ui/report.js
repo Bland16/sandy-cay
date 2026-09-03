@@ -16,8 +16,7 @@ import {
   getWeekLoad, getTagBreakdown, getSatisfactionMatrix, getBreakCompression,
   snapshot, snapshotDiff, isoWeekKey, addDays, dateKey, weekStart as weekStartOf,
   driftCheck, starvationCheck, skipStreakCheck, pinnedRatioNote, durationFitSuggestion,
-  splitPeriod, endRecurrence, spendRestore, learnedCapacity,
-  energyTrajectory, energyCalibration, LOAD_AXES, dayWindowBounds,
+  splitPeriod, endRecurrence, spendRestore, learnedCapacity, humanLabel, isNarratable,
 } from '../core/index.js';
 import { fmtDur } from './format.js';
 
@@ -321,9 +320,52 @@ function buildInsight(sched) {
   // Top 3 is editorial, not a page-fitting cap: §7.1 asks for "fresh model
   // insights in plain language", and the 30th-strongest weight is noise wearing
   // a sentence. The full vector is inspectable in the Cabana.
-  const top = learning.inspect()
-    .filter((w) => Math.abs(w.weight) > 0.01)
-    .sort((a, b) => Math.abs(b.weight) - Math.abs(a.weight))
+  //
+  // ⚠️ RANKED ON EVIDENCE AND SIGNED, and each of those fixes a shipped defect.
+  //
+  //   THE SIGN. This ranked by `Math.abs(weight)` and rendered the winner as
+  //   "the model leans toward X". Magnitude is the right ranking key and the
+  //   sentence was written for a signed list, so the report asserted a
+  //   PREFERENCE FOR THE THING RATED WORST. Measured at n=40: `time:night` at
+  //   −0.50 was the largest weight, and the sheet printed "leans toward night".
+  //
+  //   THE EVIDENCE. A weight is only a fact about you if something sits behind
+  //   it. `observations` now counts every column (it used to cover the 7
+  //   duration columns alone), so a bucket tried twice can be told from one
+  //   tried twenty times — the distinction `inspect()` promises.
+  //
+  //   THE FAMILY. Each one-hot block sums to 1, so it is collinear with the
+  //   intercept and its weights are meaningful only RELATIVE TO EACH OTHER.
+  //   Centring on the block's observed mean is what the number already means
+  //   ("mornings, compared with your other times"), and it drops the weekday
+  //   noise for free — seven day weights within 0.01 of each other all centre
+  //   to ~0 and none of them earns a sentence. Tags are the exception: a task
+  //   may carry none or three, so the block is not exhaustive and 0 is already
+  //   its own baseline.
+  //
+  //   THE FLOOR IS DERIVED, NOT PICKED. The target is `(overall − 1) / 4`, so
+  //   0.25 of weight is one step of the 5-shell scale the user actually typed.
+  //   A claim smaller than one shell is smaller than the smallest thing they
+  //   can say, and the old `> 0.01` cut-off sat ~20× below the noise floor.
+  const minObs = sched.config.learning.interactionMinSamples ?? 4;
+  const cols = learning.inspect().filter((w) => isNarratable(w.label) && !w.gated);
+  const familyOf = (label) => label.slice(0, label.indexOf(':'));
+  const means = new Map();
+  for (const fam of new Set(cols.map((c) => familyOf(c.label)))) {
+    if (fam === 'tag') { means.set(fam, 0); continue; }
+    const seen = cols.filter((c) => familyOf(c.label) === fam && c.observations > 0);
+    means.set(fam, seen.length ? seen.reduce((s, c) => s + c.weight, 0) / seen.length : 0);
+  }
+  const top = cols
+    .filter((w) => w.observations >= minObs)
+    .map((w) => ({
+      label: w.label,
+      text: humanLabel(w.label),
+      observations: w.observations,
+      shells: (w.weight - means.get(familyOf(w.label))) * 4,
+    }))
+    .filter((w) => Math.abs(w.shells) >= 1)
+    .sort((a, b) => Math.abs(b.shells) - Math.abs(a.shells))
     .slice(0, 3);
   return { cold: false, sampleCount: learning.sampleCount, top };
 }
@@ -372,84 +414,6 @@ function buildDeadlineBuffer(sched, weekTasks) {
   };
 }
 
-/**
- * The week's seven energy trajectories — the PLANNED curve for each day, with
- * what actually happened marked on it (the user's call, 2026-09-02).
- *
- * ⚠️ PLANNED, NOT LIVED, AND DELIBERATELY SO. `energyTrajectory` walks every
- * task on the day except skipped ones, rated or not — so the line is the day you
- * INTENDED. The marks are the day you had. Drawing only completed work would
- * answer a different question ("what did I spend?", which the week totals
- * already answer) and would quietly erase the evening you planned and did not
- * reach — which is exactly the comparison worth seeing.
- *
- * ⚠️ NO CEILING IS DRAWN UNTIL ONE IS EARNED. `learnedCapacity` is null until
- * ratings span `calibrationWeeks` distinct weeks (P-2), and a ring that appeared
- * later would mean every earlier week's chart had been lying. `calibrated` is
- * carried so the view can say "still learning" instead of inventing a limit.
- *
- * `depth` is the sum of |reserve| across the axes — how deep the day is
- * altogether, which is the F-4 reading Find-a-time already settled on: where the
- * day ENDS UP, not what each step adds.
- */
-export function buildTrajectories(sched, ws) {
-  const cal = energyCalibration(sched);
-  const capacity = learnedCapacity(sched);
-  const days = [];
-  for (let i = 0; i < 7; i += 1) {
-    const date = addDays(ws, i);
-    const { points, low } = energyTrajectory(sched, date);
-    const bounds = dayWindowBounds(sched.config, date);
-    const depthOf = (r) => LOAD_AXES.reduce((n, a) => n + Math.abs(r[a]), 0);
-    // ⚠️ The walk starts at zero. `energyTrajectory` samples at each task's END,
-    // so without an explicit origin the first task's cost would look like the
-    // day's starting state and the line would begin partway down.
-    const curve = [{ at: bounds.start, depth: 0 }]
-      .concat(points.map((p) => ({ at: p.at, depth: depthOf(p.reserve) })));
-
-    // What happened, in the vocabulary the task panel already uses: = ↑ ↓.
-    // ⚠️ SHAPE, NEVER COLOUR. P-1 — "neither arrow is a judgement, no warning
-    // colour on a rating" — and the dataviz validator independently rejects the
-    // obvious red/green pair anyway (ΔE 3.9 under deuteranopia, far below the
-    // floor). Shape carries all of it, so a colourblind reader loses nothing.
-    const marks = [];
-    for (const t of sched.getTasksForDay(date)) {
-      if (t.chunking) continue;
-      const sat = t.satisfaction;
-      if (!sat || typeof sat.overall !== 'number') continue;
-      const e = sat.energy;
-      marks.push({
-        at: t.endTime,
-        title: t.title,
-        overall: sat.overall,
-        kind: e === 1 ? 'up' : e === -1 ? 'down' : 'level',
-        depth: (curve.find((c) => c.at.getTime() === t.endTime.getTime()) || {}).depth ?? null,
-      });
-    }
-    days.push({
-      dayIndex: i,
-      date,
-      windowStart: bounds.start,
-      windowEnd: bounds.end,
-      curve,
-      marks,
-      low: depthOf(low),
-      end: curve.length ? curve[curve.length - 1].depth : 0,
-    });
-  }
-  const deepest = days.reduce((n, d) => Math.max(n, d.low, d.end), 0);
-  return {
-    days,
-    deepest,
-    calibrated: cal.calibrated,
-    weeksRated: cal.weeksRated,
-    weeksNeeded: cal.weeksNeeded,
-    capacity,
-    any: deepest > 0,
-    ratedCount: days.reduce((n, d) => n + d.marks.length, 0),
-  };
-}
-
 export function buildWrapReport(sched, weekStartDate) {
   const ws = weekStartOf(weekStartDate);
   const weekTasks = sched.getTasksForWeek(ws);
@@ -474,8 +438,6 @@ export function buildWrapReport(sched, weekStartDate) {
       // (P-2), and the chart must draw no ceiling while it is — a ring that
       // appears later would mean the earlier weeks' charts were lying.
       energy: { ...spendRestore(sched, weekTasks), capacity: learnedCapacity(sched) },
-      // The shape of each day, with the ratings marked on it.
-      trajectories: buildTrajectories(sched, ws),
     },
     insight: buildInsight(sched),
     suggestions: buildSuggestions(sched, ws, weekLoad, weekTasks),

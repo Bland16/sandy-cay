@@ -2,7 +2,7 @@
 // snapshot + diff (§6J), getSatisfactionMatrix + getBreakCompression (§7.1).
 
 import { DAY_KEYS, addDays, sameDay, dateKey, minutesBetween } from './time.js';
-import { dayWindowBounds, dayCapacityMin } from './placement.js';
+import { dayWindowBounds, dayCapacityMin, isDayBlocked } from './placement.js';
 import { TIME_BUCKETS, timeBucket } from './learning.js';
 
 export function getWeekLoad(schedule, weekStartDate) {
@@ -28,7 +28,16 @@ export function getWeekLoad(schedule, weekStartDate) {
       if (t.pinned) pinnedMin += mins;
       if (t.schedulingWarning) warnings += 1;
     }
-    const cap = dayCapacityMin(config, date);
+    // ⚠️ A BLOCKED DAY HAS NO CAPACITY, and `dayCapacityMin` cannot know that —
+    // it takes `(config, date)` and blocked days live on the schedule. The
+    // placer already agrees: `computeWindows` returns [] for a blocked day.
+    // Without this the day reports its full window against zero scheduled
+    // minutes, so anything drawing capacity as a reference (the report's sand
+    // bars) paints a full-height line over an empty bar — "you had ten hours
+    // and used none" for a day the user deliberately barred the scheduler from.
+    // That is the P-1 failure of manufacturing a shortfall out of a decision.
+    const blocked = isDayBlocked(schedule, date);
+    const cap = blocked ? 0 : dayCapacityMin(config, date);
     scheduledMin += dayScheduled;
     capacityMin += cap;
     perDay.push({
@@ -36,6 +45,9 @@ export function getWeekLoad(schedule, weekStartDate) {
       date: dateKey(date),
       scheduledMin: dayScheduled,
       capacityMin: cap,
+      // Carried so a view can say WHY the day is empty rather than leaving the
+      // blank to read as a failure (design/DAY-NOTES.md D-4).
+      blocked,
       fillRatio: cap > 0 ? dayScheduled / cap : 0,
     });
   }

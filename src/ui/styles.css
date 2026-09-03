@@ -1889,25 +1889,11 @@ button:focus-visible, .dhopen:focus-visible, .card:focus-visible, .slot:focus-vi
   font-size: 13px;
 }
 
-/* ---- the day shapes: planned energy curve + what actually happened ----
-   Seven small multiples on one shared y scale. The marks are SHAPES, never
-   colours — P-1 forbids a warning colour on a rating, and red/green fails CVD
-   anyway (ΔE 3.9 deutan), so shape carries the whole message. */
-.rp-shapes { display: flex; gap: 5px; margin: 4px 0 2px; }
-.rp-shape { flex: 1; margin: 0; min-width: 0; }
-.rp-shape svg { width: 100%; height: auto; display: block; overflow: visible; }
-.rp-shape figcaption { display: flex; flex-direction: column; align-items: center; gap: 1px; margin-top: 2px; }
-.rp-shape-zero { stroke: var(--ink); stroke-width: 1.5; opacity: .5; }
-.rp-shape-fill {
-  fill: rgba(232, 185, 77, .38);
-  stroke: none;
-}
-.rp-shape-line { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-.rp-shape-mark { fill: var(--ink); stroke: var(--ink); stroke-width: 1.6; }
-.rp-shapes-key { font-size: 9.5px; color: var(--ink-soft); margin: 3px 0 6px; line-height: 1.45; }
-.rp-gl { font-family: var(--font-type); color: var(--ink); }
-.rp-shapes-table { margin-top: 4px; }
-.rp-shapes-table caption { caption-side: top; text-align: left; font-size: 9px; padding-bottom: 2px; }
-@media print {
-  .rp-shapes, .rp-shapes-key, .rp-shapes-table { break-inside: avoid; }
+/* The day's available window on the sand bars — what "full" means for that
+   specific day (Sunday opens at 10:00, weekdays at 08:00). Without it the bars
+   normalised to the week's busiest day and no two weeks were comparable. */
+.rp-bar-track { position: relative; }
+.rp-bar-cap {
+  position: absolute; left: -1px; right: -1px; height: 0;
+  border-top: 1.5px dashed var(--ink-soft); opacity: .75; pointer-events: none;
 }

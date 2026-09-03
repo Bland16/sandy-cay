@@ -46,43 +46,43 @@ const openReport = () => {
 };
 
 describe('the energy shape in the report', () => {
-  it('draws both charts — the diamond for shape, the butterfly for exactness', () => {
+  it('draws ONE chart — the butterfly, and no radar beside it', () => {
     seed();
     render(<App />);
     openReport();
-    expect(document.querySelector('.rp-diamond')).toBeTruthy();
     expect(document.querySelectorAll('.rp-bfrow')).toHaveLength(4); // one row per axis
+    // ⚠️ ASSERTED ABSENT, not merely unmentioned. A radar "diamond" drew the
+    // same eight numbers as the butterfly until 2026-09-02, plus four empty
+    // rings around a blob because `capacity` is null until calibration. Its own
+    // file argued the butterfly carried the precision it gave up. If it ever
+    // comes back it should have to delete this line and say why.
+    expect(document.querySelector('.rp-diamond')).toBeNull();
+    expect(document.querySelector('.rp-dspend')).toBeNull();
   });
 
-  it('overlays restore on spend as two separate polygons', () => {
+  it('states both numbers on every axis — §10, never meaning by colour alone', () => {
     seed();
     render(<App />);
     openReport();
-    const svg = document.querySelector('.rp-diamond');
-    expect(svg.querySelector('.rp-dspend')).toBeTruthy();
-    expect(svg.querySelector('.rp-drestore')).toBeTruthy();
-    // Four axes → four points each. A diamond, deliberately.
-    expect(svg.querySelector('.rp-dspend').getAttribute('points').trim().split(/\s+/)).toHaveLength(4);
+    // Four axes × spent and restored. This is the whole §10 defence now: in
+    // greyscale --pinned and --rest are 173 and 176 of 255, so on paper the two
+    // fills are the same grey and the numerals carry the meaning.
+    const nums = [...document.querySelectorAll('.rp-bfnum')].map((t) => t.textContent);
+    expect(nums).toHaveLength(8);
+    for (const n of nums) expect(n).toMatch(/^\d+\.\d$/);
   });
 
-  it('prints a numeral for every axis — §10, never meaning by colour alone', () => {
+  it('is readable without the picture', () => {
     seed();
     render(<App />);
     openReport();
-    const nums = [...document.querySelectorAll('.rp-diamond .rp-dnum')].map((t) => t.textContent);
-    expect(nums).toHaveLength(4);
-    for (const n of nums) expect(n).toMatch(/^\d+\.\d\/\d+\.\d$/); // "spent/restored"
-    // ...and the butterfly states both numbers outright too.
-    expect(document.querySelectorAll('.rp-bfnum')).toHaveLength(8);
-  });
-
-  it('is readable to a screen reader without the picture', () => {
-    seed();
-    render(<App />);
-    openReport();
-    const label = document.querySelector('.rp-diamond').getAttribute('aria-label');
-    for (const a of ['mental', 'physical', 'social', 'creative']) expect(label).toContain(a);
-    expect(label).toMatch(/spent .*restored/);
+    // No aria-label to carry it: the butterfly is text and layout, so the axis
+    // names and their numbers are simply in the document.
+    const text = document.querySelector('.rp-bfly').textContent;
+    for (const a of ['mental', 'physical', 'social', 'creative']) expect(text).toContain(a);
+    // Which side is which is said in words, not by position alone.
+    expect(text).toMatch(/restored/);
+    expect(text).toMatch(/spent/);
   });
 
   it('draws NO capacity ring until ratings earn one (P-2)', () => {

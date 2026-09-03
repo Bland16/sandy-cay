@@ -1065,7 +1065,8 @@ export class Schedule {
 
   // ---- learning ----------------------------------------------------------
   retrain(opts = {}) {
-    const rated = this.ratedSamples().filter((t) => typeof t.satisfaction.overall === 'number');
+    // `Number.isFinite`, not `typeof === 'number'` — see learning.js#train.
+    const rated = this.ratedSamples().filter((t) => Number.isFinite(t.satisfaction.overall));
     this.learning.train(rated, opts);
     this._touch();
     return this.learning.sampleCount;
