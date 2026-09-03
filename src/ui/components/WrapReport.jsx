@@ -18,6 +18,10 @@ import Icon from '../Icon.jsx';
 // Deadline buffer, in plain words — hours under a day, whole days beyond it.
 const fmtBuf = (h) => {
   const a = Math.abs(h);
+  // ⚠️ MINUTES UNDER THE HOUR. `Math.round` alone printed a 24-minute buffer as
+  // "0h" — both wrong and a worse read than the truth, in the one section that
+  // is meant to be pure physics.
+  if (a < 1) return `${Math.max(1, Math.round(a * 60))}m`;
   if (a < 24) return `${Math.round(a)}h`;
   const d = Math.round(a / 24);
   return d === 1 ? 'a day' : `${d} days`;
@@ -172,7 +176,16 @@ export default function WrapReport({ sched, weekStart, version, onBack, onOpenTa
 
               <div className="rp-stats">
                 <Stat label="focused" value={acc.focusedMin > 0 ? fmtDur(acc.focusedMin) : '—'} />
-                <Stat label={acc.completedCount === 1 ? 'finished' : 'finished'} value={acc.completedCount} />
+                {/* ⚠️ "—", NEVER "0". The file's own header rule at the top —
+                    'no "0%" where the honest answer is "—"' — was applied to
+                    durations and not to counts, so a week with nothing marked
+                    rendered a bare 0 as the largest glyph on the page. (The
+                    label was also a dead ternary: both branches read
+                    'finished', a pluralisation written and never finished.) */}
+                <Stat
+                  label="marked done"
+                  value={acc.completedCount > 0 ? acc.completedCount : '—'}
+                />
                 {acc.partialCount > 0 && <Stat label="part-done" value={acc.partialCount} />}
                 <Stat
                   label="how it felt"
@@ -233,6 +246,15 @@ export default function WrapReport({ sched, weekStart, version, onBack, onOpenTa
               <EnergyShape energy={stats.energy} />
 
 
+              {/* ⚠️ SPEC.md §7.1 NAMES FIVE STATISTICS and the pruning pass of
+                  2026-09-02 rendered two. The three below were cut with their
+                  builders left running into a view model nothing read. They are
+                  restored because the denominator rule that removed them is a
+                  rule about CHARTS: length and area need a referent, but prose
+                  carries its own, and "3 of 11 gaps" is a named denominator in
+                  words. The report's own skipped count is the proof — it has no
+                  denominator on purpose, because "3 of 14" would be a verdict.
+                  What each one needed was a reframe, not a deletion. */}
               <h3>Where the hours went</h3>
               <div>
                   {stats.tags.length === 0 ? (
@@ -260,17 +282,118 @@ export default function WrapReport({ sched, weekStart, version, onBack, onOpenTa
                   )}
               </div>
 
+              {/* Breathing room (§7.1 "break compression"). Restored verbatim
+                  apart from the ratio: it was collateral damage from collapsing
+                  the two-column grid, not a denominator failure. `dayGaps` is
+                  shared with the grid's overpack notice SPECIFICALLY so the two
+                  surfaces can never disagree — cutting this left the grid saying
+                  the week was squeezed while the report said nothing.
+
+                  The last sentence is the best P-1 line in the file: it blames
+                  THE PACKER, not the reader. Keep it. */}
+              {stats.breaks.gapCount > 0 && (
+                <div className="rp-sub">
+                  <h3>Breathing room</h3>
+                  <p className="rp-line">
+                    Average gap between sessions: <b>{fmtDur(Math.round(stats.breaks.avgBreak))}</b>.
+                  </p>
+                  {stats.breaks.tightGaps > 0 && (
+                    <p className="rp-line">
+                      The packer left {stats.breaks.tightGaps}{' '}
+                      {stats.breaks.tightGaps === 1 ? 'gap' : 'gaps'} at its{' '}
+                      {stats.breaks.tiers.minimum}-minute floor.
+                    </p>
+                  )}
+                  <p className="rp-dim">
+                    Gaps are what the packer left you between one thing and the next.
+                  </p>
+                </div>
+              )}
+
+              {/* Tag × time-of-day (§7.1 "satisfaction by tag×time").
+                  ⚠️ THE CELL COUNTS ARE THE FIX. Its real defect was never the
+                  denominator — every cell is a mean out of five — it was that a
+                  5.0 from one rating looked identical to a 5.0 from six.
+                  `getSatisfactionMatrix` returned `count` per cell all along and
+                  the view discarded it. A cell under two ratings is dimmed
+                  rather than hidden: thin evidence is a fact about the week too. */}
+              {stats.matrix.rows.length > 0 && (
+                <div className="rp-sub">
+                  <h3>How things felt, by time of day</h3>
+                  <table className="rp-table rp-matrix">
+                    <thead>
+                      <tr>
+                        <th>tag</th>
+                        {stats.matrix.buckets.map((b) => <th key={b}>{b}</th>)}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {stats.matrix.rows.map((row) => (
+                        <tr key={row.tag}>
+                          <td>{row.tag}</td>
+                          {row.cells.map((c) => (
+                            <td key={c.bucket} className={c.count > 0 && c.count < 2 ? 'rp-thin' : undefined}>
+                              {c.avg == null
+                                ? <span className="rp-dim">·</span>
+                                : <><b>{c.avg.toFixed(1)}</b><span className="rp-dim">·{c.count}</span></>}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p className="rp-dim">
+                    Each cell is an average out of five, and how many ratings it rests on.
+                  </p>
+                </div>
+              )}
+
+              {/* Plan versus what happened (§7.1, via snapshot() diff).
+                  ⚠️ THE PLAN IS THE SUBJECT, NOT THE READER. It used to open
+                  with "N of M sessions stayed where they were planned", which is
+                  a fidelity score, and close with "Went to plan: Tuesday,
+                  Friday" — which makes every unlisted day a failure by omission,
+                  an inverted skip list of exactly the kind §7.1 forbids. Both
+                  are gone. A plan that needed reshuffling is a plan the app
+                  mis-made, and that is the honest reading of this number. */}
+              {stats.plan && stats.plan.movedCount > 0 && (
+                <div className="rp-sub">
+                  <h3>Plan versus what happened</h3>
+                  <p className="rp-line">
+                    The plan moved <b>{fmtDur(stats.plan.totalDriftMin)}</b> this week.
+                  </p>
+                  {stats.plan.biggest && (
+                    <p className="rp-line">
+                      The biggest change: <b>{stats.plan.biggest.title}</b>,{' '}
+                      {fmtDur(Math.abs(stats.plan.biggest.deltaMin))}{' '}
+                      {stats.plan.biggest.deltaMin > 0 ? 'later' : 'earlier'} than planned.
+                    </p>
+                  )}
+                </div>
+              )}
+
               {/* Deadlines — how close to the wire things ran. Facts, never a
                   verdict (P-1): derived from your deadlines + when work sat, never
                   from what you skipped, and never euphemised. */}
               {stats.deadlines.count > 0 && (
                 <div className="rp-sub">
                   <h3>Deadlines</h3>
+                  {/* ⚠️ "WERE FINISHED", NOT "HAD A DEADLINE". `count` counts
+                      only tasks marked done or partial (buildDeadlineBuffer), so
+                      the old phrasing made a claim about the WEEK from a figure
+                      about COMPLETIONS: finish two of five deadlined tasks
+                      comfortably and miss three, and the sheet printed "2 tasks
+                      had a deadline this week, all finished with room to spare."
+                      The friendliest sentence in the section was the one that
+                      could be most wrong. "All finished with room to spare" is
+                      also praise, and praise is a verdict whose absence next
+                      week is a demerit — so it states the range instead. */}
                   <p className="rp-line">
-                    {stats.deadlines.count} {stats.deadlines.count === 1 ? 'task had' : 'tasks had'} a deadline this week
+                    {stats.deadlines.count} deadlined{' '}
+                    {stats.deadlines.count === 1 ? 'task was' : 'tasks were'} finished this week
                     {stats.deadlines.closeCount > 0
                       ? `; ${stats.deadlines.closeCount} ${stats.deadlines.closeCount === 1 ? 'was' : 'were'} finished with under ${fmtBuf(stats.deadlines.thresholdHours)} to spare.`
-                      : ', all finished with room to spare.'}
+                      : '.'}
                   </p>
                   {stats.deadlines.tightest && (
                     <p className="rp-line">
@@ -328,13 +451,26 @@ export default function WrapReport({ sched, weekStart, version, onBack, onOpenTa
                     {/* Equal weight, always (P-1). Neither button is the .cta;
                         neither is styled as the answer the app is hoping for. */}
                     {s.actions && (
-                      <div className="rp-sugg-actions">
-                        {s.actions.map((a) => (
-                          <button className="btn2" key={a.kind} onClick={() => act(s, a)}>
-                            {a.label}
-                          </button>
-                        ))}
-                      </div>
+                      <>
+                        <div className="rp-sugg-actions">
+                          {s.actions.map((a) => (
+                            <button className="btn2" key={a.kind} onClick={() => act(s, a)}>
+                              {a.label}
+                            </button>
+                          ))}
+                        </div>
+                        {/* ⚠️ THE SAME CHOICES, AS TEXT, ON PAPER. The print
+                            block hides the buttons — rightly, a printed button
+                            lies about being pressable — but hiding them alone
+                            printed the accusation and dropped the release. P-1
+                            requires every diagnostic to offer a graceful exit
+                            "with equal visual weight to the fix", and the PDF is
+                            the artifact that persists: it goes in a folder and
+                            gets reopened in March. Screen-hidden, print-only. */}
+                        <p className="rp-sugg-onpaper" aria-hidden="true">
+                          {s.actions.map((a) => a.label).join(' · ')}
+                        </p>
+                      </>
                     )}
                   </div>
                 ))

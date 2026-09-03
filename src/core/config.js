@@ -76,6 +76,18 @@ export const defaultConfig = {
     overpackDays: 3,
     overpackBreakFactor: 1.5,
     pinnedRatioNote: 0.5,
+    // ⚠️ THIS KEY DID NOT EXIST. `report.js` read
+    // `config.detectors.deadlineBufferHours ?? 24` and nothing ever defined it,
+    // so every wrap report ever printed judged "close to the wire" against a
+    // hardcoded 24 hours — the same threshold for something due in two days and
+    // something due in three months, and a number the user never set.
+    //
+    // 24 is kept as the declared default rather than silently changed, because
+    // changing it changes what past reports would have said. The better
+    // denominator is the one `bufferScore` already uses — one fifth of the
+    // RUNWAY — and moving the report onto it is a behaviour change worth making
+    // deliberately (design/WRAP-REPORT-ADDITIONS.md A8).
+    deadlineBufferHours: 24,
   },
   coldStartRatings: 10,
   // Energy battery (design/ENERGY-MODEL.md; design/RECONCILIATION.md P-2). Capacity is

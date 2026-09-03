@@ -138,3 +138,88 @@ describe('§7.1 sand bars — measured against the day, not against the week', (
     expect(label).toMatch(/window/i);
   });
 });
+
+// SPEC.md §7.1 names five Statistics items: getWeekLoad, getTagBreakdown,
+// satisfaction by tag×time, break compression, and planned-vs-actual. The
+// pruning pass of 2026-09-02 rendered two and left the other three builders
+// running into a view model nothing read. These hold the restored ones on the
+// page, because "nothing failed when they were cut" is exactly why they were.
+describe('§7.1 — the Statistics the spec names are actually rendered', () => {
+  const rated = (s, title, offset, hour, overall) => {
+    const t = s.addFixed({
+      title, tags: ['study'], startTime: at(offset, hour), endTime: at(offset, hour + 1),
+    });
+    t.completion = 'done';
+    t.satisfaction = { overall };
+    return t;
+  };
+
+  it('break compression is on the sheet, and blames the packer not the reader', () => {
+    const s = new Schedule({ config: defaultConfig });
+    // Two sessions with a gap between them — one gap is all it takes to measure.
+    s.tasks.push(new Task({ title: 'A', type: 'fixed', startTime: at(0, 9), endTime: at(0, 10) }));
+    s.tasks.push(new Task({ title: 'B', type: 'fixed', startTime: at(0, 12), endTime: at(0, 13) }));
+    persist(s);
+
+    render(<App />);
+    openReport();
+
+    expect(screen.getByText(/breathing room/i)).toBeTruthy();
+    expect(screen.getByText(/average gap between sessions/i)).toBeTruthy();
+    // The best P-1 line in the file: compression is the packer's doing.
+    expect(screen.getByText(/what the packer left you/i)).toBeTruthy();
+  });
+
+  it('tag × time-of-day is on the sheet, and every cell shows what it rests on', () => {
+    const s = new Schedule({ config: defaultConfig });
+    rated(s, 'One rating', 0, 9, 5);
+    rated(s, 'Another', 1, 19, 2);
+    rated(s, 'And another', 2, 19, 4);
+    persist(s);
+
+    render(<App />);
+    openReport();
+
+    expect(screen.getByText(/how things felt, by time of day/i)).toBeTruthy();
+    const matrix = document.querySelector('.rp-matrix');
+    expect(matrix).toBeTruthy();
+    // ⚠️ THE COUNTS ARE THE POINT. A 5.0 from one rating and a 5.0 from six
+    // looked identical, which is what actually made the grid a scorecard.
+    expect(matrix.textContent).toMatch(/·\d/);
+    expect(screen.getByText(/how many ratings it rests on/i)).toBeTruthy();
+  });
+
+  it('says nothing about gaps on a week with no back-to-back sessions', () => {
+    const s = new Schedule({ config: defaultConfig });
+    s.tasks.push(new Task({ title: 'Only one', type: 'fixed', startTime: at(0, 9), endTime: at(0, 10) }));
+    persist(s);
+
+    render(<App />);
+    openReport();
+
+    // getBreakCompression returns null rather than 0 for a one-task day,
+    // "because 'you took no breaks' would be a lie" — the section is absent.
+    expect(screen.queryByText(/breathing room/i)).toBeNull();
+  });
+});
+
+describe('§7.1 — the printed sheet keeps its exits (P-1)', () => {
+  it('prints the suggestion choices as text, not just as buttons', () => {
+    const s = new Schedule({ config: defaultConfig });
+    s.tasks.push(new Task({ title: 'A', type: 'fixed', startTime: at(0, 9), endTime: at(0, 10) }));
+    persist(s);
+
+    render(<App />);
+    openReport();
+
+    // The buttons are hidden in the print block — a printed button lies about
+    // being pressable. If a card offers actions, the same choices must survive
+    // on paper, or the PDF keeps the diagnostic and drops the graceful exit.
+    for (const card of document.querySelectorAll('.rp-sugg')) {
+      if (!card.querySelector('.rp-sugg-actions')) continue;
+      const onPaper = card.querySelector('.rp-sugg-onpaper');
+      expect(onPaper).toBeTruthy();
+      expect(onPaper.textContent.trim().length).toBeGreaterThan(0);
+    }
+  });
+});

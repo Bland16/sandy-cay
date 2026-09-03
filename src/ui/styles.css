@@ -1460,11 +1460,6 @@ button:focus-visible, .dhopen:focus-visible, .card:focus-visible, .slot:focus-vi
 .rp-projects { margin-top: 9px; }
 .rp-project { display: flex; align-items: center; gap: 7px; padding: 4px 0; }
 .rp-project .grow { flex: 1; }
-.rp-progress {
-  width: 62px; height: 7px; border: 1.5px solid var(--ink); border-radius: 4px;
-  overflow: hidden; background: var(--paper);
-}
-.rp-progress i { display: block; height: 100%; background: var(--cta); }
 
 /* The quiet count (§7.1). Small and uncoloured on purpose: a fact in passing,
    not a verdict — and never, ever an itemised list. */
@@ -1475,7 +1470,7 @@ button:focus-visible, .dhopen:focus-visible, .card:focus-visible, .slot:focus-vi
 .rp-bar { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; height: 100%; }
 .rp-bar-track { flex: 1; width: 100%; display: flex; align-items: flex-end; border-bottom: 2px solid var(--ink); }
 .rp-bar-fill {
-  width: 100%; min-height: 2px; border: 2px solid var(--ink); border-bottom: none; border-radius: 4px 4px 0 0;
+  width: 100%; min-height: 0; border: 2px solid var(--ink); border-bottom: none; border-radius: 4px 4px 0 0;
   background: repeating-linear-gradient(180deg, rgba(232,185,77,.55) 0 3px, rgba(232,185,77,.32) 3px 6px);
 }
 .rp-bar-day { font-size: 9px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); }
@@ -1499,6 +1494,11 @@ button:focus-visible, .dhopen:focus-visible, .card:focus-visible, .slot:focus-vi
 .rp-sugg-head { font-weight: 800; font-size: 12px; }
 .rp-sugg-detail { margin: 3px 0 0; color: var(--ink-soft); }
 .rp-sugg-actions { display: flex; gap: 7px; margin-top: 8px; }
+/* Print-only echo of the suggestion actions — see the print block and P-1. */
+.rp-sugg-onpaper { display: none; font-size: 10px; color: var(--ink-soft); margin: 8px 0 0; }
+/* A matrix cell resting on a single rating: present, and visibly thin. */
+.rp-matrix td.rp-thin { opacity: .55; }
+
 .rp-sugg-actions .btn2 { flex: 0 1 auto; max-width: none; }
 
 .rp-empty { text-align: center; padding: 40px 16px; color: var(--ink-soft); }
@@ -1525,13 +1525,6 @@ button:focus-visible, .dhopen:focus-visible, .card:focus-visible, .slot:focus-vi
    once (the empty rating shells that made a 2 read as a 5). */
 .rp-energy { margin: 6px 0 4px; }
 .rp-echarts { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
-.rp-diamond { width: 188px; height: 188px; flex: 0 0 auto; }
-.rp-dgrid { fill: none; stroke: var(--hair); stroke-width: 1; }
-.rp-dspend { fill: rgba(201,169,110,.45); stroke: var(--pinned); stroke-width: 2; }
-.rp-drestore { fill: rgba(127,190,139,.42); stroke: var(--rest); stroke-width: 2; stroke-dasharray: 5 3; }
-.rp-dcap { fill: none; stroke: var(--cta); stroke-width: 1.6; stroke-dasharray: 4 3; }
-.rp-daxis { font-family: var(--font-type); font-size: 9px; fill: var(--ink-soft); text-anchor: middle; dominant-baseline: middle; }
-.rp-dnum { font-family: var(--font-type); font-size: 9px; fill: var(--ink); text-anchor: middle; dominant-baseline: middle; }
 
 .rp-bfly { flex: 1 1 260px; min-width: 240px; }
 .rp-bfhead, .rp-bfrow { display: grid; grid-template-columns: 62px 1fr 1fr; gap: 4px 6px; align-items: center; }
@@ -1565,20 +1558,35 @@ button:focus-visible, .dhopen:focus-visible, .card:focus-visible, .slot:focus-vi
   }
 
   /* Controls do not exist on paper. A "Let it go" button printed into a PDF is
-     a button that lies about being pressable. */
+     a button that lies about being pressable — but hiding them and nothing else
+     printed the diagnostic with its exit removed, which inverts P-1: the sheet
+     kept the half that judges and dropped the half that releases. The choices
+     print as plain text instead. */
   .rp-sugg-actions { display: none !important; }
+  .rp-sugg-onpaper { display: block !important; }
 
   /* Let sections flow across the break, but never tear a row, a card, or a
      heading away from what it introduces. No hard page budget: a busy week is
      allowed to be a busy week (§7.1, relaxed from 2 to ~5) — the report never
      drops rows to save paper. */
   .rp-sugg, .rp-list li, .rp-project, .rp-stat, .rp-chart, .rp-table tr, .rp-sub { break-inside: avoid; }
-  /* The two charts are one reading — tearing the butterfly off the diamond onto
-     the next sheet would leave a page of numbers with no shape and a shape with
-     no numbers. */
+  /* Keep a butterfly row with its own numbers; the axis label, the two bars and
+     the two numerals are one reading and mean nothing split across a sheet.
+     (This used to describe "tearing the butterfly off the diamond" — a chart
+     deleted 2026-09-02. A comment arguing for a thing that no longer exists is
+     how deleted things come back.) */
   .rp-energy, .rp-echarts, .rp-bfrow { break-inside: avoid; }
   .rp-title { break-after: avoid; }
   .rp-section h2, .rp-section h3 { break-after: avoid; }
+  /* A busy week's tag table crosses a page; without this it arrives on sheet
+     two as four unlabelled columns of numbers. */
+  .rp-table thead { display: table-header-group; }
+  /* The KPI row splits 3-and-1 otherwise, which reads as two different rows. */
+  .rp-stats { break-inside: avoid; }
+  .rp-list li, .rp-sugg-detail { orphans: 2; widows: 2; }
+  /* --hair prints at 1.69:1 on white — effectively invisible, and it is the
+     border on every table row and tag chip in the document. */
+  :root { --hair: rgba(42, 38, 32, .25); }
 
   /* Tint is meaning here (shells, sand bars), so it survives the print dialog's
      default of dropping backgrounds. */
