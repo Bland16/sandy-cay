@@ -17,7 +17,7 @@ import {
   snapshot, snapshotDiff, isoWeekKey, addDays, dateKey, weekStart as weekStartOf,
   driftCheck, starvationCheck, skipStreakCheck, pinnedRatioNote, durationFitSuggestion,
   splitPeriod, endRecurrence, spendRestore, learnedCapacity, humanLabel, isNarratable,
-  previewWeek,
+  previewWeek, dayWindowBounds,
 } from '../core/index.js';
 import { fmtDur } from './format.js';
 
@@ -505,6 +505,87 @@ function buildCommitments(sched, ws) {
   return rows.length > 0 ? rows : null;
 }
 
+/**
+ * WHEN it happened — seven rows on one shared clock (A3).
+ *
+ * The report says how much, and what, and never when. That is the largest hole
+ * in it, and it reverses the request behind commit b3631f2 — "it put the tasks
+ * at 11pm after a very full day" — whose answer, the day-shapes chart, was
+ * deleted on 2026-09-02 for reasons that were right about the chart and left the
+ * question unanswered.
+ *
+ * ⚠️ ONE SHARED X AXIS, IN WALL-CLOCK TIME. This is the whole difference from
+ * the chart that failed. `buildTrajectories` scaled each day to its OWN window
+ * (`span = windowEnd - windowStart`), so a 2-hour task drew 2.5× wider on a
+ * Sunday than a Monday — while its own docblock shouted about sharing the y
+ * scale. Small multiples are the one form where EVERY axis must be shared; a
+ * facet with private axes is seven unrelated charts in a row.
+ *
+ * ⚠️ THE AXIS COVERS TASKS, NOT JUST WINDOWS. A block at 23:00 falls outside
+ * every window, and `getWeekLoad` clamps it to nothing — which is why an 11pm
+ * sitting contributes zero to the sand bars and vanishes from the one chart
+ * that survived. Here the axis stretches to hold it, so the late night is
+ * visible as a late night.
+ *
+ * ⚠️ NO LEARNED QUANTITY, SO IT WORKS IN WEEK ONE. The deleted chart's y-axis
+ * was `Σ|reserve|` in "load-hours", a unit no reader can name, scaled to the
+ * week's own worst day. This draws clock time against the day's own window: the
+ * row IS the denominator, and a reader arrives already fluent in it because it
+ * is the app's own grid.
+ */
+function buildDayStrips(sched, ws) {
+  const days = [];
+  let axisFrom = Infinity;
+  let axisTo = -Infinity;
+
+  for (let i = 0; i < 7; i += 1) {
+    const date = addDays(ws, i);
+    const bounds = dayWindowBounds(sched.config, date);
+    const blocked = sched.isDayBlocked ? sched.isDayBlocked(date) : false;
+    const items = sched.getTasksForDay(date)
+      .filter((t) => !t.chunking)
+      .map((t) => ({
+        id: t.id,
+        title: t.title,
+        from: t.startTime,
+        to: t.endTime,
+        // Shapes and texture, never colour: P-1 forbids a warning colour on an
+        // outcome, and the sheet prints in greyscale where hue carries nothing.
+        state: t.completion === 'done' ? 'done'
+          : t.completion === 'partial' ? 'partial'
+            : t.completion === 'skipped' ? 'skipped' : 'planned',
+      }))
+      .sort((a, b) => a.from - b.from);
+
+    const dayStart = new Date(date); dayStart.setHours(0, 0, 0, 0);
+    const minsFrom = (d) => Math.round((d - dayStart) / 60000);
+    const winFrom = minsFrom(bounds.start);
+    const winTo = minsFrom(bounds.end);
+    axisFrom = Math.min(axisFrom, winFrom, ...items.map((t) => minsFrom(t.from)));
+    axisTo = Math.max(axisTo, winTo, ...items.map((t) => minsFrom(t.to)));
+
+    days.push({
+      dayIndex: i,
+      blocked,
+      winFrom,
+      winTo,
+      scheduledMin: items
+        .filter((t) => t.state !== 'skipped')
+        .reduce((n, t) => n + Math.max(0, minsFrom(t.to) - minsFrom(t.from)), 0),
+      items: items.map((t) => ({
+        ...t, from: minsFrom(t.from), to: minsFrom(t.to),
+      })),
+    });
+  }
+
+  if (!Number.isFinite(axisFrom) || axisTo <= axisFrom) return null;
+  // Whole hours, so the labels land on the hour and the grid reads as a clock.
+  axisFrom = Math.floor(axisFrom / 60) * 60;
+  axisTo = Math.ceil(axisTo / 60) * 60;
+  const any = days.some((d) => d.items.length > 0);
+  return any ? { axisFrom, axisTo, days } : null;
+}
+
 export function buildWrapReport(sched, weekStartDate) {
   const ws = weekStartOf(weekStartDate);
   const weekTasks = sched.getTasksForWeek(ws);
@@ -533,6 +614,8 @@ export function buildWrapReport(sched, weekStartDate) {
       context: buildWeekContext(sched, ws),
       // What the week owed, against a number the user typed (A2).
       commitments: buildCommitments(sched, ws),
+      // WHEN it happened — seven rows on one shared clock (A3).
+      strips: buildDayStrips(sched, ws),
     },
     insight: buildInsight(sched),
     suggestions: buildSuggestions(sched, ws, weekLoad, weekTasks),

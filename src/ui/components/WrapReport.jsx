@@ -103,6 +103,79 @@ function SandBars({ load }) {
   );
 }
 
+/**
+ * WHEN it happened (A3) — seven rows, one shared clock.
+ *
+ * ⚠️ ONE X AXIS FOR ALL SEVEN ROWS. The chart this replaces scaled each day to
+ * its own window, so the same two hours drew 2.5× wider on a Sunday. Small
+ * multiples are the one form where every axis must be shared.
+ *
+ * ⚠️ TEXTURE AND POSITION, NEVER HUE. In greyscale the palette's spend and
+ * restore are three levels apart out of 255, so on paper hue carries nothing —
+ * and P-1 forbids a warning colour on an outcome regardless. Done is solid,
+ * part-done is hatched, skipped is an outline, planned-and-not-marked is a light
+ * fill. The key says so in words.
+ */
+function DayStrips({ strips }) {
+  const { axisFrom, axisTo, days } = strips;
+  const span = Math.max(1, axisTo - axisFrom);
+  const pc = (m) => ((m - axisFrom) / span) * 100;
+  const hours = [];
+  for (let m = axisFrom; m <= axisTo; m += 120) hours.push(m);
+
+  return (
+    <div className="rp-strips">
+      <div className="rp-strip-axis" aria-hidden="true">
+        {hours.map((m) => (
+          <span key={m} className="rp-strip-tick" style={{ left: `${pc(m)}%` }}>
+            {String(Math.floor(m / 60) % 24).padStart(2, '0')}
+          </span>
+        ))}
+      </div>
+      {days.map((d) => (
+        <div className="rp-strip" key={d.dayIndex}>
+          <span className="rp-strip-day">{DAY_NAMES[d.dayIndex].slice(0, 3)}</span>
+          <div
+            className="rp-strip-track"
+            role="img"
+            aria-label={`${DAY_FULL[d.dayIndex]}: ${
+              d.blocked ? 'blocked' : d.items.length === 0 ? 'nothing scheduled'
+                : `${fmtDur(d.scheduledMin)} across ${d.items.length} ${d.items.length === 1 ? 'block' : 'blocks'}`}`}
+          >
+            {/* The day's OWN window, drawn inside the shared axis — which is how
+                a Sunday opening at 10:00 reads as shorter without needing its
+                own scale. The row is the denominator. */}
+            <span
+              className="rp-strip-window"
+              style={{ left: `${pc(d.winFrom)}%`, width: `${pc(d.winTo) - pc(d.winFrom)}%` }}
+            />
+            {d.items.map((t) => (
+              <span
+                key={t.id}
+                className={`rp-strip-block is-${t.state}`}
+                style={{
+                  left: `${pc(t.from)}%`,
+                  width: `${Math.max(0.6, pc(t.to) - pc(t.from))}%`,
+                }}
+                title={t.title}
+              />
+            ))}
+          </div>
+          <span className="rp-strip-val">
+            {d.blocked ? <span className="rp-dim">blocked</span>
+              : d.scheduledMin > 0 ? fmtDur(d.scheduledMin)
+                : <span className="rp-dim">—</span>}
+          </span>
+        </div>
+      ))}
+      <p className="rp-dim rp-strip-key">
+        One clock across all seven days. The pale band is that day’s open window.
+        Solid is done, hatched is part-done, outlined is let go.
+      </p>
+    </div>
+  );
+}
+
 function Stat({ label, value, hint }) {
   return (
     <div className="rp-stat">
@@ -318,6 +391,20 @@ export default function WrapReport({ sched, weekStart, version, onBack, onOpenTa
                     </table>
                   )}
               </div>
+
+              {/* WHEN it happened (A3). Placed directly under the sand bars
+                  and their caption, because the bars answer "how much" and this
+                  answers the question they cannot: a block at 23:00 falls
+                  outside every window and `getWeekLoad` clamps it to nothing,
+                  so an 11pm sitting contributes zero to the bars above and is
+                  visible only here. That is the complaint the whole day-shapes
+                  detour started from. */}
+              {stats.strips && (
+                <div className="rp-sub">
+                  <h3>When it happened</h3>
+                  <DayStrips strips={stats.strips} />
+                </div>
+              )}
 
               {/* What the week owed, and what it held (A2).
                   ⚠️ A LEDGER, NOT A SHORTFALL. `owedMin` is a number the user

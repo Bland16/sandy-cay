@@ -1476,6 +1476,44 @@ button:focus-visible, .dhopen:focus-visible, .card:focus-visible, .slot:focus-vi
 
 /* What the week contained, under the sand bars. Facts, so it reads as a caption
    on the chart and never as a verdict beside it (DAY-NOTES.md D-4). */
+
+/* ---- A3: when it happened — seven rows on one shared clock ----
+   Texture and position only. In greyscale --pinned and --rest are three levels
+   apart out of 255, so on paper hue carries nothing; and P-1 forbids a warning
+   colour on an outcome regardless. Done solid, part-done hatched, let-go
+   outlined, planned-but-unmarked a light fill. */
+.rp-strips { margin: 4px 0 2px; }
+.rp-strip-axis { position: relative; height: 11px; margin-left: 30px; margin-right: 44px; }
+.rp-strip-tick {
+  position: absolute; transform: translateX(-50%); font-family: var(--font-type);
+  font-size: 9.5px; color: var(--ink-soft);
+}
+.rp-strip { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
+.rp-strip-day {
+  width: 24px; flex: 0 0 24px; font-size: 9px; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--ink-soft);
+}
+.rp-strip-track {
+  position: relative; flex: 1 1 auto; height: 13px;
+  border-bottom: 1.5px solid var(--ink);
+}
+.rp-strip-window {
+  position: absolute; top: 0; bottom: 0; background: rgba(210, 198, 169, .3);
+  border-left: 1px solid var(--hair); border-right: 1px solid var(--hair);
+}
+.rp-strip-block { position: absolute; top: 1px; bottom: 1px; border: 1.5px solid var(--ink); border-radius: 2px; }
+.rp-strip-block.is-done { background: var(--ink); }
+.rp-strip-block.is-partial {
+  background: repeating-linear-gradient(45deg, var(--ink) 0 2px, transparent 2px 4px);
+}
+.rp-strip-block.is-skipped { background: none; }
+.rp-strip-block.is-planned { background: rgba(42, 38, 32, .18); }
+.rp-strip-val {
+  width: 40px; flex: 0 0 40px; text-align: right;
+  font-family: var(--font-type); font-size: 9px; color: var(--ink-soft);
+}
+.rp-strip-key { font-size: 9.5px; margin: 5px 0 0; line-height: 1.45; }
+@media print { .rp-strips { break-inside: avoid; } }
 .rp-context { font-size: 10px; color: var(--ink-soft); margin: 2px 0 10px; line-height: 1.5; }
 .rp-context b { color: var(--ink); font-weight: 700; }
 .rp-bar-day { font-size: 9px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); }

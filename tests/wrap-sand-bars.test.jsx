@@ -391,3 +391,129 @@ describe('§7.1 — what the week owed, against a number you set', () => {
     expect(screen.queryByText(/what the week owed/i)).toBeNull();
   });
 });
+
+// A3 — WHEN it happened. The report said how much, and what, and never when;
+// the chart that used to answer it was deleted 2026-09-02 for reasons that were
+// right about the chart and left the question open. These lock the two failures
+// that killed it, plus the thing the sand bars structurally cannot show.
+describe('§7.1 — when it happened, on one shared clock', () => {
+  const strips = () => document.querySelector('.rp-strips');
+  const rowBlocks = (i) => [...document.querySelectorAll('.rp-strip')][i]
+    .querySelectorAll('.rp-strip-block');
+  const left = (el) => parseFloat(el.style.left);
+  const width = (el) => parseFloat(el.style.width);
+
+  // ⚠️ THE FAILURE THAT KILLED THE PREDECESSOR. `buildTrajectories` scaled each
+  // day to its OWN window, so the same two hours drew 2.5x wider on a Sunday
+  // than a Monday — while its own docblock shouted about sharing the y scale.
+  it('draws the same duration at the same width on every day', () => {
+    const s = new Schedule({ config: defaultConfig });
+    s.tasks.push(new Task({ title: 'Mon', type: 'fixed', startTime: at(0, 11), endTime: at(0, 13) }));
+    s.tasks.push(new Task({ title: 'Sun', type: 'fixed', startTime: at(6, 11), endTime: at(6, 13) }));
+    persist(s);
+
+    render(<App />);
+    openReport();
+
+    const mon = rowBlocks(0)[0];
+    const sun = rowBlocks(6)[0];
+    expect(width(sun)).toBeCloseTo(width(mon), 5);
+    // And the same clock time sits at the same x, which is the other half.
+    expect(left(sun)).toBeCloseTo(left(mon), 5);
+  });
+
+  // ⚠️ WHAT THE SAND BARS CANNOT SHOW. Windows close at 23:00 and getWeekLoad
+  // clamps every task to the window, so a 23:00 block contributes zero minutes
+  // and is invisible in the bar chart. It is the whole "11pm after a very full
+  // day" complaint, and this strip is where it becomes visible.
+  it('shows a block that falls outside the day window', () => {
+    const s = new Schedule({ config: defaultConfig });
+    s.tasks.push(new Task({ title: 'Late', type: 'fixed', startTime: at(0, 23), endTime: at(0, 24) }));
+    persist(s);
+
+    render(<App />);
+    openReport();
+
+    expect(strips()).toBeTruthy();
+    const blocks = rowBlocks(0);
+    expect(blocks).toHaveLength(1);
+    // Past the day's own window band, which is what makes it read as late.
+    const win = [...document.querySelectorAll('.rp-strip')][0].querySelector('.rp-strip-window');
+    expect(left(blocks[0])).toBeGreaterThanOrEqual(left(win) + width(win) - 0.01);
+    // The bars, meanwhile, still say the day held nothing — by design.
+    expect(bars()[0].querySelector('.rp-bar-fill').style.height).toBe('0%');
+  });
+
+  it('draws each day\'s own window inside the shared axis', () => {
+    const s = new Schedule({ config: defaultConfig });
+    s.tasks.push(new Task({ title: 'A', type: 'fixed', startTime: at(0, 9), endTime: at(0, 10) }));
+    persist(s);
+
+    render(<App />);
+    openReport();
+
+    const rows = [...document.querySelectorAll('.rp-strip')];
+    const monWin = rows[0].querySelector('.rp-strip-window');
+    const sunWin = rows[6].querySelector('.rp-strip-window');
+    // Sunday opens at 10:00, weekdays at 08:00 — a shorter band, further right.
+    expect(width(sunWin)).toBeLessThan(width(monWin));
+    expect(left(sunWin)).toBeGreaterThan(left(monWin));
+  });
+
+  // §10 and P-1: outcome is carried by texture, never by hue. The class is the
+  // encoding; a future edit that swaps it for a colour has to delete this.
+  it('distinguishes outcomes by texture class, not colour', () => {
+    const s = new Schedule({ config: defaultConfig });
+    const done = s.addFixed({ title: 'Done', startTime: at(0, 9), endTime: at(0, 10) });
+    done.completion = 'done';
+    const part = s.addFixed({ title: 'Part', startTime: at(0, 11), endTime: at(0, 12) });
+    part.completion = 'partial';
+    const skip = s.addFixed({ title: 'Skip', startTime: at(0, 14), endTime: at(0, 15) });
+    skip.completion = 'skipped';
+    persist(s);
+
+    render(<App />);
+    openReport();
+
+    const classes = [...rowBlocks(0)].map((b) => b.className);
+    expect(classes.some((c) => c.includes('is-done'))).toBe(true);
+    expect(classes.some((c) => c.includes('is-partial'))).toBe(true);
+    expect(classes.some((c) => c.includes('is-skipped'))).toBe(true);
+    for (const b of rowBlocks(0)) expect(b.style.color).toBe('');
+  });
+
+  it('is readable without the picture', () => {
+    const s = new Schedule({ config: defaultConfig });
+    s.tasks.push(new Task({ title: 'A', type: 'fixed', startTime: at(0, 9), endTime: at(0, 11) }));
+    persist(s);
+
+    render(<App />);
+    openReport();
+
+    const label = [...document.querySelectorAll('.rp-strip-track')][0].getAttribute('aria-label');
+    expect(label).toMatch(/Monday/);
+    expect(label).toMatch(/2h|block/);
+  });
+
+  it('says nothing at all on a week with no blocks to place', () => {
+    const s = new Schedule({ config: defaultConfig });
+    s.addCommitment({
+      title: 'Owed', amountMinPerWeek: 60,
+      from: dateKey(addDays(ws(), -7)), until: dateKey(addDays(ws(), 30)),
+    });
+    s.tasks.push(new Task({ title: 'A', type: 'fixed', startTime: at(0, 9), endTime: at(0, 10) }));
+    persist(s);
+    render(<App />);
+    openReport();
+    expect(strips()).toBeTruthy(); // one block is enough to draw
+    cleanup();
+
+    const empty = new Schedule({ config: defaultConfig });
+    empty.blockDay(addDays(ws(), 2));
+    empty.tasks.push(new Task({ title: 'B', type: 'fixed', startTime: at(0, 9), endTime: at(0, 10) }));
+    persist(empty);
+    render(<App />);
+    openReport();
+    expect(strips()).toBeTruthy();
+  });
+});

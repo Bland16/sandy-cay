@@ -44,8 +44,17 @@ set beside the amount laid out, reading `placedMin`/`remainingMin`/`settled`/
 `owedMin` and deliberately NOT `state`, which is `now`-relative and marks every
 commitment `passed` on a retrospective call.
 
-**Still open:** A3 (the day timeline strip), and the rest of Tiers 3–5. A35/A36
-are designed, not built.
+**A3 is now built.** Seven rows on one shared wall-clock axis, under the sand
+bars. The axis stretches to cover TASKS as well as windows, which is what makes
+it answer the question the bars structurally cannot: windows close at 23:00 and
+`getWeekLoad` clamps to them, so an 11pm block contributes zero minutes to the
+bar chart and appears only here. Outcome is carried by texture — solid, hatched,
+outlined — never hue, since in greyscale the palette's two chart colours are
+three levels apart out of 255. Tests lock both failures that killed the
+predecessor: equal durations draw equal widths on every day, and each day's own
+window is drawn *inside* the shared axis rather than becoming its own scale.
+
+**Still open:** the rest of Tiers 3–5. A35/A36 are designed, not built.
 
 ### New, found while building A2
 
