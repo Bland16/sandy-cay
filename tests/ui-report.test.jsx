@@ -337,9 +337,20 @@ describe('deadline buffer — facts, never a verdict', () => {
 
     const d = buildWrapReport(s, MON).stats.deadlines;
     expect(d.count).toBe(2);
-    expect(d.closeCount).toBe(1); // only the essay was under a day
+    // ⚠️ "Close" now means "later than the app's OWN target", not "under 24h".
+    // bufferScore aims to be clear a fifth of the runway before the deadline, so
+    // the essay (3h spare against a ~13.6h target) is close and the dishes (~106h
+    // spare against ~23h) are not. The flat 24h it used to compare against came
+    // from `config.detectors.deadlineBufferHours`, a key that never existed.
+    expect(d.closeCount).toBe(1);
     expect(d.tightest.title).toBe('Essay');
-    expect(d.closestBucket.label).toBe('School'); // School ran closest to the wire
+    expect(d.medianTargetHours).toBeGreaterThan(0);
+    // `closestBucket` is gone: the line that rendered it was cut on 2026-09-02
+    // and the builder kept computing it, so this assertion guarded a value
+    // nothing displayed. Restoring it needs a real evidence gate first — a
+    // median of medians over two or three tasks ranks the categories of a
+    // person's life on a sample too small to rank.
+    expect(d.closestBucket).toBeUndefined();
   });
 
   it('is absent when nothing carried a deadline', () => {

@@ -71,7 +71,32 @@ judgement §7.1 forbids, printed four lines below the comment forbidding it. And
 restorative tags are rare, so it was positive for essentially every real week:
 the section ended on a permanent deficit the reader could never clear.
 
-**Still open:** the rest of Tiers 3–5. A35/A36 are designed, not built.
+**A8, A11 and A14 are now built** — three corrections to sections that already
+existed and were reporting the wrong quantity.
+
+- **A8.** "Close to the wire" is judged against the app's OWN target — a fifth
+  of the runway, which `bufferScore` already optimises for — instead of a flat
+  24h from a config key that never existed. `bufferScore`'s docblock claimed to
+  close the loop where "the app reported on a quality it never optimised for";
+  it closed half, and the report went on reporting against a day. The runway is
+  measured from the week start, the only honest anchor available since `Task`
+  has no creation timestamp, and it degrades correctly: a deadline already past
+  at the week's start has no runway, so nothing is claimed rather than "late".
+  `byBucket`/`closestBucket` deleted — a median of medians over two or three
+  tasks, guarded by a test but rendered by nothing since the pruning pass.
+- **A11.** `getWeekLoad().warnings` has been on `stats.load`, unrendered, all
+  along. This is the one place P-1 would ALLOW coral — it is scheduling physics,
+  "this won't fit" — and it still is not used, because the sheet prints in
+  greyscale and the sentence carries it. The subject is the packer.
+- **A14.** `thisWeek` was computed and read by nothing, so every project that
+  had ever existed printed in every report forever as an unchanging lifetime
+  figure — a standing debt, not a fact about the week. Rows are now filtered to
+  projects the week touched and lead with the week's own minutes, with the
+  lifetime total still beside them.
+
+**Still open:** A9 (recurrence exceptions), A10 (routines), A12 (model
+readiness), A13 (rest asked-vs-got), and Tier 5's remaining form work. A35/A36
+are designed, not built.
 
 ### New, found while building A2
 

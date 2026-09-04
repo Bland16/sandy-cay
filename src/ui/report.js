@@ -68,15 +68,28 @@ function buildAccomplished(sched, ws, weekTasks) {
         .filter((c) => c.completion === 'done' || c.completion === 'partial')
         .reduce((n, c) => n + c.getDuration(), 0);
       const thisWeek = weekTasks.filter((t) => t.parentId === parent.id).length;
+      // Minutes actually done THIS WEEK, not just how many sittings landed in
+      // it — a weekly report's row should be a weekly quantity.
+      const thisWeekMin = weekTasks
+        .filter((t) => t.parentId === parent.id
+          && (t.completion === 'done' || t.completion === 'partial'))
+        .reduce((n, t) => n + t.getDuration(), 0);
       return {
         id: parent.id,
         title: parent.title,
         doneMin,
         totalMin: parent.chunking.totalMinutes,
         thisWeek,
+        thisWeekMin,
       };
     })
-    .filter((p) => p.totalMin > 0);
+    // ⚠️ TOUCHED THIS WEEK ONLY. `thisWeek` was computed here and read by
+    // nothing, so every project that had ever existed printed in every week's
+    // report forever, unchanged, as a lifetime figure — which reads as a
+    // standing debt rather than a fact about the week the sheet covers. The
+    // lifetime total still prints beside the week's own contribution, so
+    // nothing is lost; it just stops being the whole row.
+    .filter((p) => p.totalMin > 0 && p.thisWeek > 0);
 
   return {
     items: completed
@@ -380,38 +393,52 @@ function buildInsight(sched) {
  * of what you skipped or a word like "procrastinating". Just facts, and not obscured.
  * Buffer = deadline − the task's scheduled end (a completed task sits where it ran).
  */
-function buildDeadlineBuffer(sched, weekTasks) {
-  const thresholdHours = (sched.config.detectors && sched.config.detectors.deadlineBufferHours) ?? 24;
+function buildDeadlineBuffer(sched, ws, weekTasks) {
   const done = weekTasks.filter((t) => !t.chunking && t.deadline && (t.completion === 'done' || t.completion === 'partial'));
+  // ⚠️ AGAINST THE APP'S OWN TARGET, NOT A FLAT 24 HOURS.
+  //
+  // This read `config.detectors.deadlineBufferHours ?? 24` and that key did not
+  // exist anywhere, so every report ever printed judged "close to the wire"
+  // against a hardcoded day — the same threshold for something due in two days
+  // and something due in three months, and a number the user never set.
+  //
+  // Worse, the app already knows the right answer and optimises for it:
+  // `bufferScore` aims to be clear ONE FIFTH OF THE RUNWAY before the deadline,
+  // and its own docblock says it exists to close the loop where "the app
+  // reported on a quality it never optimised for". It closed half — the scorer
+  // moved and the report did not, so the app aimed at a fifth of the runway and
+  // then reported against a day.
+  //
+  // ⚠️ The runway is measured from the WEEK START, because that is the only
+  // honest anchor available: a runway begins when the plan is made, and `Task`
+  // carries no creation timestamp (verified — no `createdAt`, no `Date.now()`).
+  // For a weekly report "counting from when this week was planned" is the right
+  // reading anyway, and it degrades correctly: a deadline already past at the
+  // week's start has no runway to take a fifth of, so nothing is claimed.
+  const targetHoursFor = (deadline) => {
+    const runwayH = (deadline.getTime() - ws.getTime()) / 3600000;
+    return runwayH > 0 ? runwayH / 5 : null;
+  };
   const rows = done.map((t) => ({
     title: t.title,
     bufferHours: (t.deadline.getTime() - t.endTime.getTime()) / 3600000,
-    bucket: sched.bucketForTask ? sched.bucketForTask(t) : null,
+    targetHours: targetHoursFor(t.deadline),
   }));
   if (rows.length === 0) return { count: 0 };
 
-  const median = (arr) => {
-    const s = [...arr].sort((a, b) => a - b);
-    const m = Math.floor(s.length / 2);
-    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
-  };
-  const byBucketMap = new Map();
-  for (const r of rows) {
-    const label = r.bucket ? r.bucket.label : 'No bucket';
-    (byBucketMap.get(label) || byBucketMap.set(label, []).get(label)).push(r.bufferHours);
-  }
-  const byBucket = [...byBucketMap.entries()]
-    .map(([label, bufs]) => ({ label, count: bufs.length, medianBufferHours: median(bufs) }))
-    .sort((a, b) => a.medianBufferHours - b.medianBufferHours);
   const tightest = rows.reduce((m, r) => (r.bufferHours < m.bufferHours ? r : m));
+  const close = rows.filter((r) => r.targetHours != null && r.bufferHours < r.targetHours);
 
   return {
     count: rows.length,
-    closeCount: rows.filter((r) => r.bufferHours < thresholdHours).length,
-    thresholdHours,
+    closeCount: close.length,
+    // The median target across the week's deadlined work, so the sentence can
+    // name the denominator instead of implying one.
+    medianTargetHours: rows.length
+      ? [...rows.map((r) => r.targetHours).filter((h) => h != null)]
+        .sort((a, b) => a - b)[Math.floor(rows.length / 2)] ?? null
+      : null,
     tightest: { title: tightest.title, bufferHours: tightest.bufferHours },
-    byBucket,
-    closestBucket: byBucket.length >= 2 ? byBucket[0] : null,
   };
 }
 
@@ -605,7 +632,7 @@ export function buildWrapReport(sched, weekStartDate) {
       matrix: getSatisfactionMatrix(sched, ws),
       breaks: getBreakCompression(sched, ws),
       plan: buildPlanDiff(sched, ws),
-      deadlines: buildDeadlineBuffer(sched, weekTasks),
+      deadlines: buildDeadlineBuffer(sched, ws, weekTasks),
       // Spend and restore kept APART. `capacity` is null until ratings earn it
       // (P-2), and the chart must draw no ceiling while it is — a ring that
       // appears later would mean the earlier weeks' charts were lying.

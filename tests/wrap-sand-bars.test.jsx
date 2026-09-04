@@ -517,3 +517,80 @@ describe('§7.1 — when it happened, on one shared clock', () => {
     expect(strips()).toBeTruthy();
   });
 });
+
+// A8, A11, A14 — three corrections to sections that already existed and were
+// reporting the wrong quantity.
+describe('§7.1 — the report measures against what the app actually aims for', () => {
+  it('judges "close to the wire" against the plan\'s own target, not a flat day', async () => {
+    const { buildWrapReport } = await import('../src/ui/report.js');
+    const s = new Schedule({ config: defaultConfig });
+
+    // Due three months out and finished this week with weeks to spare. Under
+    // the old flat 24h rule this was "roomy" — correct by luck. Under a runway
+    // rule it is emphatically roomy, and for a reason that scales.
+    const far = s.addFixed({ title: 'Thesis', startTime: at(0, 9), endTime: at(0, 11) });
+    far.deadline = addDays(ws(), 90);
+    far.completion = 'done';
+
+    // Due Wednesday evening, finished two hours before. A fifth of the runway
+    // from the week's start is ~13h, so two hours is later than the plan aims.
+    const near = s.addFixed({ title: 'Essay', startTime: at(2, 15), endTime: at(2, 17) });
+    near.deadline = at(2, 19);
+    near.completion = 'done';
+
+    const d = buildWrapReport(s, ws()).stats.deadlines;
+    expect(d.count).toBe(2);
+    expect(d.closeCount).toBe(1); // the essay only
+    expect(d.tightest.title).toBe('Essay');
+    // The denominator is named rather than implied, and it is not 24.
+    expect(d.medianTargetHours).toBeGreaterThan(0);
+  });
+
+  it('does not claim a target for a deadline already past when the week began', async () => {
+    const { buildWrapReport } = await import('../src/ui/report.js');
+    const s = new Schedule({ config: defaultConfig });
+    const overdue = s.addFixed({ title: 'Late', startTime: at(0, 9), endTime: at(0, 10) });
+    overdue.deadline = addDays(ws(), -3); // no runway to take a fifth of
+    overdue.completion = 'done';
+
+    const d = buildWrapReport(s, ws()).stats.deadlines;
+    expect(d.count).toBe(1);
+    expect(d.closeCount).toBe(0); // nothing claimed, rather than "you were late"
+  });
+
+  // A11 — `getWeekLoad().warnings` has been on stats.load, unrendered, all along.
+  it('says when the packer could not find a proper slot, and blames the packer', () => {
+    const s = new Schedule({ config: defaultConfig });
+    const t = s.addFixed({ title: 'Squeezed', startTime: at(0, 9), endTime: at(0, 10) });
+    t.schedulingWarning = true;
+    persist(s);
+
+    render(<App />);
+    openReport();
+
+    const sheet = document.querySelector('.rp-sheet').textContent;
+    expect(sheet).toMatch(/packer could not find a proper slot/i);
+    expect(sheet).not.toMatch(/you (failed|couldn't|didn't manage)/i);
+  });
+
+  // A14 — `thisWeek` was computed and read by nothing, so every project ever
+  // created printed in every report forever as an unchanging lifetime figure.
+  it('shows only the projects this week actually touched', async () => {
+    const { buildWrapReport } = await import('../src/ui/report.js');
+    const s = new Schedule({ config: defaultConfig });
+    s.addProject({
+      title: 'Touched',
+      chunking: { totalMinutes: 600, minChunk: 60, maxChunk: 120,
+        range: { from: ws(), until: addDays(ws(), 6) } },
+    });
+    s.addProject({
+      title: 'Untouched',
+      chunking: { totalMinutes: 600, minChunk: 60, maxChunk: 120,
+        range: { from: addDays(ws(), 60), until: addDays(ws(), 90) } },
+    });
+
+    const titles = buildWrapReport(s, ws()).accomplished.projects.map((p) => p.title);
+    expect(titles).toContain('Touched');
+    expect(titles).not.toContain('Untouched');
+  });
+});

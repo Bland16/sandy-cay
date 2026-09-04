@@ -296,7 +296,10 @@ export default function WrapReport({ sched, weekStart, version, onBack, onOpenTa
                       <Icon name="castle" size={14} />
                       <span className="rp-item-title">{p.title}</span>
                       <span className="grow" />
-                      <span className="rp-dim">{fmtDur(p.doneMin)} of {fmtDur(p.totalMin)}</span>
+                      <span className="rp-dim">
+                        {p.thisWeekMin > 0 ? `${fmtDur(p.thisWeekMin)} this week · ` : ''}
+                        {fmtDur(p.doneMin)} of {fmtDur(p.totalMin)} in all
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -450,6 +453,24 @@ export default function WrapReport({ sched, weekStart, version, onBack, onOpenTa
                 </div>
               )}
 
+              {/* A11 — scheduling physics the report already receives and threw
+                  away. `getWeekLoad` counts `warnings` and it has been sitting
+                  on `stats.load` unrendered.
+
+                  ⚠️ THIS IS THE ONE PLACE CORAL WOULD BE LEGAL, and it still
+                  is not used: P-1 reserves the warning colour for scheduling
+                  physics — "this won't fit" — which is exactly what this is. But
+                  the sheet prints in greyscale, so the sentence carries it. The
+                  subject is the PACKER, not the reader: the app could not find a
+                  proper slot, which is a fact about the plan. */}
+              {stats.load.warnings > 0 && (
+                <p className="rp-line">
+                  The packer could not find a proper slot for{' '}
+                  <b>{stats.load.warnings}</b> of this week’s{' '}
+                  {r.taskCount} {r.taskCount === 1 ? 'thing' : 'things'}.
+                </p>
+              )}
+
               {/* Breathing room (§7.1 "break compression"). Restored verbatim
                   apart from the ratio: it was collateral damage from collapsing
                   the two-column grid, not a denominator failure. `dayGaps` is
@@ -559,8 +580,8 @@ export default function WrapReport({ sched, weekStart, version, onBack, onOpenTa
                   <p className="rp-line">
                     {stats.deadlines.count} deadlined{' '}
                     {stats.deadlines.count === 1 ? 'task was' : 'tasks were'} finished this week
-                    {stats.deadlines.closeCount > 0
-                      ? `; ${stats.deadlines.closeCount} ${stats.deadlines.closeCount === 1 ? 'was' : 'were'} finished with under ${fmtBuf(stats.deadlines.thresholdHours)} to spare.`
+                    {stats.deadlines.closeCount > 0 && stats.deadlines.medianTargetHours != null
+                      ? `; ${stats.deadlines.closeCount} ${stats.deadlines.closeCount === 1 ? 'came' : 'came'} in later than the plan aims for — about ${fmtBuf(stats.deadlines.medianTargetHours)} clear of the deadline.`
                       : '.'}
                   </p>
                   {stats.deadlines.tightest && (
