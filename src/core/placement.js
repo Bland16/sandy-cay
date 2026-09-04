@@ -312,7 +312,13 @@ export function findBestSlot(schedule, task, opts = {}) {
       for (const slot of cands) {
         if (task.deadline && slot.end.getTime() > task.deadline.getTime()) continue;
         const dayFillAfter = clamp((occMin + durationMin) / capacity, 0, 1);
-        const stability = task.placedBy === 'user' && slot.start.getTime() === task.startTime.getTime() ? 1 : 0;
+        // ⚠️ READS THE CONFIG VALUE, which it did not until 2026-09-04. This
+        // hardcoded `1`, while `config.stabilityBonus` sat declared, documented
+        // as Cabana-tunable, named in SPEC §2.3's formula — and read by nothing.
+        // Setting it did nothing at all.
+        const stability = task.placedBy === 'user' && slot.start.getTime() === task.startTime.getTime()
+          ? (Number.isFinite(config.stabilityBonus) ? config.stabilityBonus : 1)
+          : 0;
         const ms = schedule._modelScore(task, slot);
         const s = score({
           slotStart: slot.start,

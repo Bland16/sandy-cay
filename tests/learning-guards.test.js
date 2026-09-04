@@ -532,3 +532,30 @@ describe('authority is earned by being right, not by rating count', () => {
     expect(revived._weights().preference).toBe(0);
   });
 });
+
+describe('config values that were declared and never read', () => {
+  beforeEach(() => resetIds());
+
+  // Documented as Cabana-tunable, named in SPEC §2.3's own formula, and read by
+  // nothing: placement.js hardcoded `1`. Setting it did nothing at all — the
+  // same class of defect as `deadlineBufferHours`, which was read but never
+  // declared. Both directions of the same gap.
+  it('stabilityBonus actually changes the score it is documented to change', async () => {
+    const { score, normalizeWeights } = await import('../src/core/index.js');
+    const common = {
+      slotStart: at(0, 9), origin: at(0, 9), lookaheadHorizonMin: 4320,
+      dayFillAfter: 0.5, modelScore: 0, slotEnd: at(0, 10),
+      deadline: null, runwayStart: null, arrivalDepletion: null,
+    };
+    const w = normalizeWeights(defaultConfig.weights);
+    const withBonus = score({ ...common, stability: defaultConfig.stabilityBonus, weights: w });
+    const without = score({ ...common, stability: 0, weights: w });
+    expect(withBonus).toBeGreaterThan(without);
+  });
+
+  it('reserveBias is declared where the values around it are', () => {
+    // It existed only as a `?? 0.2` inside suggest.js, so the largest nudge
+    // after loadBias was invisible to anyone reading or tuning the config.
+    expect(defaultConfig.suggest.reserveBias).toBe(0.2);
+  });
+});

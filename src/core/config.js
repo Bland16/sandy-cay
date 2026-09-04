@@ -125,6 +125,10 @@ export const defaultConfig = {
     varietyPenalty: 0.15, // nudge away from the load character just finished
     priorityPressureHigh: 0.15, // normalised threshold: important work "looms"
     restFlat: 3, // restorative avgOverall (1–5) at/below which rest reads as "flat"
+    // ⚠️ DECLARED 2026-09-04. This existed only as a `?? 0.2` fallback inside
+    // suggest.js, so the largest nudge after `loadBias` was invisible to anyone
+    // reading the config — including anyone tuning the others around it.
+    reserveBias: 0.2, // nudge away from deepening a bottomed-out axis
   },
 };
 
