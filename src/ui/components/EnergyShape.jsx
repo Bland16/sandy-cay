@@ -20,10 +20,11 @@
 //      opacity, so a 2-shell rating read as 5 to the person holding the page. So
 //      every row states both numbers outright.
 //      ⚠️ In greyscale --pinned (spend) and --rest (restore) are 173 and 176 of
-//      255 — a contrast ratio of 1.03:1, i.e. the same grey on paper. Left/right
-//      position and the `restored ◀ / ▶ spent` header carry the whole meaning.
-//      The dashed treatment that used to back this up left with the diamond, so
-//      do not lean on hue here; texture is the fix (styles.css).
+//      255 — a contrast ratio of 1.03:1, i.e. the same grey on paper. So hue
+//      carries NOTHING here and three other channels carry it instead: left/right
+//      position, the `restored ◀ / ▶ spent` header in words, and restore drawn
+//      as a 45° hatch against spend's solid fill (styles.css). The hatch replaces
+//      the dashed stroke that left with the diamond.
 //   2. NO invented ceiling (P-2). `learnedCapacity` is null until roughly three
 //      weeks of ratings calibrate it, and nothing here draws one.
 //   3. NOT coral (P-1). Coral is for scheduling physics, never for moral
@@ -33,8 +34,36 @@ import { LOAD_AXES } from '../../core/index.js';
 
 const fx = (n) => (Math.round(n * 10) / 10).toFixed(1);
 
-/** Restore left, spend right, one row per axis. Exact, and it prints. */
-function Butterfly({ axes, max }) {
+/** The axis top: load-hours rounded up to a whole tick, never below one tick. */
+const TICK = 2; // load-hours
+function axisTop(axes) {
+  const biggest = Math.max(0, ...LOAD_AXES.map((a) => Math.max(axes[a].spend, axes[a].restore)));
+  return Math.max(TICK, Math.ceil(biggest / TICK) * TICK);
+}
+
+/**
+ * Restore left, spend right, one row per axis. Exact, and it prints.
+ *
+ * ⚠️ THE SCALE IS LOAD-HOURS, NOT THE WEEK'S OWN LARGEST VALUE. It used to
+ * divide by `max` — the biggest number in this week — which is the same defect
+ * the sand bars had and the same one that sank the day-shapes chart: a length
+ * measured against itself. Every week filled the track the same amount, so no
+ * two printed sheets could be compared, in a section whose entire subject is
+ * how this week went.
+ *
+ * There is no learned ceiling available to divide by instead — `capacity` is
+ * null until ratings earn it (P-2) — so the denominator is an ABSOLUTE unit
+ * with a labelled tick axis. Bar length is then in load-hours a reader can name,
+ * two weeks are comparable by reading the ticks, and nothing about a ceiling is
+ * claimed. `capacity` is deliberately no longer consulted here at all: it drew
+ * an invisible reference that silently shortened every bar for a calibrated
+ * user with nothing on the page to explain why.
+ */
+function Butterfly({ axes }) {
+  const top = axisTop(axes);
+  const ticks = [];
+  for (let v = 0; v <= top; v += TICK) ticks.push(v);
+
   return (
     <div className="rp-bfly">
       <div className="rp-bfhead">
@@ -46,15 +75,28 @@ function Butterfly({ axes, max }) {
         <div className="rp-bfrow" key={a}>
           <span className="rp-bfax">{a}</span>
           <span className="rp-bftrack rp-l">
-            <span className="rp-bffill" style={{ width: `${(axes[a].restore / max) * 100}%` }} />
+            <span className="rp-bffill" style={{ width: `${Math.min(100, (axes[a].restore / top) * 100)}%` }} />
             <span className="rp-bfnum">{fx(axes[a].restore)}</span>
           </span>
           <span className="rp-bftrack rp-r">
-            <span className="rp-bffill" style={{ width: `${(axes[a].spend / max) * 100}%` }} />
+            <span className="rp-bffill" style={{ width: `${Math.min(100, (axes[a].spend / top) * 100)}%` }} />
             <span className="rp-bfnum">{fx(axes[a].spend)}</span>
           </span>
         </div>
       ))}
+      {/* The denominator, drawn AND named. §10's lesson generalised past colour:
+          no quantity may live in a single fragile channel, so the scale is a
+          tick axis and a unit in words, not an implication of bar length. */}
+      <div className="rp-bfaxis" aria-hidden="true">
+        <span className="rp-bfax" />
+        <span className="rp-bfscale rp-l">
+          {ticks.slice().reverse().map((v) => <span key={v}>{v}</span>)}
+        </span>
+        <span className="rp-bfscale rp-r">
+          {ticks.map((v) => <span key={v}>{v}</span>)}
+        </span>
+      </div>
+      <p className="rp-bfunit">load-hours — hours × how heavily the tag draws</p>
     </div>
   );
 }
@@ -70,17 +112,17 @@ export default function EnergyShape({ energy }) {
       </p>
     );
   }
-  const { axes, totals, capacity } = energy;
-  const max = Math.max(
-    1,
-    ...LOAD_AXES.map((a) => Math.max(axes[a].spend, axes[a].restore)),
-    ...(capacity ? LOAD_AXES.map((a) => capacity[a] || 0) : []),
-  );
+  // ⚠️ `capacity` IS NOT READ. It used to widen the scale so bars sat against a
+  // learned ceiling that nothing drew — so a calibrated user's bars silently
+  // shrank with no mark on the page to explain it, and an uncalibrated user's
+  // did not, which meant the same week drew two different pictures depending on
+  // a value the chart never showed. The scale is absolute load-hours now.
+  const { axes, totals } = energy;
 
   return (
     <div className="rp-energy">
       <div className="rp-echarts">
-        <Butterfly axes={axes} max={max} />
+        <Butterfly axes={axes} />
       </div>
       {/* The totals, and nothing else. The chart's rationale is documented at the
           top of this file, which is where it belongs — a report that explains
@@ -91,9 +133,16 @@ export default function EnergyShape({ energy }) {
           claims nothing, so a ring appearing once ratings calibrate contradicts
           nothing printed earlier — the forbidden thing was inventing a ceiling,
           not declining to narrate its absence. */}
+      {/* ⚠️ NO `net`. It printed spend − restore as one signed number, and a
+          single signed balance has exactly one idiom: positive means overdrawn.
+          That is "you overdid it", the judgement the comment above forbids, four
+          lines below where it forbids it. Worse, restorative tags are rare, so
+          net is positive for essentially every real week — the section ended on
+          a permanent deficit no reader could ever clear. Two facts, kept apart,
+          which is the same reason the chart keeps them on opposite sides. */}
       <p className="rp-etot">
-        Spent <b>{fx(totals.spend)}</b> · restored <b>{fx(totals.restore)}</b> · net{' '}
-        <b>{fx(totals.net)}</b> <span className="rp-dim">(hours × load)</span>
+        Spent <b>{fx(totals.spend)}</b> · restored <b>{fx(totals.restore)}</b>{' '}
+        <span className="rp-dim">load-hours</span>
       </p>
     </div>
   );

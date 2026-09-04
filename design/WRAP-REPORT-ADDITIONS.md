@@ -54,6 +54,23 @@ three levels apart out of 255. Tests lock both failures that killed the
 predecessor: equal durations draw equal widths on every day, and each day's own
 window is drawn *inside* the shared axis rather than becoming its own scale.
 
+**A24, A25 and A26 are now built** — the butterfly was the last chart on the
+sheet without a nameable denominator. It divided by `max`, the biggest value in
+that week, so the longest bar filled the track in every week ever printed. There
+is no learned ceiling to use instead (P-2), so the scale is now **absolute
+load-hours with a numbered tick axis and the unit named in words** — bar length
+in units a reader can name, two sheets comparable by reading the ticks, and no
+ceiling claimed. `capacity` is no longer consulted at all: it widened the scale
+against a reference nothing drew, so a calibrated user's bars silently shrank
+with nothing on the page to explain it. Restore is a 45° hatch against spend's
+solid fill, which restores the §10 redundancy that left with the diamond.
+
+**`net` is gone from the totals.** Spend − restore as one signed number has
+exactly one idiom — positive means overdrawn — which is "you overdid it", the
+judgement §7.1 forbids, printed four lines below the comment forbidding it. And
+restorative tags are rare, so it was positive for essentially every real week:
+the section ended on a permanent deficit the reader could never clear.
+
 **Still open:** the rest of Tiers 3–5. A35/A36 are designed, not built.
 
 ### New, found while building A2

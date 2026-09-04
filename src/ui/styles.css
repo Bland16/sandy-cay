@@ -1570,7 +1570,24 @@ button:focus-visible, .dhopen:focus-visible, .card:focus-visible, .slot:focus-vi
 .rp-echarts { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
 
 .rp-bfly { flex: 1 1 260px; min-width: 240px; }
-.rp-bfhead, .rp-bfrow { display: grid; grid-template-columns: 62px 1fr 1fr; gap: 4px 6px; align-items: center; }
+.rp-bfhead, 
+/* The butterfly's absolute scale: load-hours, drawn as ticks and named in words.
+   Replaces dividing by the week's own largest value, which made every week fill
+   the track the same amount and no two sheets comparable. */
+.rp-bfaxis { display: grid; grid-template-columns: 54px 1fr 1fr; gap: 4px; align-items: center; margin-top: 3px; }
+.rp-bfscale { display: flex; justify-content: space-between; font-family: var(--font-type); font-size: 8.5px; color: var(--ink-soft); }
+.rp-bfscale.rp-l { padding-right: 3px; }
+.rp-bfscale.rp-r { padding-left: 3px; }
+.rp-bfunit { font-size: 9px; color: var(--ink-soft); text-align: center; margin: 2px 0 0; }
+/* ⚠️ TEXTURE, NOT HUE. In greyscale --rest and --pinned are 176 and 173 of 255 —
+   the same grey on paper — and the dashed treatment that used to carry restore
+   left with the diamond. Restore is hatched, spend is solid; the header says
+   which side is which in words, so §10 has three channels, not one. */
+.rp-bftrack.rp-l .rp-bffill {
+  background: repeating-linear-gradient(45deg, var(--rest) 0 3px, rgba(255,255,255,.75) 3px 6px);
+}
+.rp-bftrack { border: 1px solid var(--hair); }
+.rp-bfrow { display: grid; grid-template-columns: 62px 1fr 1fr; gap: 4px 6px; align-items: center; }
 .rp-bfhead { font-family: var(--font-type); font-size: 8.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-soft); margin-bottom: 3px; }
 .rp-bfhead .rp-bfl { text-align: right; }
 .rp-bfrow { margin-bottom: 3px; }

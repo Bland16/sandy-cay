@@ -94,8 +94,13 @@ describe('the energy shape in the report', () => {
     // ratings calibrate contradicts nothing printed earlier — which is why the
     // absence needs no sentence explaining it.
     expect(document.querySelector('.rp-dcap')).toBeNull();
-    // The section is the charts and the totals. Nothing else.
-    expect(document.querySelectorAll('.rp-energy p')).toHaveLength(1);
+    // The section is the chart, its scale, and the totals. Nothing else — no
+    // paragraph explaining the design, which is a paragraph readers skip. The
+    // unit line is not explanation: it NAMES THE DENOMINATOR, which §10's own
+    // lesson says may not live in a single fragile channel like bar length.
+    const paras = [...document.querySelectorAll('.rp-energy p')];
+    expect(paras).toHaveLength(2);
+    expect(paras.map((p) => p.className)).toEqual(['rp-bfunit', 'rp-etot']);
   });
 
   it('says there is nothing to weigh, rather than drawing an empty shape', () => {
@@ -112,9 +117,74 @@ describe('the energy shape in the report', () => {
     render(<App />);
     openReport();
     const tot = document.querySelector('.rp-etot').textContent;
-    expect(tot).toMatch(/Spent .* restored .* net /);
+    expect(tot).toMatch(/Spent .* restored /);
+    // ⚠️ NO `net`. Spend − restore as one signed number has exactly one idiom —
+    // positive means overdrawn — which is "you overdid it", the judgement §7.1
+    // forbids. And restorative tags are rare, so it was positive for nearly
+    // every real week: a permanent deficit the reader could never clear.
+    expect(tot).not.toMatch(/net/i);
     const section = document.querySelector('.rp-energy').textContent;
     // No praise, no blame, no "too much" — the report states and stops.
     expect(section).not.toMatch(/too much|overdid|should have|well done|great/i);
+  });
+});
+
+describe('the butterfly is measured in a unit, not in itself', () => {
+  // ⚠️ THE LAST CHART ON THE SHEET WITHOUT A NAMEABLE DENOMINATOR. It divided
+  // by `max`, the biggest value in THIS week, so the longest bar filled the
+  // track in every week ever printed and no two sheets could be compared — the
+  // same defect that sank the day-shapes chart and that the sand bars were
+  // fixed for. There is no learned ceiling to use instead (capacity is null
+  // until earned, P-2), so the scale is absolute load-hours with a tick axis.
+  it('draws a light week short and a heavy week long', () => {
+    const light = new Schedule({ config: defaultConfig });
+    light.buckets.push(new Bucket({ label: 'Study', tags: ['study'], load: { mental: 1 } }));
+    light.tasks.push(new Task({ title: 'A', tags: ['study'], type: 'fixed', startTime: at(0, 9), endTime: at(0, 10) }));
+    light.markWeekSeen(new Date());
+    window.localStorage.setItem('sandycay.session', 'guest');
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(light.toJSON()));
+
+    render(<App />);
+    openReport();
+    const lightWidth = parseFloat(
+      document.querySelector('.rp-bftrack.rp-r .rp-bffill').style.width,
+    );
+    cleanup();
+
+    const heavy = new Schedule({ config: defaultConfig });
+    heavy.buckets.push(new Bucket({ label: 'Study', tags: ['study'], load: { mental: 2 } }));
+    for (let h = 8; h < 18; h += 1) {
+      heavy.tasks.push(new Task({
+        title: `H${h}`, tags: ['study'], type: 'fixed',
+        startTime: at(0, h), endTime: at(0, h + 1),
+      }));
+    }
+    heavy.markWeekSeen(new Date());
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(heavy.toJSON()));
+
+    render(<App />);
+    openReport();
+    const heavyWidth = parseFloat(
+      document.querySelector('.rp-bftrack.rp-r .rp-bffill').style.width,
+    );
+
+    // Under the old `max` normalisation BOTH were 100%. The light week must now
+    // be visibly short; both are still bounded by the track.
+    expect(lightWidth).toBeLessThan(60);
+    expect(heavyWidth).toBeLessThanOrEqual(100);
+  });
+
+  it('prints the scale as numbered ticks and names the unit', () => {
+    seed();
+    render(<App />);
+    openReport();
+
+    const ticks = [...document.querySelectorAll('.rp-bfscale.rp-r span')].map((s) => s.textContent);
+    expect(ticks.length).toBeGreaterThanOrEqual(2);
+    expect(ticks[0]).toBe('0'); // the gutter is zero, and says so
+    // The left scale mirrors it, so both sides read outward from zero.
+    const leftTicks = [...document.querySelectorAll('.rp-bfscale.rp-l span')].map((s) => s.textContent);
+    expect(leftTicks[leftTicks.length - 1]).toBe('0');
+    expect(document.querySelector('.rp-bfunit').textContent).toMatch(/load-hours/);
   });
 });
