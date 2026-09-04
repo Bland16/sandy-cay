@@ -613,6 +613,72 @@ function buildDayStrips(sched, ws) {
   return any ? { axisFrom, axisTo, days } : null;
 }
 
+/**
+ * The pattern you set, against the week you ran (A9).
+ *
+ * A whole domain the report has never mentioned. "Skip today, do it tomorrow"
+ * and "one extra session this week" are expressible in the engine — commit
+ * 237c71c added `move` and `add` for exactly that — and nothing has ever
+ * reported on them afterwards.
+ *
+ * ⚠️ THE DENOMINATOR IS THE PATTERN'S OWN COUNT, which is the strongest kind:
+ * the number of sessions your recurrence rules put on this week. Not a target,
+ * not a capacity, not anything the app decided — the shape you wrote down.
+ *
+ * ⚠️ MOVES AND SKIPS SIT BESIDE THE ONES THAT RAN, never in a list of their own.
+ * §7.1 forbids listing what you did not do, and "3 skipped" as a standalone
+ * finding is that list with a number instead of names. Held together, they
+ * describe a PATTERN's fit — and the natural response is "the pattern may be
+ * wrong", which §7.2's suggestions already offer.
+ */
+function buildPatternDiff(sched, ws) {
+  const first = dateKey(ws);
+  const last = dateKey(addDays(ws, 6));
+  const inWeek = (k) => {
+    // Occurrence keys can carry a session suffix (`YYYY-MM-DD#2`), so compare
+    // the calendar part only.
+    const d = String(k).slice(0, 10);
+    return d >= first && d <= last;
+  };
+
+  let scheduled = 0;
+  let moved = 0;
+  let skipped = 0;
+  let added = 0;
+  let patterns = 0;
+
+  for (const t of sched.tasks) {
+    if (!t.recurrence || t.chunking) continue;
+    const ex = t.recurrence.exceptions || [];
+    const weekEx = ex.filter((e) => inWeek(e.date) || (e.toDate && inWeek(e.toDate)));
+    // What the pattern itself put on this week, before any exception applied.
+    const occurrences = sched.getTasksForWeek(ws)
+      .filter((o) => o.isOccurrence && o.parentId === t.id).length;
+    const movedIn = weekEx.filter((e) => e.action === 'move').length;
+    const skippedIn = weekEx.filter((e) => e.action === 'skip').length;
+    const addedIn = weekEx.filter((e) => e.action === 'add').length;
+    if (occurrences === 0 && movedIn + skippedIn + addedIn === 0) continue;
+    patterns += 1;
+    // A skipped occurrence is not materialised, so it is not in `occurrences` —
+    // the pattern's own count has to add it back or the denominator shrinks by
+    // exactly the thing being reported.
+    scheduled += occurrences + skippedIn - addedIn;
+    moved += movedIn;
+    skipped += skippedIn;
+    added += addedIn;
+  }
+
+  if (patterns === 0 || scheduled + added <= 0) return null;
+  return {
+    patterns,
+    scheduled: Math.max(0, scheduled),
+    ranAsWritten: Math.max(0, scheduled - moved - skipped),
+    moved,
+    skipped,
+    added,
+  };
+}
+
 export function buildWrapReport(sched, weekStartDate) {
   const ws = weekStartOf(weekStartDate);
   const weekTasks = sched.getTasksForWeek(ws);
@@ -643,6 +709,8 @@ export function buildWrapReport(sched, weekStartDate) {
       commitments: buildCommitments(sched, ws),
       // WHEN it happened — seven rows on one shared clock (A3).
       strips: buildDayStrips(sched, ws),
+      // The pattern you set, against the week you ran (A9).
+      pattern: buildPatternDiff(sched, ws),
     },
     insight: buildInsight(sched),
     suggestions: buildSuggestions(sched, ws, weekLoad, weekTasks),

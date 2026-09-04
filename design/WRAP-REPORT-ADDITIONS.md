@@ -94,9 +94,39 @@ existed and were reporting the wrong quantity.
   projects the week touched and lead with the week's own minutes, with the
   lifetime total still beside them.
 
-**Still open:** A9 (recurrence exceptions), A10 (routines), A12 (model
-readiness), A13 (rest asked-vs-got), and Tier 5's remaining form work. A35/A36
-are designed, not built.
+**A9 is now built.** The pattern you set against the week you ran — a whole
+domain the report had never mentioned, though `move` and `add` became
+expressible in `237c71c`. The denominator is the pattern's own count, which is
+the strongest kind: not a target, not a capacity, the shape you wrote down.
+
+⚠️ Its one real trap, and the test that holds it: **a skipped occurrence is not
+materialised**, so it is absent from the week's tasks. The denominator has to
+add it back, or it shrinks by exactly the thing being reported — the pattern
+would appear to have put fewer sessions on the week *because* one was skipped.
+Verified live: skipping one session leaves `scheduled` at 1 and moves
+`ranAsWritten` to 0.
+
+Moves and skips only ever appear beside the sessions that ran. §7.1 forbids
+listing what you did not do, and "3 skipped" as a standalone finding is that
+list with a number instead of names.
+
+**Still open:** A10 (routines: elapsed vs attention), and Tier 5's remaining
+form work. A35/A36 are designed, not built.
+
+**A12 and A13 are declined as specced**, with reasons:
+
+- **A12 (model readiness as a fact)** conflicts with a rule already implemented.
+  Its proposed copy — *"14 ratings. The model can speak about study and gym"* —
+  leads with a rating count, and the report now deliberately carries none: a
+  count of ratings is a fact about the MODEL and belongs where the user went to
+  look at the model, which is the Cabana. In the report it is a bill. The
+  useful half — naming which tags the model can speak about — is worth having,
+  but not with the counter attached.
+- **A13 (rest, asked-vs-got)** is underspecified. It assumes the user declared
+  an amount of rest, and `protectedTags` is a list of tag names, not a target —
+  nothing in the app says "I want 4h of rest". Where such a target DOES exist it
+  is a commitment tagged `rest`, which A2's ledger already reports against a
+  number the user typed. Needs a real "asked for" before it can be built.
 
 ### New, found while building A2
 

@@ -537,6 +537,29 @@ export default function WrapReport({ sched, weekStart, version, onBack, onOpenTa
                 </div>
               )}
 
+              {/* A9 — the pattern you set, against the week you ran.
+                  ⚠️ MOVES AND SKIPS BESIDE THE ONES THAT RAN, never alone. §7.1
+                  forbids listing what you did not do, and "3 skipped" as its own
+                  finding is that list with a number instead of names. Held
+                  together they describe a PATTERN's fit rather than a person's,
+                  and the natural response — "the pattern may be wrong" — is
+                  something §7.2's suggestions already offer. */}
+              {stats.pattern && (
+                <div className="rp-sub">
+                  <h3>The pattern, and the week</h3>
+                  <p className="rp-line">
+                    Your {stats.pattern.patterns === 1 ? 'pattern' : 'patterns'} put{' '}
+                    <b>{stats.pattern.scheduled}</b>{' '}
+                    {stats.pattern.scheduled === 1 ? 'session' : 'sessions'} on this week.{' '}
+                    {stats.pattern.ranAsWritten} ran as written
+                    {stats.pattern.moved > 0 && `, ${stats.pattern.moved} you moved`}
+                    {stats.pattern.skipped > 0 && `, ${stats.pattern.skipped} you skipped`}
+                    {stats.pattern.added > 0
+                      && `, and you added ${stats.pattern.added} that ${stats.pattern.added === 1 ? 'is not' : 'are not'} in the pattern`}.
+                  </p>
+                </div>
+              )}
+
               {/* Plan versus what happened (§7.1, via snapshot() diff).
                   ⚠️ THE PLAN IS THE SUBJECT, NOT THE READER. It used to open
                   with "N of M sessions stayed where they were planned", which is

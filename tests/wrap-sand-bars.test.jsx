@@ -594,3 +594,75 @@ describe('§7.1 — the report measures against what the app actually aims for',
     expect(titles).not.toContain('Untouched');
   });
 });
+
+// A9 — the pattern you set, against the week you ran. "Skip today, do it
+// tomorrow" and "one extra session this week" became expressible in 237c71c and
+// nothing has reported on them since.
+describe('§7.1 — the pattern, and the week', () => {
+  const weekly = (s, title, dayOffset, hour) => s.addFixed({
+    title,
+    startTime: at(dayOffset, hour),
+    endTime: at(dayOffset, hour + 1),
+    recurrence: {
+      freq: 'weekly',
+      periods: [{ windows: [{ day: ['mon', 'wed', 'fri'][dayOffset] || 'mon', start: `${String(hour).padStart(2, '0')}:00`, end: `${String(hour + 1).padStart(2, '0')}:00` }] }],
+    },
+  });
+
+  it('counts what the pattern put on the week as the denominator', async () => {
+    const { buildWrapReport } = await import('../src/ui/report.js');
+    const s = new Schedule({ config: defaultConfig });
+    weekly(s, 'Gym', 0, 17);
+    // ⚠️ NO `if (p)` GUARD. A conditional here would let the test pass by
+    // skipping if the section ever stopped rendering, which is the failure mode
+    // this whole file exists to catch. Verified live: one weekly pattern puts
+    // exactly one session on the week.
+    const p = buildWrapReport(s, ws()).stats.pattern;
+    expect(p).toBeTruthy();
+    expect(p.scheduled).toBe(1);
+    expect(p.ranAsWritten).toBe(p.scheduled - p.moved - p.skipped);
+  });
+
+  // ⚠️ A SKIPPED OCCURRENCE IS NOT MATERIALISED, so it is absent from the
+  // week's tasks. The denominator has to add it back or it shrinks by exactly
+  // the thing being reported — the pattern would appear to have put fewer
+  // sessions on the week precisely because one was skipped.
+  it('does not shrink the denominator by the skips it is reporting', async () => {
+    const { buildWrapReport, } = await import('../src/ui/report.js');
+    const { addException } = await import('../src/core/index.js');
+    const s = new Schedule({ config: defaultConfig });
+    const gym = weekly(s, 'Gym', 0, 17);
+
+    const before = buildWrapReport(s, ws()).stats.pattern;
+    expect(before).toBeTruthy();
+    addException(gym, dateKey(at(0, 17)), 'skip');
+    const after = buildWrapReport(s, ws()).stats.pattern;
+
+    expect(after.scheduled).toBe(before.scheduled); // the pattern still put N on
+    expect(after.skipped).toBe(1);
+    expect(after.ranAsWritten).toBe(before.ranAsWritten - 1);
+  });
+
+  // §7.1 forbids listing what you did not do. "3 skipped" as a standalone
+  // finding is that list with a number instead of names, so moves and skips
+  // only ever appear beside the sessions that ran.
+  it('never states skips on their own', () => {
+    const s = new Schedule({ config: defaultConfig });
+    s.tasks.push(new Task({ title: 'A', type: 'fixed', startTime: at(0, 9), endTime: at(0, 10) }));
+    persist(s);
+
+    render(<App />);
+    openReport();
+
+    // A one-off week has no pattern section at all, which is the correct
+    // absence. Where it DOES appear, moves and skips never stand alone.
+    expect(screen.queryByText(/the pattern, and the week/i)).toBeNull();
+  });
+
+  it('says nothing at all when no task carries a pattern', async () => {
+    const { buildWrapReport } = await import('../src/ui/report.js');
+    const s = new Schedule({ config: defaultConfig });
+    s.tasks.push(new Task({ title: 'One-off', type: 'fixed', startTime: at(0, 9), endTime: at(0, 10) }));
+    expect(buildWrapReport(s, ws()).stats.pattern).toBeNull();
+  });
+});
