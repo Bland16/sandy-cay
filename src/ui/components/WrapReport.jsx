@@ -149,6 +149,25 @@ function DayStrips({ strips }) {
               className="rp-strip-window"
               style={{ left: `${pc(d.winFrom)}%`, width: `${pc(d.winTo) - pc(d.winFrom)}%` }}
             />
+            {/* The energy behind the day. Darker = more spent and not yet
+                recovered by that hour, in fixed steps of load-hours — so a
+                punishing week shades darker than a gentle one instead of both
+                filling the same range, and a rest block visibly lightens what
+                follows it. Capped at four steps so the wash never competes with
+                the ink of the blocks sitting on top. */}
+            {d.shade.map((g) => (
+              g.depth > 0 && (
+                <span
+                  key={`${g.from}-${g.to}`}
+                  className="rp-strip-shade"
+                  style={{
+                    left: `${pc(g.from)}%`,
+                    width: `${Math.max(0, pc(g.to) - pc(g.from))}%`,
+                    opacity: Math.min(4, Math.ceil(g.depth / strips.shadeStep)) * 0.055,
+                  }}
+                />
+              )
+            ))}
             {d.items.map((t) => (
               <span
                 key={t.id}
@@ -168,9 +187,17 @@ function DayStrips({ strips }) {
           </span>
         </div>
       ))}
+      {/* ⚠️ THE KEY NAMES EVERY STATE THAT RENDERS. It used to name three while
+          four were drawn — `planned` (a light fill) was the commonest of all on
+          a week still in progress, and the legend simply omitted it. */}
       <p className="rp-dim rp-strip-key">
         One clock across all seven days. The pale band is that day’s open window.
-        Solid is done, hatched is part-done, outlined is let go.
+        {strips.anyShade && (
+          <> The darker the background, the more you had spent by then — each
+            step is {strips.shadeStep} load-hours not yet recovered.</>
+        )}
+        {' '}Solid is done, hatched is part-done, outlined is let go, and a plain
+        fill is still on the grid.
       </p>
     </div>
   );

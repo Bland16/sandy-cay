@@ -559,3 +559,70 @@ describe('config values that were declared and never read', () => {
     expect(defaultConfig.suggest.reserveBias).toBe(0.2);
   });
 });
+
+describe('a suggestion may not contradict its own evidence', () => {
+  beforeEach(() => resetIds());
+
+  const sessions = (specs) => specs.map(([i, fit, overall]) => {
+    const t = new Task({
+      title: `Gym ${i}`, tags: ['exercise'], type: 'fixed',
+      startTime: at(i % 5, 17), endTime: at(i % 5, 18),
+    });
+    t.completion = 'done';
+    t.satisfaction = { overall, durationFit: fit, energy: 1 };
+    return t;
+  });
+
+  // ⚠️ THE SHIPPED DEFECT, reported by the user: "it told me that exercise
+  // should be shorter and I went back — they've all been 4 stars or over and
+  // usually energizing."
+  //
+  // `durationFitSuggestion` filtered to `durationFit !== 0` and then took 60% OF
+  // THAT, so every session explicitly called the right length was dropped from
+  // the denominator. Three "too long" out of twenty became 3/3 = 100%.
+  it('does not call three complaints out of twenty a consensus', async () => {
+    const { durationFitSuggestion } = await import('../src/core/index.js');
+    const tasks = sessions([
+      ...Array.from({ length: 17 }, (_, i) => [i, 0, 5]), // "just right", loved
+      ...Array.from({ length: 3 }, (_, i) => [17 + i, 1, 4]), // "too long"
+    ]);
+    expect(durationFitSuggestion(tasks, 'exercise').suggest).toBe(false);
+  });
+
+  it('still fires when the sessions that answered genuinely agree', async () => {
+    const { durationFitSuggestion } = await import('../src/core/index.js');
+    const tasks = sessions([
+      ...Array.from({ length: 8 }, (_, i) => [i, 1, 3]), // 8 of 10 said too long
+      ...Array.from({ length: 2 }, (_, i) => [8 + i, 0, 4]),
+    ]);
+    const r = durationFitSuggestion(tasks, 'exercise');
+    expect(r.suggest).toBe(true);
+    expect(r.direction).toBe('shorter');
+    // And it carries the evidence so the sentence can state it.
+    expect(r.count).toBe(8);
+    expect(r.total).toBe(10);
+  });
+
+  // "just right" is an ANSWER, not an absence — the task panel's own word for
+  // durationFit: 0. Dropping it from the denominator inverted the finding.
+  it('counts "just right" as an answer to the duration question', async () => {
+    const { durationFitSuggestion } = await import('../src/core/index.js');
+    const allFine = sessions(Array.from({ length: 10 }, (_, i) => [i, 0, 5]));
+    expect(durationFitSuggestion(allFine, 'exercise').suggest).toBe(false);
+  });
+
+  it('the sentence states its own numerator and denominator', async () => {
+    const { buildWrapReport } = await import('../src/ui/report.js');
+    const s = new Schedule({ config: defaultConfig });
+    s.buckets.push(new Bucket({ label: 'Gym', tags: ['exercise'] }));
+    s.tasks.push(...sessions([
+      ...Array.from({ length: 8 }, (_, i) => [i, 1, 3]),
+      ...Array.from({ length: 2 }, (_, i) => [8 + i, 0, 4]),
+    ]));
+    const fit = buildWrapReport(s, MON()).suggestions.find((x) => x.kind === 'duration-fit');
+    expect(fit).toBeTruthy();
+    expect(fit.detail).toMatch(/8 of 10/);
+    // Never the unfalsifiable claim it used to make.
+    expect(fit.detail).not.toMatch(/^Most /);
+  });
+});

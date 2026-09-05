@@ -17,7 +17,7 @@ import {
   snapshot, snapshotDiff, isoWeekKey, addDays, dateKey, weekStart as weekStartOf,
   driftCheck, starvationCheck, skipStreakCheck, pinnedRatioNote, durationFitSuggestion,
   splitPeriod, endRecurrence, spendRestore, learnedCapacity, humanLabel, isNarratable,
-  previewWeek, dayWindowBounds,
+  previewWeek, dayWindowBounds, energyTrajectory, LOAD_AXES,
 } from '../core/index.js';
 import { fmtDur } from './format.js';
 
@@ -236,7 +236,13 @@ function buildSuggestions(sched, ws, weekLoad, weekTasks) {
         id: `fit:${tag}`,
         kind: 'duration-fit',
         headline: `${tag} blocks may want to be ${fit.direction}`,
-        detail: `Most rated ${tag} sessions said the length didn't fit. Worth trying ${fit.direction} next time.`,
+        // ⚠️ STATES ITS OWN EVIDENCE. This said "Most rated sessions said the
+        // length didn't fit", which was not merely vague but false: the
+        // detector's denominator excluded everyone who had said the length WAS
+        // fine, so three complaints out of twenty read as "most". A sentence
+        // that carries its own numerator and denominator cannot make that claim
+        // silently — the reader can check it, which is the point.
+        detail: `${fit.count} of ${fit.total} rated ${tag} sessions said the block ran ${fit.direction === 'shorter' ? 'long' : 'short'}. Worth trying ${fit.direction} next time.`,
         observationOnly: true,
         meta: { tag, direction: fit.direction },
       });
@@ -591,11 +597,39 @@ function buildDayStrips(sched, ws) {
     axisFrom = Math.min(axisFrom, winFrom, ...items.map((t) => minsFrom(t.from)));
     axisTo = Math.max(axisTo, winTo, ...items.map((t) => minsFrom(t.to)));
 
+    // ⚠️ THE BACKGROUND IS THE ENERGY CURVE, in absolute load-hours (asked for
+    // 2026-09-05). This is what the deleted day-shapes chart was reaching for,
+    // and as a WASH it works where a chart did not: the blocks already carry
+    // position and duration, so the reserve needs no y-axis of its own, no
+    // second denominator, and no room on the page.
+    //
+    // ⚠️ ABSOLUTE STEPS, NOT THE WEEK'S OWN WORST DAY. `buildTrajectories`
+    // scaled depth to `deepest`, so a punishing week and a gentle one shaded
+    // identically. Each step is a fixed number of load-hours — the same move the
+    // butterfly makes, and the unit is named on the same sheet.
+    //
+    // ⚠️ AND NOT AGAINST CAPACITY. `capacityPrior` is legitimate for scoring,
+    // where the number is never shown; shading against it would render an
+    // invented ceiling to the user, which is the P-2 line.
+    const { points } = energyTrajectory(sched, date);
+    const depthOf = (r) => LOAD_AXES.reduce((n, a) => n + Math.max(0, -r[a]), 0);
+    const shade = [];
+    let prev = winFrom;
+    let carried = 0;
+    for (const pt of points) {
+      const at = minsFrom(pt.at);
+      if (at > prev) shade.push({ from: prev, to: at, depth: carried });
+      carried = depthOf(pt.reserve);
+      prev = at;
+    }
+    if (prev < winTo) shade.push({ from: prev, to: winTo, depth: carried });
+
     days.push({
       dayIndex: i,
       blocked,
       winFrom,
       winTo,
+      shade,
       scheduledMin: items
         .filter((t) => t.state !== 'skipped')
         .reduce((n, t) => n + Math.max(0, minsFrom(t.to) - minsFrom(t.from)), 0),
@@ -606,11 +640,14 @@ function buildDayStrips(sched, ws) {
   }
 
   if (!Number.isFinite(axisFrom) || axisTo <= axisFrom) return null;
+  // One step of shading = this many load-hours spent and not yet recovered.
+  const SHADE_STEP = 2;
   // Whole hours, so the labels land on the hour and the grid reads as a clock.
   axisFrom = Math.floor(axisFrom / 60) * 60;
   axisTo = Math.ceil(axisTo / 60) * 60;
   const any = days.some((d) => d.items.length > 0);
-  return any ? { axisFrom, axisTo, days } : null;
+  const anyShade = days.some((d) => d.shade.some((g) => g.depth > 0));
+  return any ? { axisFrom, axisTo, days, shadeStep: SHADE_STEP, anyShade } : null;
 }
 
 /**

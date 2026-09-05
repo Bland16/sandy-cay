@@ -1501,6 +1501,7 @@ button:focus-visible, .dhopen:focus-visible, .card:focus-visible, .slot:focus-vi
   position: absolute; top: 0; bottom: 0; background: rgba(210, 198, 169, .3);
   border-left: 1px solid var(--hair); border-right: 1px solid var(--hair);
 }
+.rp-strip-shade { position: absolute; top: 0; bottom: 0; background: var(--ink); pointer-events: none; }
 .rp-strip-block { position: absolute; top: 1px; bottom: 1px; border: 1.5px solid var(--ink); border-radius: 2px; }
 .rp-strip-block.is-done { background: var(--ink); }
 .rp-strip-block.is-partial {

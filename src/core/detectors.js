@@ -115,17 +115,41 @@ export function overpackCheck(schedule, weekStartDate, config) {
   return { overpacked: packedDays >= config.detectors.overpackDays, packedDays, perDay, threshold };
 }
 
-/** Duration-fit qualitative suggestion (SPEC §7.2, 6K) — no time tracking.
- *  If ≥60% of rated tasks sharing a tag report the same non-zero durationFit,
- *  suggest adjusting block length. */
+/**
+ * Duration-fit qualitative suggestion (SPEC §7.2, 6K) — no time tracking.
+ * If ≥60% of the sessions that ANSWERED the duration question report the same
+ * non-zero `durationFit`, suggest adjusting block length.
+ *
+ * ⚠️ THE DENOMINATOR IS EVERYONE WHO ANSWERED, INCLUDING "JUST RIGHT".
+ *
+ * This filtered to `durationFit !== 0` and then took 60% OF THAT — so every
+ * session the user had explicitly called the right length was excluded from the
+ * denominator, and the ratio was computed among the complaints alone. Three
+ * "too long" out of twenty sessions became 3/3 = 100%, comfortably over the
+ * threshold, and the report told a user their exercise blocks should be shorter
+ * when 85% of them had said the length was fine and the mean rating was 4.85.
+ *
+ * `durationFit: 0` is an ANSWER — the task panel's own word for it is "just
+ * right" — not an absence. Dropping it inverted the finding.
+ *
+ * Returns the counts as well, so the sentence can state its own evidence
+ * instead of asserting "most sessions said..." and being wrong about it.
+ */
 export function durationFitSuggestion(tasks, tag) {
-  const rated = tasks.filter(
-    (t) => t.tags.includes(tag) && t.satisfaction && t.satisfaction.durationFit !== 0 && t.satisfaction.durationFit != null,
+  const answered = tasks.filter(
+    (t) => t.tags.includes(tag)
+      && t.satisfaction
+      && typeof t.satisfaction.durationFit === 'number',
   );
-  if (rated.length < 3) return { suggest: false };
-  const tooLong = rated.filter((t) => t.satisfaction.durationFit === 1).length;
-  const tooShort = rated.filter((t) => t.satisfaction.durationFit === -1).length;
-  if (tooLong / rated.length >= 0.6) return { suggest: true, direction: 'shorter', tag };
-  if (tooShort / rated.length >= 0.6) return { suggest: true, direction: 'longer', tag };
+  if (answered.length < 3) return { suggest: false };
+  const tooLong = answered.filter((t) => t.satisfaction.durationFit === 1).length;
+  const tooShort = answered.filter((t) => t.satisfaction.durationFit === -1).length;
+  const total = answered.length;
+  if (tooLong / total >= 0.6) {
+    return { suggest: true, direction: 'shorter', tag, count: tooLong, total };
+  }
+  if (tooShort / total >= 0.6) {
+    return { suggest: true, direction: 'longer', tag, count: tooShort, total };
+  }
   return { suggest: false };
 }

@@ -12,7 +12,7 @@
 // anywhere legal to go, and the last-resort park stacks the task at `from` to
 // keep it visible. The deadline was four days out and the Monday was empty; the
 // search simply never looked past midnight, because `to` said not to.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   Schedule, Task, defaultConfig, resetIds, addDays, weekStart as weekStartOf,
 } from '../src/core/index.js';
@@ -23,6 +23,21 @@ const overlaps = (a, b) => a.startTime < b.endTime && b.startTime < a.endTime;
 /** Sunday 30 Aug 2026 — the day in the report. Its week starts Mon 24 Aug, so
  *  "the viewed week" ends on the Sunday itself. */
 const SUN = new Date(2026, 7, 30);
+
+// ⚠️ THE CLOCK IS PINNED, and this file did not pin it until 2026-09-05, when
+// it started failing on its own. The fixture dates are fixed (Sunday 30 August
+// 2026) but placement refuses to put anything in the past, so the moment real
+// time passed the slot a case expected — Friday 4 September — the placer
+// correctly chose the next legal day and the assertion broke. The test was
+// time-bombed from the day it was written, and it went off five days later.
+//
+// Nothing about the behaviour under test involves today's date, so freeze it to
+// the morning of the fixture and the scenario stays the scenario forever.
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date(2026, 7, 30, 8, 0, 0));
+});
+afterEach(() => { vi.useRealTimers(); });
 
 function fill(s, d, fromH, toH) {
   const out = [];
