@@ -1502,13 +1502,10 @@ button:focus-visible, .dhopen:focus-visible, .card:focus-visible, .slot:focus-vi
   border-left: 1px solid var(--hair); border-right: 1px solid var(--hair);
 }
 .rp-strip-shade { position: absolute; top: 0; bottom: 0; background: var(--ink); pointer-events: none; }
-.rp-strip-block { position: absolute; top: 1px; bottom: 1px; border: 1.5px solid var(--ink); border-radius: 2px; }
-.rp-strip-block.is-done { background: var(--ink); }
-.rp-strip-block.is-partial {
-  background: repeating-linear-gradient(45deg, var(--ink) 0 2px, transparent 2px 4px);
+.rp-strip-block {
+  position: absolute; top: 1px; bottom: 1px; border-radius: 2px;
+  background: var(--ink);
 }
-.rp-strip-block.is-skipped { background: none; }
-.rp-strip-block.is-planned { background: rgba(42, 38, 32, .18); }
 .rp-strip-val {
   width: 40px; flex: 0 0 40px; text-align: right;
   font-family: var(--font-type); font-size: 9px; color: var(--ink-soft);

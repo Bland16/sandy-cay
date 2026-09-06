@@ -110,11 +110,15 @@ function SandBars({ load }) {
  * its own window, so the same two hours drew 2.5× wider on a Sunday. Small
  * multiples are the one form where every axis must be shared.
  *
- * ⚠️ TEXTURE AND POSITION, NEVER HUE. In greyscale the palette's spend and
- * restore are three levels apart out of 255, so on paper hue carries nothing —
- * and P-1 forbids a warning colour on an outcome regardless. Done is solid,
- * part-done is hatched, skipped is an outline, planned-and-not-marked is a light
- * fill. The key says so in words.
+ * ⚠️ POSITION AND INK, NEVER HUE. In greyscale the palette's spend and restore
+ * are three levels apart out of 255, so on paper hue carries nothing — and P-1
+ * forbids a warning colour on an outcome regardless.
+ *
+ * ⚠️ ONE INK WEIGHT FOR EVERY BLOCK. Completion state used to be four different
+ * fills; it is gone, because for a user who schedules after doing and moves what
+ * they do not do it is near-constant, and it was spending the strongest channel
+ * on the chart's least informative variable. The BACKGROUND carries the energy
+ * curve instead — which is the thing that actually varies through a day.
  */
 function DayStrips({ strips }) {
   const { axisFrom, axisTo, days } = strips;
@@ -171,7 +175,7 @@ function DayStrips({ strips }) {
             {d.items.map((t) => (
               <span
                 key={t.id}
-                className={`rp-strip-block is-${t.state}`}
+                className="rp-strip-block"
                 style={{
                   left: `${pc(t.from)}%`,
                   width: `${Math.max(0.6, pc(t.to) - pc(t.from))}%`,
@@ -187,17 +191,16 @@ function DayStrips({ strips }) {
           </span>
         </div>
       ))}
-      {/* ⚠️ THE KEY NAMES EVERY STATE THAT RENDERS. It used to name three while
-          four were drawn — `planned` (a light fill) was the commonest of all on
-          a week still in progress, and the legend simply omitted it. */}
+      {/* The key names the two things the drawing encodes, and nothing else.
+          It briefly named three completion states while four rendered; the
+          states are gone entirely now — see the builder for why. */}
       <p className="rp-dim rp-strip-key">
         One clock across all seven days. The pale band is that day’s open window.
         {strips.anyShade && (
           <> The darker the background, the more you had spent by then — each
             step is {strips.shadeStep} load-hours not yet recovered.</>
         )}
-        {' '}Solid is done, hatched is part-done, outlined is let go, and a plain
-        fill is still on the grid.
+        {' '}Each block is a session, at the hour it sat.
       </p>
     </div>
   );

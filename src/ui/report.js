@@ -575,19 +575,22 @@ function buildDayStrips(sched, ws) {
     const date = addDays(ws, i);
     const bounds = dayWindowBounds(sched.config, date);
     const blocked = sched.isDayBlocked ? sched.isDayBlocked(date) : false;
+    // ⚠️ ONE INK WEIGHT, AND NO COMPLETION STATE (user's call, 2026-09-05).
+    // The strip used to encode done / part-done / let-go / planned as four
+    // fills. For a user who schedules things AFTER doing them and moves what
+    // they do not do, completion is near-constant — so the strongest visual
+    // channel on the chart was spent on its least informative variable, while
+    // the energy behind it had none. The background carries the story now; the
+    // blocks carry only when and how long.
+    //
+    // ⚠️ SKIPPED BLOCKS ARE NOT DRAWN. With one ink weight, drawing one would
+    // claim it happened, and this section is called "when it happened". It also
+    // keeps the blocks agreeing with the shading, since `energyTrajectory`
+    // already omits skipped work from the reserve walk — and §7.1 wants skipped
+    // as a quiet count, never a list, which this now is by construction.
     const items = sched.getTasksForDay(date)
-      .filter((t) => !t.chunking)
-      .map((t) => ({
-        id: t.id,
-        title: t.title,
-        from: t.startTime,
-        to: t.endTime,
-        // Shapes and texture, never colour: P-1 forbids a warning colour on an
-        // outcome, and the sheet prints in greyscale where hue carries nothing.
-        state: t.completion === 'done' ? 'done'
-          : t.completion === 'partial' ? 'partial'
-            : t.completion === 'skipped' ? 'skipped' : 'planned',
-      }))
+      .filter((t) => !t.chunking && t.completion !== 'skipped')
+      .map((t) => ({ id: t.id, title: t.title, from: t.startTime, to: t.endTime }))
       .sort((a, b) => a.from - b.from);
 
     const dayStart = new Date(date); dayStart.setHours(0, 0, 0, 0);
@@ -630,9 +633,7 @@ function buildDayStrips(sched, ws) {
       winFrom,
       winTo,
       shade,
-      scheduledMin: items
-        .filter((t) => t.state !== 'skipped')
-        .reduce((n, t) => n + Math.max(0, minsFrom(t.to) - minsFrom(t.from)), 0),
+      scheduledMin: items.reduce((n, t) => n + Math.max(0, minsFrom(t.to) - minsFrom(t.from)), 0),
       items: items.map((t) => ({
         ...t, from: minsFrom(t.from), to: minsFrom(t.to),
       })),

@@ -460,26 +460,57 @@ describe('§7.1 — when it happened, on one shared clock', () => {
     expect(left(sunWin)).toBeGreaterThan(left(monWin));
   });
 
-  // §10 and P-1: outcome is carried by texture, never by hue. The class is the
-  // encoding; a future edit that swaps it for a colour has to delete this.
-  it('distinguishes outcomes by texture class, not colour', () => {
+  // ⚠️ ONE INK WEIGHT, AND SKIPPED WORK IS NOT DRAWN (user's call, 2026-09-05).
+  // Completion state was four different fills; for someone who schedules after
+  // doing and moves what they do not do it is near-constant, so the chart's
+  // strongest channel was carrying its least informative variable while the
+  // energy behind it had none. With one weight, drawing a skipped block would
+  // claim it happened — and this section is called "when it happened".
+  it('draws every block the same, and does not draw skipped work at all', () => {
     const s = new Schedule({ config: defaultConfig });
     const done = s.addFixed({ title: 'Done', startTime: at(0, 9), endTime: at(0, 10) });
     done.completion = 'done';
     const part = s.addFixed({ title: 'Part', startTime: at(0, 11), endTime: at(0, 12) });
     part.completion = 'partial';
-    const skip = s.addFixed({ title: 'Skip', startTime: at(0, 14), endTime: at(0, 15) });
+    const planned = s.addFixed({ title: 'Planned', startTime: at(0, 14), endTime: at(0, 15) });
+    void planned;
+    const skip = s.addFixed({ title: 'Skip', startTime: at(0, 16), endTime: at(0, 17) });
     skip.completion = 'skipped';
     persist(s);
 
     render(<App />);
     openReport();
 
-    const classes = [...rowBlocks(0)].map((b) => b.className);
-    expect(classes.some((c) => c.includes('is-done'))).toBe(true);
-    expect(classes.some((c) => c.includes('is-partial'))).toBe(true);
-    expect(classes.some((c) => c.includes('is-skipped'))).toBe(true);
-    for (const b of rowBlocks(0)) expect(b.style.color).toBe('');
+    const blocks = [...rowBlocks(0)];
+    expect(blocks).toHaveLength(3); // the skipped one is absent, not outlined
+    // No per-state class survives, and no inline colour was introduced.
+    for (const b of blocks) {
+      expect(b.className).toBe('rp-strip-block');
+      expect(b.style.color).toBe('');
+    }
+  });
+
+  // The background is the energy curve, in absolute load-hours — not scaled to
+  // the week's own worst day, which is what made the deleted day-shapes chart
+  // draw a punishing week and a gentle one identically.
+  it('shades the background by how much had been spent by that hour', () => {
+    const s = new Schedule({ config: defaultConfig });
+    s.addBucket({ label: 'Study', tags: ['study'], load: { mental: 2 } });
+    for (let h = 8; h < 13; h += 1) {
+      s.addFixed({ title: `AM${h}`, tags: ['study'], startTime: at(0, h), endTime: at(0, h + 1) });
+    }
+    persist(s);
+
+    render(<App />);
+    openReport();
+
+    const shades = [...document.querySelectorAll('.rp-strip')][0]
+      .querySelectorAll('.rp-strip-shade');
+    expect(shades.length).toBeGreaterThan(1);
+    // It gets darker as the morning goes on: the last band is heavier than the
+    // first, which is the whole claim the wash is making.
+    const op = (el) => parseFloat(el.style.opacity);
+    expect(op(shades[shades.length - 1])).toBeGreaterThan(op(shades[0]));
   });
 
   it('is readable without the picture', () => {
