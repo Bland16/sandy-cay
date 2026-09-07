@@ -6,7 +6,10 @@
 //               public identifier, not a secret, so it lives in localStorage.
 // Neither is a sync engine: push sends, pull reads. Nothing reconciles.
 import { useRef, useState } from 'react';
-import { addDays, toICS, parseICS, importEvents, toRRULE } from '../../core/index.js';
+import {
+  addDays, toICS, parseICS, importEvents, toRRULE,
+  planImport, applyImport, describeImport,
+} from '../../core/index.js';
 import {
   getAccessToken, listCalendars, fetchEvents, taskToGoogleEvent, insertEvent, clearRange,
   readClientId, writeClientId, isAppWrittenEvent,
@@ -51,6 +54,9 @@ export default function CalendarCard({ sched, weekStart, mutate, showToast }) {
   const [target, setTarget] = useState(''); // where Export → Google writes
   const [tagFilter, setTagFilter] = useState('');
   const [busy, setBusy] = useState('');
+  // A planned import waiting to be looked at, and the removals vetoed in it.
+  const [pending, setPending] = useState(null);
+  const [keep, setKeep] = useState([]);
 
   const saveClientId = (v) => {
     setClientId(v);
@@ -99,6 +105,46 @@ export default function CalendarCard({ sched, weekStart, mutate, showToast }) {
     return bits;
   };
 
+  /**
+   * Carry out a planned import.
+   *
+   * Everything goes through `applyImport`, so a re-import updates in place
+   * instead of laying a second copy on top of the first — the reported bug
+   * (design/CALENDAR-IMPORT.md §2.1).
+   */
+  const commit = (plan, extra, suffix, skipRemovals) => {
+    let res = null;
+    mutate((s) => { res = applyImport(s, plan, { skipRemovals }); });
+    const bits = [describeImport({ ...plan, remove: plan.remove.filter((r) => !skipRemovals.includes(r.id)) })];
+    if (res && res.kept) bits.push(`${res.kept} kept`);
+    showToast(`Imported ${suffix} · ${bits.join(' · ')}${extra.length ? ` · ${extra.join(' · ')}` : ''}`);
+    setPending(null);
+    setKeep([]);
+  };
+
+  /**
+   * Show the plan before it lands — but only when it would REMOVE something.
+   *
+   * ⚠️ CI-4 asked for "a list remove, like with clear day". `ClearDayPanel`'s
+   * contract is stricter than that: commit stays disabled until EVERY row has
+   * been resolved, because "what the scope buys you is the obligation to look".
+   * That is right for a one-off destructive gesture and wrong for a weekly class
+   * refresh, which would make you re-resolve the same rows every Monday until
+   * you learned to click through them without reading — which is how the
+   * obligation-to-look contract dies of being applied too often.
+   *
+   * So: the plan is the default, and every removal is a row you can veto.
+   * Adding and updating need no confirmation — nothing is lost either way.
+   *
+   * ⚠️ AND NO PANEL AT ALL WHEN NOTHING WOULD BE REMOVED, so the common case
+   * (first import, or a week where nothing was cancelled) stays one click.
+   */
+  const review = (plan, extra, suffix) => {
+    if (!plan.remove.length) { commit(plan, extra, suffix, []); return; }
+    setKeep([]);
+    setPending({ plan, extra, suffix });
+  };
+
   // ---- .ics ---------------------------------------------------------------
   const exportIcs = () => {
     const parents = sched.tasks.filter((t) => !t.isOccurrence && !t.chunking);
@@ -114,7 +160,9 @@ export default function CalendarCard({ sched, weekStart, mutate, showToast }) {
       try {
         const events = parseICS(String(reader.result));
         const tags = tagFilter.split(',').map((s) => s.trim()).filter(Boolean);
-        const tasks = importEvents(events, { tagFilter: tags.length ? tags : null });
+        const tasks = importEvents(events, {
+          tagFilter: tags.length ? tags : null, importedAt: Date.now(),
+        });
         const extra = applySideEffects(tasks);
         if (!tasks.length) {
           // ⚠️ A file of nothing but all-day events is not an empty import — the
@@ -125,8 +173,19 @@ export default function CalendarCard({ sched, weekStart, mutate, showToast }) {
             : (tags.length ? `No events tagged ${tags.join(', ')}` : 'No events found in that file'));
           return;
         }
-        mutate((s) => { for (const t of tasks) s.tasks.push(t); });
-        showToast(`Imported ${tasks.length} of ${events.length} events${extra.length ? ` · ${extra.join(' · ')}` : ''}`);
+        // ⚠️ A FILE HAS NO CALENDAR AND NO WINDOW, so no removal is possible:
+        // `planImport` only removes uids belonging to the calendar it was handed,
+        // and `calendarId: null` matches only other file imports. That is
+        // deliberate — a file you were handed says nothing about what your week
+        // should no longer contain. Re-importing the SAME file still reconciles
+        // rather than duplicating, which is the half that was broken.
+        review(
+          planImport(sched.tasks.map((t) => t.toJSON()), tasks, {
+            calendarId: null, seenUids: events.map((ev) => ev.uid),
+          }),
+          extra,
+          `of ${events.length} events`,
+        );
       } catch {
         showToast("That file didn't parse as a calendar");
       }
@@ -203,7 +262,13 @@ export default function CalendarCard({ sched, weekStart, mutate, showToast }) {
         const cal = cals.find((c) => c.id === id);
         const evs = await fetchEvents(token, id, from, to);
         // The calendar's own name is the honest source tag: "this is my Work calendar".
-        events = events.concat(evs.map((e) => ({ ...e, _source: cal ? cal.name.toLowerCase() : '' })));
+        events = events.concat(evs.map((e) => ({
+          ...e,
+          _source: cal ? cal.name.toLowerCase() : '',
+          // Which calendar it came from, so provenance and the per-calendar
+          // removal scope both have something true to key on.
+          _calendarId: id,
+        })));
       }
       // ⚠️ ONE EVENT AT A TIME because each carries its own `_source` tag, so the
       // side-effect arrays come back per-call and have to be accumulated rather
@@ -213,19 +278,45 @@ export default function CalendarCard({ sched, weekStart, mutate, showToast }) {
       const dropped = [];
       const refused = [];
       for (const e of events) {
-        const got = importEvents([e], { tagFilter: tags.length ? tags : null, sourceTags: e._source ? [e._source] : [] });
+        const got = importEvents([e], {
+          tagFilter: tags.length ? tags : null,
+          sourceTags: e._source ? [e._source] : [],
+          calendarId: e._calendarId,
+          importedAt: Date.now(),
+        });
         tasks.push(...got);
         notes.push(...(got.dayNotes || []));
         dropped.push(...(got.dropped || []));
         refused.push(...(got.refused || []));
       }
       const extra = applySideEffects({ dayNotes: notes, dropped, refused });
-      if (!tasks.length) {
+      // ⚠️ ONE PLAN PER CALENDAR, not one across all of them. Removal is scoped
+      // to "things I imported from THIS calendar that this calendar no longer
+      // has" — merging the pulls would let a tick in Class Schedule delete an
+      // import from Work.
+      const plans = picked.map((id) => planImport(
+        sched.tasks.map((t) => t.toJSON()),
+        tasks.filter((t) => t.source && t.source.calendarId === id),
+        {
+          calendarId: id,
+          // CI-5: every uid FETCHED from this calendar, before the tag filter.
+          seenUids: events.filter((e) => e._calendarId === id).map((e) => e.uid),
+          from,
+          to,
+        },
+      ));
+      const merged = {
+        create: plans.flatMap((p) => p.create),
+        update: plans.flatMap((p) => p.update),
+        remove: plans.flatMap((p) => p.remove),
+        untouched: plans.flatMap((p) => p.untouched),
+        decisions: plans.flatMap((p) => p.decisions),
+      };
+      if (!merged.create.length && !merged.update.length && !merged.remove.length) {
         showToast(extra.length ? `No timed events — ${extra.join(' · ')}` : 'Nothing matched in that week');
         return;
       }
-      mutate((s) => { for (const t of tasks) s.tasks.push(t); });
-      showToast(`Imported ${tasks.length} of ${events.length} events from Google${extra.length ? ` · ${extra.join(' · ')}` : ''}`);
+      review(merged, extra, `of ${events.length} events`);
     } catch (err) {
       showToast(err.message);
     } finally { setBusy(''); }
@@ -245,6 +336,50 @@ export default function CalendarCard({ sched, weekStart, mutate, showToast }) {
         </button>
         <input ref={fileRef} type="file" accept=".ics,text/calendar" style={{ display: 'none' }} onChange={importIcs} />
       </div>
+
+      {pending && (
+        <div className="importreview" role="group" aria-label="Review this import">
+          <p style={{ margin: '10px 0 4px' }}>
+            <b>{pending.plan.remove.length}</b>
+            {pending.plan.remove.length === 1 ? ' thing is' : ' things are'} no longer in that
+            calendar. Untick anything you want to keep.
+          </p>
+          <div className="callist">
+            {pending.plan.remove.map((r) => {
+              const on = !keep.includes(r.id);
+              return (
+                <label key={r.id} className={`calrow${on ? ' on' : ''}`}>
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    onChange={() => setKeep((k) => (on ? [...k, r.id] : k.filter((x) => x !== r.id)))}
+                  />
+                  <span className="calname" title={r.title}>{r.title}</span>
+                  <span className="calmeta">remove</span>
+                </label>
+              );
+            })}
+          </div>
+          {/* Says what ELSE the plan does, so the list is not mistaken for the
+              whole of it — the panel exists for removals, but the import is
+              also adding and updating. */}
+          <p className="insight" style={{ opacity: 0.75 }}>
+            {pending.plan.create.length} to add · {pending.plan.update.length} to update ·
+            {' '}{pending.plan.remove.length - keep.length} to remove
+          </p>
+          <div className="chest">
+            <button
+              className="btn2"
+              onClick={() => commit(pending.plan, pending.extra, pending.suffix, keep)}
+            >
+              Apply
+            </button>
+            <button className="btn2 ghost" onClick={() => { setPending(null); setKeep([]); }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="zonewin" style={{ marginTop: 10 }}>
         <span>only tags:</span>

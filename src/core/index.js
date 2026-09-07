@@ -54,7 +54,7 @@ export {
 export { energyBudget, energyCalibration, learnedCapacity, capacityPrior, arrivalDepletion, arrivalDepletionFor, energyTrajectory, reserveAt, dipIfPlaced, loadForTask, normalizeLoad, spendRestore, LOAD_AXES } from './energy.js';
 export {
   toICS, parseICS, importEvents, eventToTask, deriveTags,
-  toRRULE, fromRRULE, toICSDate, fromICSDate, eventToDayNote,
+  toRRULE, fromRRULE, toICSDate, fromICSDate, eventToDayNote, isStoreEvent,
 } from './ical.js';
 export {
   driftCheck,
@@ -64,6 +64,7 @@ export {
   overpackCheck,
   durationFitSuggestion,
 } from './detectors.js';
+export { planImport, mergeImported, applyImport, describeImport } from './importPlan.js';
 export { score, normalizeWeights } from './scoring.js';
 export { findBestSlot, placeTask, dayWindowBounds, intervalsOf } from './placement.js';
 export { resetIds } from './ids.js';

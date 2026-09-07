@@ -1,19 +1,22 @@
 # Calendar import — provenance, and the door that has none
 
-**Session 11, 2026-09-07. STATUS: §2.4 and §2.5 FIXED and tested. §2.1–2.3 and
-§2.6-adjacent work specced, not built.**
+**Session 11, 2026-09-07. STATUS: §2.1–§2.7 all FIXED and tested (1266 green).**
 
-Read §4 Tier 3 for exactly what shipped. In short: the two doors can no longer
-corrupt the store calendar, but **the reported bug (§2.1) is still open** — an
-import still appends blindly, because fixing it properly needs the provenance
-field in Tier 1.
+Two things are deliberately NOT done and are named as such: retiring
+`taskToGoogleEvent` and the bulk-CREATE guard (§4 Tier 3, items 4–5).
+
+⚠️ **ONE THING NEEDS A REAL BROWSER before this can be called finished** — the
+`singleEvents=false` window question in §2.7. Everything else was proven by
+execution.
 
 Reported by the user: *"there is a bug with loading from the calender where it
 doesn't clear out current tasks and the resultant schedule is weird"*.
 
-That is real (§2.1). Chasing it found five more, one of which destroys the store
-calendar (§2.5). Everything here was verified by reading the call sites and, where
-it is stated as proven, by running it.
+That is real (§2.1). Chasing it found six more. One destroys the store calendar
+(§2.5); one meant **recurring events never imported at all** (§2.7), which is
+probably the larger half of what the report was actually describing. Everything
+here was verified by reading the call sites and, where it is stated as proven, by
+running it.
 
 ---
 
@@ -182,6 +185,42 @@ The full path:
 Two doors writing two encodings into one calendar, and the older one wins by
 deleting first.
 
+### 2.7 ⚠️ Recurring Google events imported as NOTHING
+
+Found while designing the planner, by asking what a uid means for a repeating
+class. It is the most consequential of the import bugs, and the most invisible.
+
+`fetchEvents` (`google.js:219`) asked for `singleEvents: 'true'`. Expanded, a
+weekly class comes back as one event **per instance**, and Google stamps
+`recurringEventId` on every one of them. `normalizeGoogleEvent` maps that to
+`recurrenceId` (`google.js:213`), and `importEvents` opens with:
+
+```js
+if (e.recurrenceId) continue; // overrides ride with their parent; skip for now
+```
+
+That line is correct for `.ics`, where `RECURRENCE-ID` appears **only** on an
+override VEVENT. Google's `recurringEventId` is on **every** instance of a series.
+Two fields with nearly the same name and opposite scope.
+
+**Measured: a weekly class in, zero tasks out.** So "Import ← Class Schedule"
+brought in nothing but one-off events, silently, and reported success — which is
+very likely the whole of the "pretty inaccurate" experience, since a term's
+timetable is almost entirely recurring.
+
+Fixed by asking for `singleEvents: 'false'`, so a series arrives as one event
+carrying its `RRULE` — the shape `importEvents` and `fromRRULE` already handle,
+and the shape the `.ics` path always delivered. Genuine overrides still carry
+`recurringEventId` and are still skipped, which is what that line was for.
+`orderBy: 'startTime'` had to go: Google rejects it unless `singleEvents=true`.
+
+⚠️ **THIS NEEDS ONE REAL-BROWSER CHECK.** With `singleEvents=false`, how Google
+applies `timeMin`/`timeMax` to a recurring master is not something the fake API in
+the tests can settle. The check: **a class that started in August and runs all
+term must still come back when the pulled window is a week in September.** If it
+does not, the window has to be widened for the recurring pass, or the series
+fetched separately.
+
 ### 2.6 Import silently discards two of its own return values
 
 `importEvents` computes day notes for all-day events (`ical.js:415` — added
@@ -209,7 +248,7 @@ them silently is *"data loss they have no way to notice"*.
 
 ## 4. The fix
 
-### Tier 1 — provenance
+### Tier 1 — provenance ✅ SHIPPED
 
 Add to `Task`:
 
@@ -228,7 +267,7 @@ source = { uid, calendarId, importedAt } | null
   bypasses the whitelist, so it survives sync.
 - `eventToTask` stops discarding the uid it already receives.
 
-### Tier 2 — make import reconcile
+### Tier 2 — make import reconcile ✅ SHIPPED
 
 New `core/importPlan.js`, mirroring `syncPlan.js` in shape and testability:
 
@@ -304,14 +343,25 @@ must stamp it and missing one is invisible.
 
 ## 5. Still open
 
-- **The removal panel's rows.** `ClearDayPanel`'s contract is that commit stays
-  disabled until every row is resolved — *"what the scope buys you is the obligation
-  to look"*. Does the import panel inherit that, or does it default to the plan and
-  let you veto rows? The first is safer; the second is what a weekly class-schedule
-  refresh actually wants.
-- **What `update` does to lived data.** CI-1 says the calendar's content wins, but
-  `satisfaction`, `completion`, `history` and `occurrenceData` are not the
-  calendar's to have an opinion about. Proposal: incoming wins for
-  title / time / tags / recurrence; lived data is preserved from the local task.
-  This needs confirming — it is the one place CI-1 should probably not be read
-  literally.
+- ⚠️ **§2.7's window question — the one open item, and it needs a real browser.**
+  With `singleEvents=false`, a class that started in August and runs all term must
+  still come back when the pulled window is a week in September. If it does not,
+  recurring imports are still broken and the window needs widening for that pass.
+
+**CI-7 (decided while building, 2026-09-07): the removal panel defaults to the
+plan, with a veto per row.** `ClearDayPanel` disables commit until every row is
+resolved — right for a one-off destructive gesture, wrong here. A weekly class
+refresh would re-ask the same rows every Monday until you learned to click through
+without reading, which is how the obligation-to-look contract dies of being applied
+too often. Adding and updating are not confirmed at all (nothing is lost either
+way), and **no panel appears when the plan removes nothing**, so the common case
+stays one click.
+
+**CI-8 (decided while building): the calendar wins about the appointment, not about
+your life.** CI-1 read literally would make every re-import erase `satisfaction`,
+`completion`, `history`, `occurrenceData`, `energyAt` and `dayFillAtCompletion` —
+things a calendar event has never heard of, and with them every training sample the
+model had for that class. So incoming wins for title / times / tags / recurrence;
+lived data is preserved from the local task, along with its `id` (a sitting's
+`parentId`, a touchpoint's `routineId` and the sync's own record all address a task
+by id, and a fresh one would cut all three on every re-import).

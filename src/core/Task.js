@@ -106,6 +106,34 @@ export class Task {
     // stretched wash has nowhere else to go.
     this.routineId = data.routineId ?? null;
     this.stepIndex = Number.isInteger(data.stepIndex) ? data.stepIndex : null;
+
+    // ════════════════════════════════════════════════════════════════════════
+    // WHERE THIS TASK CAME FROM, if it came from somewhere
+    // ════════════════════════════════════════════════════════════════════════
+    //
+    // `{ uid, calendarId, importedAt }` for a task built from a calendar event
+    // you did not write; `null` for anything you made here. See
+    // design/CALENDAR-IMPORT.md §2.2 — its absence was the root cause of the
+    // whole import family of bugs.
+    //
+    // BOTH import paths already receive the identifier and threw it away:
+    // `parseICS` reads `UID` and `normalizeGoogleEvent` sets `uid: ev.id`. With
+    // nothing recorded, a re-import minted a fresh task id every time, so
+    // deduping was not unimplemented — it was INEXPRESSIBLE. So was "clear what
+    // I imported last time", because nothing separated an imported task from one
+    // you typed.
+    //
+    // ⚠️ IT IS NOT IN `UPDATE_WHITELIST` (Schedule.js). Provenance is a fact
+    // about origin, not a field a user edits. The adopt path uses
+    // `upsertTaskFromJSON`, which bypasses the whitelist, so it still survives a
+    // sync round trip.
+    this.source = data.source && data.source.uid
+      ? {
+        uid: String(data.source.uid),
+        calendarId: data.source.calendarId ? String(data.source.calendarId) : null,
+        importedAt: data.source.importedAt ?? null,
+      }
+      : null;
   }
 
   // ---- geometry ----------------------------------------------------------
@@ -263,6 +291,19 @@ export class Task {
       routineId: this.routineId,
       stepIndex: this.stepIndex,
       occurrenceDate: this.occurrenceDate,
+      // ⚠️ OMITTED ENTIRELY WHEN NULL, and that is not a style choice.
+      //
+      // `taskHash` (syncPlan.js) is FNV-1a over `JSON.stringify(toJSON())`, and
+      // the sync uses it to decide whether a task changed since it was last
+      // pushed. A new key present on every task — even as `source: null` —
+      // changes every existing task's hash, so the first sync after this deploy
+      // would read the WHOLE TERM as locally modified and re-push all of it:
+      // hundreds of writes, Google's quota, and every one of them a chance for
+      // the conflict rule to fire on a task nobody touched.
+      //
+      // Absent, a hand-authored task serialises byte-identically to how it did
+      // before this field existed, and the deploy is invisible to the sync.
+      ...(this.source ? { source: { ...this.source } } : {}),
     };
   }
 

@@ -215,13 +215,48 @@ export function normalizeGoogleEvent(ev) {
   };
 }
 
-/** Pull a window of events from one calendar (singleEvents: recurrence expanded). */
+/**
+ * Pull a window of events from one calendar, series UNEXPANDED.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * ⚠️ THIS ASKED FOR `singleEvents: 'true'` AND IMPORTED ZERO RECURRING EVENTS
+ * ════════════════════════════════════════════════════════════════════════════
+ *
+ * Expanded, a weekly class comes back as one event PER INSTANCE, and Google puts
+ * `recurringEventId` on every one of them. `normalizeGoogleEvent` maps that to
+ * `recurrenceId`, and `importEvents` opens with:
+ *
+ *     if (e.recurrenceId) continue; // overrides ride with their parent
+ *
+ * That line is right for `.ics`, where `RECURRENCE-ID` appears ONLY on an
+ * override VEVENT. Google's `recurringEventId` is on every instance of a series.
+ * Two fields with nearly the same name and completely different meanings — so
+ * every instance of every repeating event was skipped, and "Import ← Class
+ * Schedule" silently brought in nothing but your one-off events. Measured: a
+ * weekly class in, zero tasks out.
+ *
+ * Unexpanded, a series arrives as ONE event carrying its `RRULE`, which is
+ * exactly the shape `importEvents` and `fromRRULE` already handle — the same
+ * shape the `.ics` path has always delivered — and it becomes one recurring task
+ * instead of nothing. Genuine overrides still carry `recurringEventId` and are
+ * still skipped by that line, which is what it was written for.
+ *
+ * `listRawEvents` below already passes `singleEvents: 'false'` for the same
+ * underlying reason: a series is one thing, not N things.
+ *
+ * ⚠️ NEEDS ONE REAL-BROWSER CHECK. With `singleEvents=false`, how Google applies
+ * `timeMin`/`timeMax` to a recurring master is not something the fake API in the
+ * tests can settle. A class that started in August and runs all term must still
+ * come back when the window is a week in September. See design/CALENDAR-IMPORT.md
+ * §2.7 for the check to run.
+ *
+ * `orderBy: 'startTime'` is gone: Google rejects it unless `singleEvents=true`.
+ */
 export async function fetchEvents(token, calendarId, from, to) {
   const q = new URLSearchParams({
     timeMin: rfc3339(from),
     timeMax: rfc3339(to),
-    singleEvents: 'true',
-    orderBy: 'startTime',
+    singleEvents: 'false',
     maxResults: '250',
   });
   const out = [];

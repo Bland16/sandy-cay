@@ -44,6 +44,7 @@ export function isStoreEvent(event) {
   const x = (event && event.x) || {};
   return x[`${STORE_NS}.id`] !== undefined || x[`${STORE_NS}.kind`] !== undefined;
 }
+
 const BYDAY_TO_DAY = Object.fromEntries(Object.entries(DAY_TO_BYDAY).map(([k, v]) => [v, k]));
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -392,7 +393,7 @@ export function deriveTags(event, { sourceTags = [] } = {}) {
  * Event record → Task. Anything the calendar couldn't carry gets an honest
  * default: an event with a fixed time is a `fixed` anchor.
  */
-export function eventToTask(event, { sourceTags = [] } = {}) {
+export function eventToTask(event, { sourceTags = [], calendarId = null, importedAt = null } = {}) {
   const { tags, title } = deriveTags(event, { sourceTags });
   const start = event.start;
   const end = event.end && event.end > start ? event.end : addMinutes(start, 60);
@@ -408,6 +409,12 @@ export function eventToTask(event, { sourceTags = [] } = {}) {
     endTime: end,
     deadline: x.deadline ? fromICSDate(x.deadline) : null,
     placedBy: 'user', // it came from a real calendar; don't let re-optimize wander it
+    // ⚠️ THE UID WAS ALREADY HERE AND WAS THROWN AWAY. `parseICS` reads `UID`
+    // (line ~330) and `normalizeGoogleEvent` sets `uid: ev.id`. Recording it is
+    // what makes a re-import reconcilable instead of duplicating, and what lets
+    // a removal be scoped to "things I imported from this calendar" rather than
+    // "everything in the week". design/CALENDAR-IMPORT.md §2.2.
+    ...(event.uid ? { source: { uid: String(event.uid), calendarId, importedAt } } : {}),
   });
   const rec = fromRRULE(event.rrule, start, end);
   if (rec) t.recurrence = rec;
@@ -419,7 +426,10 @@ export function eventToTask(event, { sourceTags = [] } = {}) {
  * @param {object} opts.tagFilter — only keep events carrying one of these tags
  *   ([] / null = keep everything).
  */
-export function importEvents(events, { sourceTags = [], tagFilter = null, from = null, to = null } = {}) {
+export function importEvents(events, {
+  sourceTags = [], tagFilter = null, from = null, to = null,
+  calendarId = null, importedAt = null,
+} = {}) {
   const wanted = (tagFilter || []).map((s) => s.toLowerCase()).filter(Boolean);
   const out = [];
   // Patterns we could not read. The event still imports as a one-off — that is
@@ -461,7 +471,7 @@ export function importEvents(events, { sourceTags = [], tagFilter = null, from =
     // 5am-anchored grid, drew in the PREVIOUS day's column and sterilised it.
     if (e.allDay) { notes.push(eventToDayNote(e, { sourceTags })); continue; }
 
-    const task = eventToTask(e, { sourceTags });
+    const task = eventToTask(e, { sourceTags, calendarId, importedAt });
     if (e.rrule && !task.recurrence) {
       dropped.push({ title: task.title, rule: unreadableRRULE(e.rrule) });
     }
