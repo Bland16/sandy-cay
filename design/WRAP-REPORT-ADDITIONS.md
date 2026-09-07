@@ -110,8 +110,22 @@ Moves and skips only ever appear beside the sessions that ran. §7.1 forbids
 listing what you did not do, and "3 skipped" as a standalone finding is that
 list with a number instead of names.
 
-**Still open:** A10 (routines: elapsed vs attention), and Tier 5's remaining
-form work. A35/A36 are designed, not built.
+**A10 is now built.** What a routine cost your evening against what it cost your
+attention — `spanMin` and `attentionMin` off the same frozen program, so nothing
+is estimated and nothing needs gating. The gap between them IS the waiting, and
+no other surface can state it: the grid shows touchpoints and a lot of space
+between them, and the space is the point. ⚠️ P-1 — a big gap means the routine
+is WORKING, so the table states two durations and draws no conclusion.
+Deliberately no ratio and no "efficiency".
+
+**The empty-week page is fixed.** `isEmpty` now means "nothing scheduled AND
+nothing owed". A week where a commitment was set and the grid laid out none of
+it gets its own sentence — "Nothing was scheduled this week, and 4h of what you
+had set aside was never laid out" — with the packer as the subject. The quiet
+page is unchanged for a week that is genuinely empty.
+
+**Still open:** Tier 5's remaining form work (A22 as a frame rather than a dashed
+line, A30, A31, A33) and the Tier 4 copy pass. A35/A36 are designed, not built.
 
 **A12 and A13 are declined as specced**, with reasons:
 
@@ -138,10 +152,10 @@ nothing to fix."* The commitment is exactly what there was to report, and
 "nothing to fix" is wrong in the one direction that matters — the packer found
 no room, which is a fact about the plan and not about the person.
 
-Not changed unilaterally: the empty-week page is a deliberate P-1 decision and
-its wording was chosen carefully. The fix is probably to let `isEmpty` mean
-"nothing scheduled AND nothing owed", and give the owed-but-unplaced week its
-own sentence. **Product call.**
+**RESOLVED 2026-09-07 (user's call): built exactly as proposed.** `isEmpty` is
+`real.length === 0 && owedMin === 0`, and `owedButUnplaced` carries the hours so
+that week gets its own sentence. The quiet page is untouched for a week that is
+genuinely empty.
 
 ---
 

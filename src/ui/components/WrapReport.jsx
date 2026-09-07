@@ -446,6 +446,19 @@ export default function WrapReport({ sched, weekStart, version, onBack, onOpenTa
                 </div>
               )}
 
+              {/* ⚠️ A WEEK THAT OWED HOURS AND LAID OUT NONE used to render the
+                  empty-week page — "nothing to report and nothing to fix" —
+                  which is false in the one direction that matters. It gets its
+                  own sentence now, and the subject is the packer: the hours
+                  were never laid out, which is a fact about the plan. */}
+              {r.owedButUnplaced > 0 && (
+                <p className="rp-line">
+                  Nothing was scheduled this week, and{' '}
+                  <b>{fmtDur(r.owedButUnplaced)}</b> of what you had set aside
+                  was never laid out.
+                </p>
+              )}
+
               {/* What the week owed, and what it held (A2).
                   ⚠️ A LEDGER, NOT A SHORTFALL. `owedMin` is a number the user
                   typed, which makes it the only denominator in the report that
@@ -506,6 +519,44 @@ export default function WrapReport({ sched, weekStart, version, onBack, onOpenTa
                   <b>{stats.load.warnings}</b> of this week’s{' '}
                   {r.taskCount} {r.taskCount === 1 ? 'thing' : 'things'}.
                 </p>
+              )}
+
+              {/* A10 — what a routine cost your evening, and what it cost your
+                  attention. The gap between the two IS the waiting, and it is
+                  the only number that makes a routine feel like it earned its
+                  place: the grid shows three touchpoints and a lot of space
+                  between them, and the space is the point.
+
+                  ⚠️ P-1: THE LONG ONE IS NOT THE BAD ONE. A big gap means the
+                  routine is working — the machine ran while you did something
+                  else. So this states two durations and draws no conclusion.
+                  Deliberately no ratio and no "efficiency". */}
+              {stats.routines && (
+                <div className="rp-sub">
+                  <h3>What your routines actually cost</h3>
+                  <table className="rp-table">
+                    <thead>
+                      <tr><th>routine</th><th>start to finish</th><th>your attention</th><th>waiting</th></tr>
+                    </thead>
+                    <tbody>
+                      {stats.routines.map((rt) => (
+                        <tr key={rt.id}>
+                          <td>{rt.label}</td>
+                          <td>{fmtDur(rt.spanMin)}</td>
+                          <td>{fmtDur(rt.attentionMin)}</td>
+                          <td>
+                            {rt.waitingMin > 0
+                              ? fmtDur(rt.waitingMin)
+                              : <span className="rp-dim">—</span>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p className="rp-dim">
+                    Waiting is time the routine was running and you were not in it.
+                  </p>
+                </div>
               )}
 
               {/* Breathing room (§7.1 "break compression"). Restored verbatim

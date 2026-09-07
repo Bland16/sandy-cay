@@ -12,7 +12,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup, screen, fireEvent } from '@testing-library/react';
 import App from '../src/App.jsx';
-import { Schedule, Task, DayNote, defaultConfig, weekStart as weekStartOf, addDays, dateKey } from '../src/core/index.js';
+import { Schedule, Task, DayNote, RoutineInstance, defaultConfig, weekStart as weekStartOf, addDays, dateKey } from '../src/core/index.js';
 import { STORAGE_KEY } from '../src/ui/useEngine.js';
 
 beforeEach(() => {
@@ -716,5 +716,102 @@ describe('§7.1 — the pattern, and the week', () => {
     const s = new Schedule({ config: defaultConfig });
     s.tasks.push(new Task({ title: 'One-off', type: 'fixed', startTime: at(0, 9), endTime: at(0, 10) }));
     expect(buildWrapReport(s, ws()).stats.pattern).toBeNull();
+  });
+});
+
+// A10 — what a routine cost your evening, against what it cost your attention.
+// The gap between the two IS the waiting, and no other surface can state it:
+// the grid shows touchpoints and a lot of space between them, and the space is
+// the point. Both numbers come from the same frozen program, so nothing here is
+// estimated and nothing needs gating.
+describe('§7.1 — what routines actually cost', () => {
+  const laundry = (s) => {
+    // The run is built directly rather than through the authoring flow: an
+    // active load, a passive wait, an active fold. That is the shape the report
+    // reads — `steps` is the frozen program, and both numbers come from it.
+    s.routineInstances.push(new RoutineInstance({
+      label: 'Laundry',
+      startTime: at(0, 18),
+      travelMin: 0,
+      steps: [
+        { kind: 'active', label: 'load', durationMin: 10 },
+        { kind: 'passive', label: 'wash', durationMin: 115 },
+        { kind: 'active', label: 'fold', durationMin: 15 },
+      ],
+    }));
+    return s;
+  };
+
+  it('states elapsed time and attention as two separate facts', async () => {
+    const { buildWrapReport } = await import('../src/ui/report.js');
+    const s = laundry(new Schedule({ config: defaultConfig }));
+    const rows = buildWrapReport(s, ws()).stats.routines;
+
+    expect(rows).toBeTruthy();
+    expect(rows[0].label).toBe('Laundry');
+    expect(rows[0].spanMin).toBe(140); // 10 + 115 + 15
+    expect(rows[0].attentionMin).toBe(25); // the active steps only
+    expect(rows[0].waitingMin).toBe(115); // the difference IS the waiting
+  });
+
+  // ⚠️ P-1. A big gap means the routine is WORKING — the machine ran while you
+  // did something else. No ratio, no "efficiency", no verdict of any kind.
+  it('draws no conclusion from the gap', () => {
+    const s = laundry(new Schedule({ config: defaultConfig }));
+    s.tasks.push(new Task({ title: 'A', type: 'fixed', startTime: at(0, 9), endTime: at(0, 10) }));
+    persist(s);
+
+    render(<App />);
+    openReport();
+
+    const sheet = document.querySelector('.rp-sheet').textContent;
+    expect(sheet).toMatch(/what your routines actually cost/i);
+    expect(sheet).not.toMatch(/efficien|wasted|only \d+ minutes of/i);
+    expect(sheet).not.toMatch(/\d+% of the routine/i);
+  });
+
+  it('says nothing when no routine ran this week', async () => {
+    const { buildWrapReport } = await import('../src/ui/report.js');
+    const s = new Schedule({ config: defaultConfig });
+    expect(buildWrapReport(s, ws()).stats.routines).toBeNull();
+  });
+});
+
+// The empty-week page is right for a week that is genuinely empty, and was
+// swallowing a week that owed hours and laid out none of them.
+describe('§7.1 — a week that owed hours is not an empty week', () => {
+  const owing = () => {
+    const s = new Schedule({ config: defaultConfig });
+    s.addCommitment({
+      title: 'Maths', tags: ['study'], amountMinPerWeek: 240,
+      from: dateKey(addDays(ws(), -7)), until: dateKey(addDays(ws(), 60)),
+    });
+    return s;
+  };
+
+  it('does not call it empty, and does not say there is nothing to report', async () => {
+    const { buildWrapReport } = await import('../src/ui/report.js');
+    const r = buildWrapReport(owing(), ws());
+    expect(r.isEmpty).toBe(false);
+    expect(r.owedButUnplaced).toBe(240);
+  });
+
+  it('says what was never laid out, with the packer as the subject', () => {
+    persist(owing());
+    render(<App />);
+    openReport();
+
+    const sheet = document.querySelector('.rp-sheet').textContent;
+    expect(sheet).toMatch(/never laid out/i);
+    expect(sheet).not.toMatch(/nothing to report and nothing to fix/i);
+    // Still no accusation: the hours were not laid out, not "missed".
+    expect(sheet).not.toMatch(/you (missed|failed|didn't do)/i);
+  });
+
+  it('still gives a genuinely empty week the quiet page it had', async () => {
+    const { buildWrapReport } = await import('../src/ui/report.js');
+    const r = buildWrapReport(new Schedule({ config: defaultConfig }), ws());
+    expect(r.isEmpty).toBe(true);
+    expect(r.owedButUnplaced).toBe(0);
   });
 });

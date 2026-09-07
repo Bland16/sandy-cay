@@ -752,9 +752,63 @@ function buildPatternDiff(sched, ws) {
   };
 }
 
+/**
+ * What a routine cost your evening, and what it cost your attention (A10).
+ *
+ * ⚠️ THE DENOMINATOR IS THE RUN'S OWN ELAPSED SPAN, and both numbers come from
+ * the same frozen program — `spanMin` counts every step plus travel,
+ * `attentionMin` counts the ACTIVE steps plus travel. Nothing is estimated and
+ * nothing is invented, so this is the rare report line that needs no gating.
+ *
+ * It is also the only number that makes a routine feel like it earned its
+ * place. "Laundry took 2h20 of your evening and 25 minutes of your attention"
+ * is a fact no other surface in the app can state: the grid shows three
+ * touchpoints and a lot of empty space between them, and the empty space is
+ * exactly the point — a passive wait is not a task, and the difference between
+ * the two numbers IS the waiting.
+ *
+ * ⚠️ P-1: the long one is not the bad one. A routine with a big gap between
+ * span and attention is working WELL — the wash cycle ran while you did
+ * something else. So this states two durations and draws no conclusion; there
+ * is deliberately no "efficiency" and no ratio.
+ */
+function buildRoutines(sched, ws) {
+  const instances = sched.routineInstances || [];
+  if (instances.length === 0) return null;
+  const first = ws.getTime();
+  const last = addDays(ws, 7).getTime();
+  const rows = [];
+  for (const inst of instances) {
+    // A run belongs to the week its touchpoints sit in — `startTime` alone can
+    // be null on a run whose program was authored but never placed.
+    const chain = sched.touchpointsFor(inst.id);
+    const anchor2 = chain.length > 0 ? chain[0].startTime : inst.startTime;
+    if (!anchor2) continue;
+    const t = anchor2.getTime();
+    if (t < first || t >= last) continue;
+    const spanMin = inst.spanMin;
+    const attentionMin = inst.attentionMin;
+    if (!(spanMin > 0)) continue;
+    rows.push({
+      id: inst.id,
+      label: inst.label,
+      spanMin,
+      attentionMin,
+      // The waiting is the difference, and it is the interesting half.
+      waitingMin: Math.max(0, spanMin - attentionMin),
+      steps: chain.length,
+    });
+  }
+  return rows.length > 0 ? rows.sort((a, b) => b.spanMin - a.spanMin) : null;
+}
+
 export function buildWrapReport(sched, weekStartDate) {
   const ws = weekStartOf(weekStartDate);
   const weekTasks = sched.getTasksForWeek(ws);
+  // Built once: the ledger feeds both the section and the "empty" test below,
+  // and a week that owes hours is not an empty week.
+  const commitments = buildCommitments(sched, ws);
+  const owedMin = (commitments || []).reduce((n, c) => n + c.remainingMin, 0);
   const weekLoad = getWeekLoad(sched, ws);
 
   const accomplished = buildAccomplished(sched, ws, weekTasks);
@@ -779,17 +833,32 @@ export function buildWrapReport(sched, weekStartDate) {
       // What the week held that was not a task (A1 / DAY-NOTES D-4).
       context: buildWeekContext(sched, ws),
       // What the week owed, against a number the user typed (A2).
-      commitments: buildCommitments(sched, ws),
+      commitments,
       // WHEN it happened — seven rows on one shared clock (A3).
       strips: buildDayStrips(sched, ws),
       // The pattern you set, against the week you ran (A9).
       pattern: buildPatternDiff(sched, ws),
+      // What a routine cost in elapsed time vs attention (A10).
+      routines: buildRoutines(sched, ws),
     },
     insight: buildInsight(sched),
     suggestions: buildSuggestions(sched, ws, weekLoad, weekTasks),
     // A week with nothing in it is a legitimate week, and it gets a page that
     // says so plainly instead of a grid of zeroes and NaNs.
-    isEmpty: real.length === 0,
+    // ⚠️ "EMPTY" MEANS NOTHING SCHEDULED *AND* NOTHING OWED.
+    //
+    // This was `real.length === 0` alone, so a week where a 4h commitment was
+    // set and the grid laid out none of it rendered the empty-week page:
+    // "Nothing was scheduled this week. A quiet week is a week. There's nothing
+    // to report and nothing to fix." Every clause of that is false in the one
+    // direction that matters — the commitment is exactly what there was to
+    // report, and the packer finding no room is a fact about the plan.
+    //
+    // The empty page itself is right and stays exactly as it was for a week
+    // that is genuinely empty; it just no longer swallows a week that owed
+    // something. `owedButUnplaced` gives that week its own sentence instead.
+    isEmpty: real.length === 0 && owedMin === 0,
+    owedButUnplaced: real.length === 0 && owedMin > 0 ? owedMin : 0,
     taskCount: real.length,
   };
 }
