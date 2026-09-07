@@ -146,14 +146,21 @@ function DayStrips({ strips }) {
               d.blocked ? 'blocked' : d.items.length === 0 ? 'nothing scheduled'
                 : `${fmtDur(d.scheduledMin)} across ${d.items.length} ${d.items.length === 1 ? 'block' : 'blocks'}`}`}
           >
-            {/* The day's OWN window, drawn inside the shared axis — which is how
-                a Sunday opening at 10:00 reads as shorter without needing its
-                own scale. The row is the denominator. */}
-            <span
-              className="rp-strip-window"
-              style={{ left: `${pc(d.winFrom)}%`, width: `${pc(d.winTo) - pc(d.winFrom)}%` }}
-            />
-            {/* The energy behind the day. Darker = more spent and not yet
+            {/* ⚠️ THE PALE OPEN-WINDOW BAND IS GONE (user's call, 2026-09-07).
+                It drew the day's own window as a filled band, which spent the
+                background — the one channel with room for a continuous quantity
+                — on a near-constant fact the grid already states, while the
+                energy behind the day had nowhere to go. "The background should
+                be a gradient based on levels of exaustion and it shouldn't only
+                be during day hours. This gives less information."
+
+                The wash below is now the only background, and it spans the whole
+                24 hours rather than being clipped to the window it used to sit
+                inside. The cost is real and was accepted: a Sunday that opens at
+                10:00 no longer reads as a shorter day at a glance. The scheduled
+                total at the end of each row still says so in words.
+
+                The energy behind the day. Darker = more spent and not yet
                 recovered by that hour, in fixed steps of load-hours — so a
                 punishing week shades darker than a gentle one instead of both
                 filling the same range, and a rest block visibly lightens what
@@ -195,7 +202,7 @@ function DayStrips({ strips }) {
           It briefly named three completion states while four rendered; the
           states are gone entirely now — see the builder for why. */}
       <p className="rp-dim rp-strip-key">
-        One clock across all seven days. The pale band is that day’s open window.
+        One clock across all seven days.
         {strips.anyShade && (
           <> The darker the background, the more you had spent by then — each
             step is {strips.shadeStep} load-hours not yet recovered.</>

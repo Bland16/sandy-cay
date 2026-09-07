@@ -53,7 +53,13 @@ function loadOf(schedule, item) {
 /** Recent rated tasks: the trailing `recentDays`, or the last `window`, whichever
  *  yields more (spec). Rated = a numeric satisfaction.overall. */
 function recentRated(schedule, now, cfg) {
-  const rated = schedule.tasks
+  // ⚠️ `ratedSamples()`, NOT `schedule.tasks`. A recurring session's rating lives
+  // in the parent's `occurrenceData`, never in `schedule.tasks` — so this pool
+  // silently excluded every routine the user has ever rated, and suggestion
+  // tuning ran on one-offs alone. Same class of bug as the duration-fit detector
+  // and `whatToDo`'s rest-boost; `ratedSamples()` is the one door that unifies
+  // both stores.
+  const rated = schedule.ratedSamples()
     .filter((t) => t.satisfaction && typeof t.satisfaction.overall === 'number')
     .sort((a, b) => b.startTime - a.startTime);
   const cutoff = addDays(dayStart(now), -cfg.recentDays).getTime();

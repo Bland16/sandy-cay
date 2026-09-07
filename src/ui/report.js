@@ -230,7 +230,26 @@ function buildSuggestions(sched, ws, weekLoad, weekTasks) {
   // 6K — duration fit, per tag. Qualitative by design: no time tracking.
   const tags = [...new Set(weekTasks.flatMap((t) => t.tags))].sort();
   for (const tag of tags) {
-    const fit = durationFitSuggestion(sched.tasks, tag);
+    // ⚠️ `ratedSamples()`, NOT `sched.tasks` — the third reader to get this
+    // wrong, and the one the user caught: "does this take routines into
+    // consideration because it is pretty inaccurate".
+    //
+    // It did not. A recurring session's rating lives in
+    // `parent.occurrenceData[date].satisfaction` (Schedule#rateOccurrence), and
+    // `sched.tasks` holds patterns and one-offs only — so EVERY routine session
+    // ever rated was invisible here. Measured: twelve weekly gym sessions, all
+    // rated "too long", produced no suggestion at all; the same detector over
+    // `ratedSamples()` returned 12 of 12.
+    //
+    // What the user actually saw was the other half of the same bug: with only
+    // one-offs in the pool the denominators were 3, 4 and 5, and the floor is
+    // `answered.length < 3` — so TWO complaints out of THREE cleared the 60%
+    // bar and got printed as a finding.
+    //
+    // `ratedSamples()` is the single door that already exists for exactly this,
+    // and its own header says why: "Two readers, one of them forgotten." There
+    // were four. See also `suggest.js` and `whatToDo.js`, fixed in the same pass.
+    const fit = durationFitSuggestion(sched.ratedSamples(), tag);
     if (fit.suggest) {
       out.push({
         id: `fit:${tag}`,
@@ -614,10 +633,26 @@ function buildDayStrips(sched, ws) {
     // ⚠️ AND NOT AGAINST CAPACITY. `capacityPrior` is legitimate for scoring,
     // where the number is never shown; shading against it would render an
     // invented ceiling to the user, which is the P-2 line.
+    //
+    // ⚠️ THE WASH SPANS THE WHOLE DAY, NOT THE OPEN WINDOW (user's call,
+    // 2026-09-07: "it shouldn't only be during day hours. This gives less
+    // information"). It used to start at `winFrom` and stop at `winTo`, which
+    // clipped it to exactly the hours the axis deliberately stretches PAST — so
+    // a Saturday block at 01:00 and a Friday running to 23:30 sat on blank
+    // background, and the late night, which is the most interesting thing on the
+    // chart, was the one stretch with no shading at all.
+    //
+    // Worse than blank: when a task ran past `winTo` the walk advanced `prev`
+    // beyond it, so the final `prev < winTo` push never fired and the tail was
+    // dropped silently rather than drawn flat.
+    //
+    // 0 → 1440 now. The row is a whole day, and the wash is the only background
+    // it has.
     const { points } = energyTrajectory(sched, date);
     const depthOf = (r) => LOAD_AXES.reduce((n, a) => n + Math.max(0, -r[a]), 0);
     const shade = [];
-    let prev = winFrom;
+    const DAY_END = 24 * 60;
+    let prev = 0;
     let carried = 0;
     for (const pt of points) {
       const at = minsFrom(pt.at);
@@ -625,7 +660,7 @@ function buildDayStrips(sched, ws) {
       carried = depthOf(pt.reserve);
       prev = at;
     }
-    if (prev < winTo) shade.push({ from: prev, to: winTo, depth: carried });
+    if (prev < DAY_END) shade.push({ from: prev, to: DAY_END, depth: carried });
 
     days.push({
       dayIndex: i,

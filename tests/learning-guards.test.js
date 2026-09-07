@@ -4,7 +4,7 @@
 // Every case here is a defect that shipped. None of them threw, and none of
 // them was visible in the suite — they were all found by reading, which is why
 // each one gets a test that would have caught it.
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   Schedule, Task, Bucket, resetIds, getWeekLoad, weekStart as weekStartOf, addDays,
   humanLabel, isNarratable, MODEL_LAYOUT_VERSION, LearningModule,
@@ -290,7 +290,23 @@ describe('humanLabel — plain language, generated from the feature constants', 
 });
 
 describe('the energy term — how depleted you arrive (D-1, C3)', () => {
-  beforeEach(() => resetIds());
+  // ⚠️ THE CLOCK IS PINNED, and these cases were time-bombed without it.
+  //
+  // `MON()` is the week of 2026-09-09 — which BECAME the current week on
+  // 2026-09-07, at which point `from: at(0, 8)` was a moment in the past.
+  // Placement refuses the past, so both configurations were clamped to the same
+  // remaining slots, the energy term had nothing left to choose between, and
+  // the assertion failed on two identical numbers.
+  //
+  // Scoped to this describe on purpose: fake timers and the `await import()`
+  // calls elsewhere in this file do not mix well. Same fix as
+  // placement-range-floor.test.js, which went off two days earlier.
+  beforeEach(() => {
+    resetIds();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 8, 7, 6, 0, 0)); // the fixture Monday, 06:00
+  });
+  afterEach(() => { vi.useRealTimers(); });
 
   // A week of heavy mornings and a long restorative afternoon, so the reserve
   // is deep by midday and recovered by evening. The DAY's total dip is the same

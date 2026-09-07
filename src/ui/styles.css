@@ -1497,10 +1497,9 @@ button:focus-visible, .dhopen:focus-visible, .card:focus-visible, .slot:focus-vi
   position: relative; flex: 1 1 auto; height: 13px;
   border-bottom: 1.5px solid var(--ink);
 }
-.rp-strip-window {
-  position: absolute; top: 0; bottom: 0; background: rgba(210, 198, 169, .3);
-  border-left: 1px solid var(--hair); border-right: 1px solid var(--hair);
-}
+/* .rp-strip-window is gone (2026-09-07). The open window was a filled band that
+   spent the background channel on a near-constant fact, and clipped the energy
+   wash to day hours. The wash is the background now, and it runs the full 24h. */
 .rp-strip-shade { position: absolute; top: 0; bottom: 0; background: var(--ink); pointer-events: none; }
 .rp-strip-block {
   position: absolute; top: 1px; bottom: 1px; border-radius: 2px;

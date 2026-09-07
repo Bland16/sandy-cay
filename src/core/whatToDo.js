@@ -75,7 +75,12 @@ export function whatToDo(schedule, now = new Date(), options = {}) {
   const openMin = opening ? opening.minutes : 0;
 
   // Recent same-day energy signal (rest-boost).
-  const drainedToday = schedule.tasks.some(
+  // ⚠️ `ratedSamples()`, NOT `schedule.tasks` — the same omission the comment
+  // twenty lines below already fixed for CANDIDATES. Recurring work lives in
+  // virtual occurrences that are never in `schedule.tasks`, so a gym session you
+  // rated draining an hour ago did not count as draining, and the rest-boost
+  // never fired on exactly the days it was built for.
+  const drainedToday = schedule.ratedSamples().some(
     (t) => t.satisfaction && t.satisfaction.energy === -1 && sameDay(t.startTime, now),
   );
 

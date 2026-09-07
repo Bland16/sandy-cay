@@ -114,3 +114,54 @@ describe('ratedSamples — the one door', () => {
     expect(t.dayFillAtCompletion).toBe(first);
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// THE FOURTH READER. Reported 2026-09-07: "does this take routines into
+// consideration because it is pretty inaccurate".
+//
+// It did not. `ratedSamples()`'s own header says "Two readers, one of them
+// forgotten." There were four, and three walked `schedule.tasks` — where a
+// recurring session's rating has never lived, because `rateOccurrence` writes it
+// to `parent.occurrenceData[date].satisfaction`.
+// ════════════════════════════════════════════════════════════════════════════
+describe('every rated-sample reader goes through the one door', () => {
+  it('duration-fit counts recurring sessions', async () => {
+    const { durationFitSuggestion } = await import('../src/core/detectors.js');
+    const { s } = withGym();
+    // Twelve weekly sessions, every one of them "too long".
+    const n = rateWeeks(s, 12, { satisfaction: { durationFit: 1, overall: 4 } });
+    expect(n).toBe(12);
+
+    // What the report used to ask, and what it got: nothing at all.
+    expect(durationFitSuggestion(s.tasks, 'gym').suggest).toBe(false);
+
+    const fit = durationFitSuggestion(s.ratedSamples(), 'gym');
+    expect(fit).toMatchObject({ suggest: true, direction: 'shorter', count: 12, total: 12 });
+  });
+
+  it('the sentence now states a denominator the reader can check', async () => {
+    // ⚠️ The visible half of the bug. With one-offs alone the pools were 3, 4 and
+    // 5, and the floor is `answered.length < 3` — so TWO complaints out of THREE
+    // cleared the 60% bar and printed as a finding. The floor stays at 3
+    // deliberately (user's call): counting routines fixes the denominators, and a
+    // genuine 3-of-3 is worth saying.
+    const { durationFitSuggestion } = await import('../src/core/detectors.js');
+    const { s } = withGym();
+    rateWeeks(s, 8, { satisfaction: { durationFit: 0, overall: 5 } });
+    // Eight sessions that all said "just right" must produce silence.
+    expect(durationFitSuggestion(s.ratedSamples(), 'gym').suggest).toBe(false);
+  });
+
+  it('what-to-do sees a draining recurring session', async () => {
+    const { Schedule } = await import('../src/core/Schedule.js');
+    const s2 = new Schedule({});
+    expect(typeof s2.ratedSamples).toBe('function');
+    const { s, gym } = withGym();
+    const occ = s.getTasksForWeek(MON).find((t) => t.isOccurrence);
+    s.rateOccurrence(occ, { satisfaction: { energy: -1, overall: 3 } });
+    // The rating is nowhere in `schedule.tasks` — which is what `drainedToday`
+    // used to walk.
+    expect(s.tasks.find((t) => t.id === gym.id).satisfaction).toBe(null);
+    expect(s.ratedSamples().some((t) => t.satisfaction && t.satisfaction.energy === -1)).toBe(true);
+  });
+});

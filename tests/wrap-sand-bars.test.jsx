@@ -437,27 +437,48 @@ describe('§7.1 — when it happened, on one shared clock', () => {
     expect(strips()).toBeTruthy();
     const blocks = rowBlocks(0);
     expect(blocks).toHaveLength(1);
-    // Past the day's own window band, which is what makes it read as late.
-    const win = [...document.querySelectorAll('.rp-strip')][0].querySelector('.rp-strip-window');
-    expect(left(blocks[0])).toBeGreaterThanOrEqual(left(win) + width(win) - 0.01);
+    // ⚠️ Was asserted against the pale window band's right edge; the band is gone
+    // (2026-09-07) and the axis is the denominator now. A 23:00 block on an axis
+    // stretched to hold it lands in the last stretch of the row, which is what
+    // makes it read as late.
+    expect(left(blocks[0])).toBeGreaterThan(70);
     // The bars, meanwhile, still say the day held nothing — by design.
     expect(bars()[0].querySelector('.rp-bar-fill').style.height).toBe('0%');
   });
 
-  it('draws each day\'s own window inside the shared axis', () => {
+  // ⚠️ REPLACES "draws each day's own window inside the shared axis" (user's
+  // call, 2026-09-07): "The background should be a gradient based on levels of
+  // exaustion and it shouldn't only be during day hours. This gives less
+  // information."
+  //
+  // The pale band is gone. It spent the background — the one channel with room
+  // for a continuous quantity — on a near-constant fact the grid already states,
+  // and it CLIPPED the energy wash to day hours, so the late night was the one
+  // stretch of the chart with no shading at all.
+  it('washes the whole day, not just the open window', () => {
     const s = new Schedule({ config: defaultConfig });
-    s.tasks.push(new Task({ title: 'A', type: 'fixed', startTime: at(0, 9), endTime: at(0, 10) }));
+    // A bucket, so the tag actually draws on a load axis — without one the
+    // reserve never dips and there is nothing to shade.
+    s.addBucket({ label: 'Study', tags: ['study'], load: { mental: 2 } });
+    // A heavy block late in the evening: the reserve it leaves behind must still
+    // be drawn after the window has closed.
+    s.addFixed({
+      title: 'Late slog', tags: ['study'],
+      startTime: at(0, 21), endTime: at(0, 23),
+    });
     persist(s);
 
     render(<App />);
     openReport();
 
-    const rows = [...document.querySelectorAll('.rp-strip')];
-    const monWin = rows[0].querySelector('.rp-strip-window');
-    const sunWin = rows[6].querySelector('.rp-strip-window');
-    // Sunday opens at 10:00, weekdays at 08:00 — a shorter band, further right.
-    expect(width(sunWin)).toBeLessThan(width(monWin));
-    expect(left(sunWin)).toBeGreaterThan(left(monWin));
+    expect(document.querySelector('.rp-strip-window')).toBe(null);
+    const shades = [...[...document.querySelectorAll('.rp-strip')][0]
+      .querySelectorAll('.rp-strip-shade')];
+    expect(shades.length).toBeGreaterThan(0);
+    // Something is shaded past the point the old band stopped at, which the
+    // clipped version could not do.
+    const rightmost = Math.max(...shades.map((el) => left(el) + width(el)));
+    expect(rightmost).toBeGreaterThan(95);
   });
 
   // ⚠️ ONE INK WEIGHT, AND SKIPPED WORK IS NOT DRAWN (user's call, 2026-09-05).
