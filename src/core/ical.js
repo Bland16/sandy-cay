@@ -18,6 +18,32 @@ import { addMinutes, lastRunDay, untilAfterLastRun, dateKey, addDays } from './t
 import { periodActiveOn } from './recurrence.js';
 
 const DAY_TO_BYDAY = { mon: 'MO', tue: 'TU', wed: 'WE', thu: 'TH', fri: 'FR', sat: 'SA', sun: 'SU' };
+
+/**
+ * The `googleEncode.js` property namespace, repeated here rather than imported.
+ *
+ * ⚠️ NOT A COPY-PASTE OVERSIGHT. `googleEncode.js` imports `toRRULE` from THIS
+ * file, so importing `NS` back would close a module cycle — and this is the
+ * import path, which must not depend on the encoder to decide what it refuses.
+ *
+ * `tests/ical-store-guard.test.js` asserts this equals `NS`, so the two cannot
+ * drift silently: change the namespace there and that test fails here.
+ */
+const STORE_NS = 'sc';
+
+/**
+ * Was this event written by this app into its own store calendar?
+ *
+ * `sc.id` is on every encoded task and `sc.kind` on the library and day events,
+ * so between them they cover everything `googleEncode` / `googleDayNotes` write.
+ * A truncated or corrupt payload still has both, which is the point: a store
+ * event that will not decode must still be refused by the importer rather than
+ * mangled into a task.
+ */
+export function isStoreEvent(event) {
+  const x = (event && event.x) || {};
+  return x[`${STORE_NS}.id`] !== undefined || x[`${STORE_NS}.kind`] !== undefined;
+}
 const BYDAY_TO_DAY = Object.fromEntries(Object.entries(DAY_TO_BYDAY).map(([k, v]) => [v, k]));
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -403,10 +429,31 @@ export function importEvents(events, { sourceTags = [], tagFilter = null, from =
   // rides along as a property.
   const dropped = [];
   const notes = [];
+  // Events this app itself wrote to its store calendar, refused rather than
+  // imported. Rides along like `dropped` so callers can say so.
+  const refused = [];
   for (const e of events) {
     if (e.recurrenceId) continue; // overrides ride with their parent; skip for now
     if (from && e.start < from) continue;
     if (to && e.start >= to) continue;
+    // ⚠️ NEVER IMPORT OUR OWN STORE EVENTS. `normalizeGoogleEvent` hands the raw
+    // `extendedProperties.private` through as `x`, so a pull aimed at the store
+    // calendar arrives here carrying `sc.id` and a chunked `sc.json.*` payload.
+    // Nothing below reads those: `eventToTask` looks at `x.type` / `x.pinned` /
+    // `x.priority`, which a store event does not have, so it would fall through
+    // every default and produce an anonymous `fixed` task at priority 3 —
+    // flattening routine steps, commitment sittings and chunk parents, and
+    // duplicating each one alongside the original it cannot see.
+    //
+    // ⚠️ THIS IS NOT THE SAME TEST AS THE `.ics` ROUND-TRIP. An exported
+    // `sandy-cay.ics` carries `X-SANDYCAY-*`, which `parseICS` lowercases into
+    // exactly the `x.type` / `x.pinned` vocabulary `eventToTask` reads — that
+    // path is a deliberate, lossy-but-honest re-import and must keep working.
+    // Only the `sc.*` namespace means "this is the save file, not a calendar".
+    //
+    // In core, not in the picker, so it holds for every caller and every route
+    // in. design/CALENDAR-IMPORT.md §2.4.
+    if (isStoreEvent(e)) { refused.push(e.summary || '(untitled)'); continue; }
     const { tags } = deriveTags(e, { sourceTags });
     if (wanted.length && !tags.some((t) => wanted.includes(t))) continue;
     // An all-day event is a fact about a DAY, not an appointment inside it.
@@ -420,9 +467,10 @@ export function importEvents(events, { sourceTags = [], tagFilter = null, from =
     }
     out.push(task);
   }
-  // Both ride along as non-enumerable properties, so every existing caller —
+  // All three ride along as non-enumerable properties, so every existing caller —
   // which treats the result as a plain array of tasks — is unaffected.
   Object.defineProperty(out, 'dropped', { value: dropped, enumerable: false });
   Object.defineProperty(out, 'dayNotes', { value: notes, enumerable: false });
+  Object.defineProperty(out, 'refused', { value: refused, enumerable: false });
   return out;
 }

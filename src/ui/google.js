@@ -334,20 +334,63 @@ export async function listRawEvents(token, calendarId, from, to) {
 }
 
 /**
- * Empty a window on OUR calendar before re-pushing it.
+ * Does this event carry a marker saying THIS APP wrote it?
+ *
+ * ⚠️ IT MUST RECOGNISE BOTH ENCODINGS, and that is not tidiness — it is the
+ * difference between a guard and a leak. `googleEncode.js` writes `sc.id`; the
+ * older Cabana push (`taskToGoogleEvent`, below) writes `sandycayId`. Events in
+ * the second shape are already sitting in real calendars. A predicate that knew
+ * only `sc.id` would refuse to clean them up, so every re-push would layer a new
+ * copy on top of an undeletable old one — the duplicate bug this guard exists to
+ * prevent, arrived at from the other side.
+ *
+ * ⚠️ AND IT IS DELIBERATELY BROADER THAN `isOurs` IN `googleSync.js`, which
+ * tests `sc.id` alone. That one answers "is this calendar safe to use as the
+ * store" and must say NO to a flat-encoded event, because the sync cannot read
+ * one. This answers "did we put this here", where the honest answer is yes.
+ * Two questions, two predicates, and merging them would break one of them.
+ */
+export function isAppWrittenEvent(ev) {
+  const p = ev && ev.extendedProperties && ev.extendedProperties.private;
+  if (!p) return false;
+  return p['sc.id'] !== undefined
+    || p['sc.kind'] !== undefined
+    || p.sandycayId !== undefined;
+}
+
+/**
+ * Empty a window before re-pushing it — OF OUR OWN EVENTS, AND NOTHING ELSE.
  *
  * A push is one-shot, not a sync: without this, pushing the same week twice
  * gives you two of everything. Replacing the window makes a re-push idempotent.
- * Only ever call this against a calendar dedicated to Sandy Cay — it deletes
- * whatever it finds.
- * @returns {Promise<number>} how many were removed
+ *
+ * ⚠️ THIS USED TO DELETE EVERY EVENT IN THE RANGE, unconditionally, on the
+ * strength of a comment saying "only ever call this against a calendar dedicated
+ * to Sandy Cay". The caller then defaulted its target to any calendar whose name
+ * matched /sandy cay/i — which is the STORE calendar — so "Export → Google" wiped
+ * that week's real `sc.*` events: tasks, day notes and blocked days alike. The
+ * sync's next pass read them as deleted on another device and propagated it, and
+ * the bulk-delete guard let it through because one week out of a term is under
+ * its 50% share. See design/CALENDAR-IMPORT.md §2.5.
+ *
+ * An invariant maintained by a comment is not maintained. The predicate is a
+ * REQUIRED argument for the same reason: a default would be a thing to forget,
+ * and the safe default and the dangerous one look identical at the call site.
+ *
+ * @param keepUnlessOurs predicate — return true if this app wrote the event
+ * @returns {Promise<{removed:number, kept:number}>}
  */
-export async function clearRange(token, calendarId, from, to) {
-  const events = await listRawEvents(token, calendarId, from, to);
-  let n = 0;
-  for (const ev of events) {
-    await deleteEvent(token, calendarId, ev.id);
-    n += 1;
+export async function clearRange(token, calendarId, from, to, keepUnlessOurs) {
+  if (typeof keepUnlessOurs !== 'function') {
+    throw new Error('clearRange needs a predicate saying which events are ours to delete');
   }
-  return n;
+  const events = await listRawEvents(token, calendarId, from, to);
+  let removed = 0;
+  let kept = 0;
+  for (const ev of events) {
+    if (!keepUnlessOurs(ev)) { kept += 1; continue; }
+    await deleteEvent(token, calendarId, ev.id);
+    removed += 1;
+  }
+  return { removed, kept };
 }

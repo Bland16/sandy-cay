@@ -9,12 +9,40 @@ import { useRef, useState } from 'react';
 import { addDays, toICS, parseICS, importEvents, toRRULE } from '../../core/index.js';
 import {
   getAccessToken, listCalendars, fetchEvents, taskToGoogleEvent, insertEvent, clearRange,
-  readClientId, writeClientId,
+  readClientId, writeClientId, isAppWrittenEvent,
 } from '../google.js';
+// The store calendar's id, from the ONE place that owns it. Imported rather than
+// drilled through props for the same reason `readClientId` lives in google.js:
+// two homes for one value is two values that disagree by next session.
+import { loadCalendarId } from '../useGoogleSync.js';
 import Icon from '../Icon.jsx';
+
+/**
+ * ⚠️ THE STORE CALENDAR IS NOT AN INTERCHANGE TARGET, in either direction.
+ *
+ * It is the app's save file (design/GOOGLE-AS-STORAGE.md GS-2/GS-3), and both
+ * doors on this card corrupt it — in opposite directions and for the same
+ * reason: neither knows the `sc.*` encoding exists.
+ *
+ *  - PUSHING into it wrote tasks in the flat `sandycayId` shape, which
+ *    `decodeEvent` reports as `notOurs` and GS-5 counts as foreign. The store
+ *    ends up holding events the sync cannot read and refuses to trust.
+ *  - PULLING from it runs app-authored events through `eventToTask`, which reads
+ *    `x.type` / `x.pinned` / `x.priority` and never looks at `sc.*` — so every
+ *    routine step, commitment sitting and chunk parent comes back as an
+ *    anonymous fixed task at priority 3, duplicated alongside the original.
+ *
+ * design/CALENDAR-IMPORT.md §2.4 and §2.5. Hiding it from both lists is the
+ * cheap half of the fix; `isAppWrittenEvent` and the `importEvents` guard are
+ * the half that holds when someone reaches this by another route.
+ */
+const usableCalendars = (cals, storeId) => (cals || []).filter((c) => c.id !== storeId);
 
 export default function CalendarCard({ sched, weekStart, mutate, showToast }) {
   const fileRef = useRef(null);
+  // Read once per mount: the picker only exists after `connect`, and the store
+  // calendar cannot change while this card is open without unmounting it.
+  const storeCalendarId = loadCalendarId();
   // The client id moved to google.js when the entry screen started needing it
   // too — one home, so the two cannot drift.
   const [clientId, setClientId] = useState(readClientId);
@@ -36,6 +64,41 @@ export default function CalendarCard({ sched, weekStart, mutate, showToast }) {
     URL.revokeObjectURL(url);
   };
 
+  /**
+   * Everything an import learned but used to throw away.
+   *
+   * ⚠️ `importEvents` computes THREE things beside the tasks and returns them as
+   * non-enumerable properties; both doors on this card read the array and
+   * ignored all three (design/CALENDAR-IMPORT.md §2.6):
+   *
+   *  - `dayNotes`  all-day events. They are a fact about a DAY, and importing one
+   *                as a task made a 1440-minute anchor that drew in the PREVIOUS
+   *                day's column and sterilised it. `importEvents` was fixed to
+   *                divert them; nothing was ever taught to plant them.
+   *  - `dropped`   repeat rules that could not be read. The event still imports
+   *                as a one-off, which is honest — but its own comment calls
+   *                silently flattening a repeating commitment "data loss they
+   *                have no way to notice", which is what happened here.
+   *  - `refused`   store events, per the new guard in `importEvents`.
+   *
+   * Returns the extra clauses for the toast, so the sentence states what it did.
+   *
+   * Takes anything carrying the three arrays: the `importEvents` result directly
+   * (.ics, one call), or a plain object the Google door accumulates across its
+   * per-event calls.
+   */
+  const applySideEffects = (carried) => {
+    const notes = carried.dayNotes || [];
+    const dropped = carried.dropped || [];
+    const refused = carried.refused || [];
+    if (notes.length) mutate((s) => { for (const n of notes) s.addDayNote(n); });
+    const bits = [];
+    if (notes.length) bits.push(`${notes.length} all-day event${notes.length === 1 ? '' : 's'} became day notes`);
+    if (dropped.length) bits.push(`${dropped.length} repeat rule${dropped.length === 1 ? '' : 's'} could not be read — those came in as one-offs`);
+    if (refused.length) bits.push(`${refused.length} skipped (that's the app's own save calendar)`);
+    return bits;
+  };
+
   // ---- .ics ---------------------------------------------------------------
   const exportIcs = () => {
     const parents = sched.tasks.filter((t) => !t.isOccurrence && !t.chunking);
@@ -52,12 +115,18 @@ export default function CalendarCard({ sched, weekStart, mutate, showToast }) {
         const events = parseICS(String(reader.result));
         const tags = tagFilter.split(',').map((s) => s.trim()).filter(Boolean);
         const tasks = importEvents(events, { tagFilter: tags.length ? tags : null });
+        const extra = applySideEffects(tasks);
         if (!tasks.length) {
-          showToast(tags.length ? `No events tagged ${tags.join(', ')}` : 'No events found in that file');
+          // ⚠️ A file of nothing but all-day events is not an empty import — the
+          // day notes have already been planted. Saying "no events found" while
+          // silently changing the schedule is the surprise P-1 forbids.
+          showToast(extra.length
+            ? `No timed events — ${extra.join(' · ')}`
+            : (tags.length ? `No events tagged ${tags.join(', ')}` : 'No events found in that file'));
           return;
         }
         mutate((s) => { for (const t of tasks) s.tasks.push(t); });
-        showToast(`Imported ${tasks.length} of ${events.length} events`);
+        showToast(`Imported ${tasks.length} of ${events.length} events${extra.length ? ` · ${extra.join(' · ')}` : ''}`);
       } catch {
         showToast("That file didn't parse as a calendar");
       }
@@ -75,7 +144,13 @@ export default function CalendarCard({ sched, weekStart, mutate, showToast }) {
       setCals(list);
       // Default the push target to a calendar that already looks like ours,
       // rather than making a new one every time and spamming the sidebar.
-      const mine = list.find((c) => c.canWrite && /sandy\s*cay/i.test(c.name));
+      //
+      // ⚠️ EXCLUDING THE STORE, which this used to select by name. "Sandy Cay"
+      // is exactly what a person calls the calendar they pointed the app at, so
+      // the default target WAS the save file more often than not — the first
+      // step of the path in design/CALENDAR-IMPORT.md §2.5.
+      const mine = usableCalendars(list, storeCalendarId)
+        .find((c) => c.canWrite && /sandy\s*cay/i.test(c.name));
       setTarget((t) => t || (mine ? mine.id : ''));
       showToast(`Connected · ${list.length} calendars`);
     } catch (err) {
@@ -85,14 +160,23 @@ export default function CalendarCard({ sched, weekStart, mutate, showToast }) {
 
   const pushToGoogle = async () => {
     if (!target) { showToast('Pick a calendar to export into first'); return; }
+    // Belt as well as braces: the option is not in the list, but a stale `target`
+    // held in state across a re-connect would still reach here.
+    if (storeCalendarId && target === storeCalendarId) {
+      showToast('That calendar is where the app saves your data — pick another one');
+      return;
+    }
     setBusy('push');
     try {
       const token = await getAccessToken(clientId.trim());
       const from = weekStart;
       const to = addDays(weekStart, 7);
       // A push is one-shot, not a sync: replace the week rather than duplicate
-      // it. Safe because `target` is a calendar dedicated to Sandy Cay.
-      const removed = await clearRange(token, target, from, to);
+      // it. ⚠️ ONLY OUR OWN EVENTS — this used to delete everything in the
+      // window, on the strength of a comment asserting the target was dedicated
+      // to Sandy Cay while the default target was the store calendar itself.
+      // Whatever else lives in that week now survives, and is reported.
+      const { removed, kept } = await clearRange(token, target, from, to, isAppWrittenEvent);
       const tasks = sched.getTasksForWeek(weekStart).filter((t) => !t.isOccurrence);
       let n = 0;
       for (const t of tasks) {
@@ -100,7 +184,8 @@ export default function CalendarCard({ sched, weekStart, mutate, showToast }) {
         n += 1;
       }
       const name = (cals.find((c) => c.id === target) || {}).name || 'calendar';
-      showToast(`Exported ${n} events to "${name}"${removed ? ` · replaced ${removed}` : ''}`);
+      showToast(`Exported ${n} events to "${name}"${removed ? ` · replaced ${removed}` : ''}`
+        + `${kept ? ` · left ${kept} event${kept === 1 ? '' : 's'} alone` : ''}`);
     } catch (err) {
       showToast(err.message);
     } finally { setBusy(''); }
@@ -120,14 +205,27 @@ export default function CalendarCard({ sched, weekStart, mutate, showToast }) {
         // The calendar's own name is the honest source tag: "this is my Work calendar".
         events = events.concat(evs.map((e) => ({ ...e, _source: cal ? cal.name.toLowerCase() : '' })));
       }
+      // ⚠️ ONE EVENT AT A TIME because each carries its own `_source` tag, so the
+      // side-effect arrays come back per-call and have to be accumulated rather
+      // than read off the last one.
       const tasks = [];
+      const notes = [];
+      const dropped = [];
+      const refused = [];
       for (const e of events) {
         const got = importEvents([e], { tagFilter: tags.length ? tags : null, sourceTags: e._source ? [e._source] : [] });
         tasks.push(...got);
+        notes.push(...(got.dayNotes || []));
+        dropped.push(...(got.dropped || []));
+        refused.push(...(got.refused || []));
       }
-      if (!tasks.length) { showToast('Nothing matched in that week'); return; }
+      const extra = applySideEffects({ dayNotes: notes, dropped, refused });
+      if (!tasks.length) {
+        showToast(extra.length ? `No timed events — ${extra.join(' · ')}` : 'Nothing matched in that week');
+        return;
+      }
       mutate((s) => { for (const t of tasks) s.tasks.push(t); });
-      showToast(`Imported ${tasks.length} of ${events.length} events from Google`);
+      showToast(`Imported ${tasks.length} of ${events.length} events from Google${extra.length ? ` · ${extra.join(' · ')}` : ''}`);
     } catch (err) {
       showToast(err.message);
     } finally { setBusy(''); }
@@ -200,7 +298,7 @@ export default function CalendarCard({ sched, weekStart, mutate, showToast }) {
               aria-label="Export target calendar"
             >
               <option value="">— pick a calendar —</option>
-              {cals.filter((c) => c.canWrite).map((c) => (
+              {usableCalendars(cals, storeCalendarId).filter((c) => c.canWrite).map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </select>
@@ -215,7 +313,7 @@ export default function CalendarCard({ sched, weekStart, mutate, showToast }) {
 
           <p style={{ margin: '12px 0 4px' }}>Pull this week from:</p>
           <div className="callist">
-            {cals.map((c) => {
+            {usableCalendars(cals, storeCalendarId).map((c) => {
               const on = picked.includes(c.id);
               return (
                 <label key={c.id} className={`calrow${on ? ' on' : ''}`}>
