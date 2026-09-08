@@ -642,3 +642,77 @@ describe('a suggestion may not contradict its own evidence', () => {
     expect(fit.detail).not.toMatch(/^Most /);
   });
 });
+
+describe('one door: a model with no skill is silent EVERYWHERE', () => {
+  beforeEach(() => resetIds());
+
+  // ⚠️ THE GAP THIS EXISTS TO CATCH, and it was mine. `_modelIsTrustworthy` was
+  // added on 2026-09-03 and wired into `_weights` and `_modelScore` only, while
+  // whatToDo, the wrap report's insight and the Cabana went on testing
+  // `learning.trained` directly — which means nothing more than "gradient
+  // descent produced finite numbers". So a fit measured as WORSE than
+  // predicting the average was silenced in placement and still narrated in
+  // three other places. Exactly the shape of the `ratedSamples` bug, introduced
+  // three days after that lesson was written down.
+  const noSkill = (seed = 3) => {
+    let r = seed;
+    const rnd = () => ((r = (r * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+    const s = new Schedule({ config: defaultConfig });
+    s.buckets.push(new Bucket({ label: 'B', tags: ['study', 'gym', 'admin'] }));
+    const TAGS = ['study', 'gym', 'admin'];
+    const HOURS = [9, 13, 19, 22];
+    for (let series = 0; series < 10; series += 1) {
+      const tag = TAGS[series % TAGS.length];
+      const hour = HOURS[series % HOURS.length];
+      const parent = new Task({
+        title: `p${series}`, tags: [tag], type: 'fixed',
+        startTime: at(series % 5, hour), endTime: at(series % 5, hour + 1),
+      });
+      s.tasks.push(parent);
+      for (let k = 0; k < 4; k += 1) {
+        const t = new Task({
+          title: `p${series}-${k}`, tags: [tag], type: 'fixed',
+          startTime: at(k % 5, hour), endTime: at(k % 5, hour + 1),
+        });
+        t.parentId = parent.id;
+        t.completion = 'done';
+        // No preference whatsoever — pure noise around the middle.
+        t.satisfaction = { overall: Math.max(1, Math.min(5, Math.round(3 + (rnd() - 0.5) * 1.2))) };
+        s.tasks.push(t);
+      }
+    }
+    s.retrain();
+    return s;
+  };
+
+  it('the gate is one method, and every surface asks it', () => {
+    const s = noSkill();
+    expect(s.learning.trained).toBe(true); // the fit ran and produced numbers
+    expect(s.learning.skill).toBeLessThanOrEqual(0); // and it is no better than a mean
+    expect(s.modelMaySpeak()).toBe(false);
+  });
+
+  it('placement does not steer', () => {
+    const s = noSkill();
+    expect(s._weights().preference).toBe(0);
+    expect(s._modelScore(s.tasks[1], null)).toBe(0);
+  });
+
+  it('the wrap report does not narrate it', async () => {
+    const { buildWrapReport } = await import('../src/ui/report.js');
+    const { insight } = buildWrapReport(noSkill(), MON());
+    expect(insight.cold).toBe(true); // not "here is what I learned"
+  });
+
+  it('what-to-do never claims you rate this kind of work well', async () => {
+    const { whatToDo } = await import('../src/core/index.js');
+    const s = noSkill();
+    s.addFixed({ title: 'Something', tags: ['study'], startTime: at(0, 15), endTime: at(0, 16) });
+    const picks = whatToDo(s, at(0, 14)) || [];
+    for (const p of picks) {
+      for (const reason of p.reasons || []) {
+        expect(reason).not.toMatch(/rate this kind of work well/i);
+      }
+    }
+  });
+});

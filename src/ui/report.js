@@ -349,7 +349,9 @@ function shiftHHMM(hhmm, deltaMin) {
  *  than dressing up noise as self-knowledge. */
 function buildInsight(sched) {
   const { learning, config } = sched;
-  if (!learning.trained || learning.sampleCount < config.coldStartRatings) {
+  // The same door placement and whatToDo use — a fit with no measured skill has
+  // nothing to say, however many ratings are behind it.
+  if (!sched.modelMaySpeak()) {
     return {
       cold: true,
       sampleCount: learning.sampleCount,

@@ -6,6 +6,7 @@ import { useRef, useState } from 'react';
 import {
   exportState, summarizeImport, planBlockerConversion, convertBlockersToDayNotes,
   planLibraryMerge, applyLibraryMerge, applyLibrary, RESTORABLE_KEYS,
+  humanLabel, isNarratable,
 } from '../../core/index.js';
 import { fmtDur } from '../format.js';
 import Icon from '../Icon.jsx';
@@ -174,7 +175,27 @@ export default function Cabana({
 
   const breakdown = sched.getTagBreakdown(weekStart);
   const maxTag = Math.max(1, ...breakdown.map((r) => r.scheduledMin));
-  const learned = sched.learning.trained ? sched.learning.inspect().filter((w) => Math.abs(w.weight) > 0.01).sort((a, b) => Math.abs(b.weight) - Math.abs(a.weight)).slice(0, 5) : [];
+  // ⚠️ THE SAME GATE PLACEMENT USES. This tested `learning.trained`, which means
+  // only "gradient descent ran and produced finite numbers" — so a fit measured
+  // as WORSE THAN PREDICTING THE AVERAGE was silenced in placement and still
+  // listed its weights here as things the app had learned about the reader.
+  const learned = sched.modelMaySpeak()
+    ? sched.learning.inspect()
+      .filter((w) => Math.abs(w.weight) > 0.01 && isNarratable(w.label))
+      .sort((a, b) => Math.abs(b.weight) - Math.abs(a.weight))
+      .slice(0, 5)
+    : [];
+  // Why it is quiet, not merely that it is. This IS the surface where a rating
+  // count belongs — the user came here to look at the model.
+  const modelNote = (() => {
+    const n = sched.learning.sampleCount;
+    if (sched.learning.diverged) return 'the last fit did not converge, so placement is running without it';
+    if (n < sched.config.coldStartRatings) return `${n} ratings — not steering placement yet`;
+    if (!sched.modelMaySpeak()) {
+      return `${n} ratings, but tested against ratings it had not seen the fit does no better than guessing — so it is not steering anything`;
+    }
+    return `${n} ratings, steering placement`;
+  })();
 
   return (
     <div className="cabana">
@@ -403,10 +424,18 @@ export default function Cabana({
             </div>
           ))}
           <p className="insight" style={{ marginTop: 8 }}>
-            Learned model: <b>{sched.learning.sampleCount}</b> ratings{sched.learning.trained ? ', trained' : ' (cold start)'}.
+            Learned model: {modelNote}.
           </p>
+          {/* Plain language, per SPEC §5: "weights inspectable → Cabana renders
+              plain-language preferences". It printed the raw internal string —
+              `dur:45-90`, `time:night` — which is the machine's word, not a
+              person's. `isNarratable` above also drops priority/dayFill/
+              placedByUser, which stay in the fit and may never be spoken. */}
           {learned.map((w) => (
-            <div className="insight" key={w.label}>{w.label}: <b>{w.weight >= 0 ? '+' : ''}{w.weight.toFixed(2)}</b></div>
+            <div className="insight" key={w.label}>
+              {humanLabel(w.label)}: <b>{w.weight >= 0 ? 'rates higher' : 'rates lower'}</b>
+              <span className="rp-dim"> · {w.observations} rated</span>
+            </div>
           ))}
           <button className="btn2" style={{ marginTop: 10 }} onClick={retrain}><Icon name="refresh" /> Retrain now · {sched.learning.sampleCount} ratings</button>
         </div>

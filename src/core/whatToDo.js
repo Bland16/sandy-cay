@@ -70,7 +70,11 @@ export function openingLabel(min) {
 export function whatToDo(schedule, now = new Date(), options = {}) {
   const { tags: filterTags = null } = options;
   const config = schedule.config;
-  const trained = schedule.learning.trained && schedule.learning.sampleCount >= config.coldStartRatings;
+  // ⚠️ THE SAME GATE PLACEMENT USES. This tested `trained && sampleCount >= N`,
+  // which asks how much the user has typed and not whether the fit is any good —
+  // so a model that predicts held-out ratings WORSE than a constant still told
+  // them "you rate this kind of work well right now".
+  const trained = schedule.modelMaySpeak();
   const opening = currentOpening(schedule, now);
   const openMin = opening ? opening.minutes : 0;
 

@@ -158,6 +158,21 @@ export class Schedule {
    * assessed", not "no skill", and it is treated as passing so a small honest
    * dataset is not punished for being small. Only a measured failure gates.
    */
+  /**
+   * ⚠️ THE ONE DOOR for "may the model speak or steer". Every surface that acts
+   * on the learned model asks this and nothing else.
+   *
+   * It was added 2026-09-03 for placement and wired into `_weights` and
+   * `_modelScore` only, while `whatToDo`, the wrap report's insight and the
+   * Cabana went on testing `learning.trained` directly. So a fit measured as
+   * WORSE THAN GUESSING was silenced in placement and still narrated in three
+   * places — the same "two readers, one of them forgotten" shape as
+   * `ratedSamples`, introduced three days after that lesson was written down.
+   */
+  modelMaySpeak() {
+    return this._modelIsTrustworthy();
+  }
+
   _modelIsTrustworthy() {
     if (this.learning.sampleCount < this.config.coldStartRatings) return false;
     return !(typeof this.learning.skill === 'number' && this.learning.skill <= 0);
