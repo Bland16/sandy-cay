@@ -130,6 +130,18 @@ export function useEngine() {
         // touchpoints still on the grid and no program behind them — a chain
         // that cannot re-flow and cannot be deleted as a group.
         s.routineInstances = next.routineInstances;
+        // ⚠️ FOURTH time. "I finished this early" (WEEKLY-PLANNING D-13) is a
+        // stored flag precisely BECAUSE the grid cannot derive it — you may have
+        // done the work away from the app — so there is nothing to fall back on
+        // when it is dropped. Importing a footlocker silently un-settled every
+        // commitment week the user had marked done by hand, and the week went
+        // back to owing work that had already been finished.
+        //
+        // The guard in footlocker-roundtrip.test.jsx is now STRUCTURAL: it
+        // diffs the whole of `toJSON()` across a real `replace`, and it fails if
+        // the fixture leaves any key empty. So key #17 cannot arrive here
+        // unnoticed the way the first four did.
+        s._commitmentDone = next._commitmentDone;
       });
     }, [mutate]),
   };
