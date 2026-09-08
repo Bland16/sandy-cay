@@ -202,6 +202,14 @@ function energyRank(schedule, probe, date) {
  * commitment's sittings from the previous period, so three commitments do not
  * all aim at day 0, day 2, day 4.
  */
+/**
+ * How far, IN DAYS, energy may pull a sitting off its evenly-spread position.
+ * Bounded on purpose: the spacing finding is the load-bearing one (clustering
+ * is the burnout, not sitting length), so energy breaks ties and loses
+ * arguments. Under one day means it can only ever reorder neighbours.
+ */
+const ENERGY_NUDGE_DAYS = 0.75;
+
 export function spreadDays(candidates, n, { taken = new Set(), rank = () => 0 } = {}) {
   const free = candidates.filter((d) => !taken.has(dateKey(d)));
   const pool = free.length >= n ? free : candidates;
@@ -209,6 +217,25 @@ export function spreadDays(candidates, n, { taken = new Set(), rank = () => 0 } 
 
   const chosen = [];
   const step = (pool.length - 1) / Math.max(1, n - 1);
+
+  // ⚠️ THE NUDGE IS NORMALISED, AND IT WAS NOT.
+  //
+  // `distance` is in ARRAY INDICES — days. `rank` is a reserve dip in
+  // LOAD-HOURS, unbounded, and 10–14 on a heavy day. So `distance - rank * 0.25`
+  // let energy pull a sitting up to THREE AND A HALF DAYS off its ideal spread
+  // position, in the one function whose entire documented purpose is even
+  // spacing — and directly against the comment on that very line, "energy
+  // nudges, never overrides". Two quantities on different scales, summed as if
+  // they were commensurate.
+  //
+  // Normalising against the candidate set is also what the evaluation actually
+  // specified: ENERGY-PLACEMENT-EVAL's C1/C3 formulas are `1 − |dip|/max|dip|`,
+  // bounded in [0,1]. The magnitude is now expressible in the unit that matters
+  // — energy may move a sitting at most `ENERGY_NUDGE_DAYS` off its ideal
+  // position, and spacing wins every disagreement wider than that.
+  const ranks = new Map(pool.map((d) => [d, rank(d)]));
+  const worst = Math.max(1e-9, ...pool.map((d) => Math.abs(ranks.get(d))));
+
   for (let i = 0; i < n; i += 1) {
     const ideal = n === 1 ? (pool.length - 1) / 2 : i * step;
     // Nearest unused day to the even position, energy breaking ties.
@@ -217,7 +244,8 @@ export function spreadDays(candidates, n, { taken = new Set(), rank = () => 0 } 
     pool.forEach((d, idx) => {
       if (chosen.includes(d)) return;
       const distance = Math.abs(idx - ideal);
-      const s = distance - rank(d) * 0.25; // energy nudges, never overrides
+      const nudge = (ranks.get(d) / worst) * ENERGY_NUDGE_DAYS;
+      const s = distance - nudge;
       if (s < bestScore) { bestScore = s; best = d; }
     });
     if (best) chosen.push(best);

@@ -716,3 +716,54 @@ describe('one door: a model with no skill is silent EVERYWHERE', () => {
     }
   });
 });
+
+describe('spreadDays — energy nudges, and may not overrule spacing', () => {
+  // ⚠️ `distance` is in ARRAY INDICES and `rank` is a reserve dip in LOAD-HOURS,
+  // and they were summed: `distance - rank * 0.25`. A dip of 14 — an ordinary
+  // heavy day — was therefore worth 3.5 days of spacing, more than the step
+  // between sittings, so energy did not nudge, it overruled. Measured
+  // (probe-spread-nudge.mjs): the old rule chose 3,4,6,10,13 instead of
+  // 0,3,6,10,13 — pulling one sitting three days and landing it ADJACENT to the
+  // next, which is precisely the consecutive-day clustering this module exists
+  // to prevent. Its own header: "burnout is clustering, not sitting length."
+  const MONDAY = new Date(2026, 8, 7);
+  const pool = Array.from({ length: 14 }, (_, i) => addDays(MONDAY, i));
+  const idx = (d) => pool.findIndex((x) => x.getTime() === d.getTime());
+
+  it('a deep dip cannot drag a sitting off its even position', async () => {
+    const { spreadDays } = await import('../src/core/index.js');
+    // One day far fresher than the rest, three days off the ideal position.
+    const rank = (d) => (idx(d) === 3 ? 14 : 0);
+    const chosen = spreadDays(pool, 5, { rank }).map(idx);
+    // Ideal spread is 0, 3.25, 6.5, 9.75, 13 — the first sitting stays at 0.
+    expect(chosen[0]).toBe(0);
+    const ideal = [0, 3.25, 6.5, 9.75, 13];
+    for (let i = 0; i < chosen.length; i += 1) {
+      expect(Math.abs(chosen[i] - ideal[i])).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('never creates a consecutive pair the unbounded rule created', async () => {
+    const { spreadDays } = await import('../src/core/index.js');
+    const rank = (d) => (idx(d) === 3 ? 14 : 0);
+    const chosen = spreadDays(pool, 5, { rank }).map(idx).sort((a, b) => a - b);
+    for (let i = 1; i < chosen.length; i += 1) {
+      expect(chosen[i] - chosen[i - 1]).toBeGreaterThan(1);
+    }
+  });
+
+  it('still lets energy break a NEAR-TIE, which is all a nudge should do', async () => {
+    const { spreadDays } = await import('../src/core/index.js');
+    // ⚠️ A first version of this test gave a rank to a day a FULL DAY off the
+    // ideal and expected the choice to move. It does not, and that is the bound
+    // working: 0.75 of a day cannot overcome a whole day of distance. A nudge
+    // may only settle a near-tie, so the fixture has to offer one.
+    //
+    // The second ideal position is 3.25, so day 3 sits 0.25 away and day 4 sits
+    // 0.75 — a gap of half a day, which the nudge can just cover.
+    const flat = spreadDays(pool, 5, { rank: () => 0 }).map(idx);
+    const tilted = spreadDays(pool, 5, { rank: (d) => (idx(d) === 4 ? 10 : 0) }).map(idx);
+    expect(flat[1]).toBe(3);
+    expect(tilted[1]).toBe(4); // energy settled it — by exactly one day
+  });
+});
