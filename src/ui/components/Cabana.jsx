@@ -429,8 +429,8 @@ export default function Cabana({
           {/* Plain language, per SPEC §5: "weights inspectable → Cabana renders
               plain-language preferences". It printed the raw internal string —
               `dur:45-90`, `time:night` — which is the machine's word, not a
-              person's. `isNarratable` above also drops priority/dayFill/
-              placedByUser, which stay in the fit and may never be spoken. */}
+              person's. `isNarratable` above also drops priority and dayFill,
+              which stay in the fit and may never be spoken. */}
           {learned.map((w) => (
             <div className="insight" key={w.label}>
               {humanLabel(w.label)}: <b>{w.weight >= 0 ? 'rates higher' : 'rates lower'}</b>

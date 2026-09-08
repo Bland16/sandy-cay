@@ -78,7 +78,7 @@ describe('getWeekLoad — a blocked day has no capacity', () => {
   });
 });
 
-describe('the model layout — moveCount is gone, and cannot come back silently', () => {
+describe('the model layout — moveCount and placedBy are gone, and cannot come back silently', () => {
   beforeEach(() => resetIds());
 
   const trainOn = (tasks) => {
@@ -101,6 +101,66 @@ describe('the model layout — moveCount is gone, and cannot come back silently'
     const t = new Task({ title: 'Drag me', startTime: at(0, 9), endTime: at(0, 10) });
     t.moveTo(at(0, 11));
     expect(t.history.moveCount).toBe(1);
+  });
+
+  it('no longer carries a placedByUser column', () => {
+    const s = trainOn(Array.from({ length: 12 }, (_, i) => rated(`t${i}`, i % 5, 9, 4)));
+    const labels = s.learning.inspect().map((x) => x.label);
+    expect(labels).not.toContain('placedByUser');
+  });
+
+  // ⚠️ THE LEAKAGE ITSELF, stated as behaviour rather than as a column name.
+  //
+  // Ticking a task done partway through is `updateTask({ endTime: cut })`
+  // (App.jsx), and `updateTask` flips `placedBy` to 'user' on ANY time change.
+  // So an engine-placed task the user never touched became `placedByUser=1`
+  // BECAUSE THEY FINISHED IT EARLY — the outcome feeding back into the input.
+  // Measured before the fix: identical tasks, one finished early, produced
+  // different feature vectors. Nothing the model sees may depend on that.
+  it('cannot tell a task finished early from the same task finished on time', () => {
+    const s = trainOn(Array.from({ length: 12 }, (_, i) => rated(`t${i}`, i % 5, 9, 4)));
+    const mk = () => new Task({
+      title: 'Study', tags: ['study'], placedBy: 'auto',
+      startTime: at(0, 9), endTime: at(0, 11),
+    });
+    const onTime = mk();
+    const early = mk();
+    s.tasks.push(early);
+    s.updateTask(early.id, { completion: 'done', endTime: at(0, 9, 30) });
+
+    expect(early.placedBy).toBe('user'); // the flip still happens — stability needs it
+    expect(onTime.placedBy).toBe('auto');
+    expect(s.learning.featureVector(early, { start: at(0, 9), end: at(0, 11) }))
+      .toEqual(s.learning.featureVector(onTime, { start: at(0, 9), end: at(0, 11) }));
+  });
+
+  // The other direction, and the reason the column could not simply be fixed:
+  // `ratedSamples` hard-codes `placedBy:'auto'` on every materialised
+  // occurrence, so a recurring event the user placed BY HAND read 0. The column
+  // was a mixture of "not recurring" and "finished early", not a fact about
+  // choosing a time. `stability` still reads the field on the parent.
+  it('does not let a hand-placed recurring event read as engine-placed', () => {
+    const s = trainOn(Array.from({ length: 12 }, (_, i) => rated(`t${i}`, i % 5, 9, 4)));
+    const parent = new Task({
+      title: 'Gym', tags: ['exercise'], placedBy: 'user',
+      startTime: at(0, 7), endTime: at(0, 8),
+      recurrence: { freq: 'weekly', interval: 1, byDay: ['mon'], until: null, exceptions: [] },
+    });
+    const key = `${at(0, 7).getFullYear()}-${String(at(0, 7).getMonth() + 1).padStart(2, '0')}-${String(at(0, 7).getDate()).padStart(2, '0')}`;
+    parent.occurrenceData = {
+      [key]: {
+        at: at(0, 7).toISOString(), endAt: at(0, 8).toISOString(),
+        satisfaction: { overall: 1 }, completion: 'done',
+      },
+    };
+    s.tasks.push(parent);
+
+    const occ = s.ratedSamples().find((t) => t.isOccurrence && t.parentId === parent.id);
+    expect(occ).toBeTruthy();
+    expect(occ.placedBy).toBe('auto'); // still what ratedSamples writes
+    expect(parent.placedBy).toBe('user'); // and still disagrees with it
+    // … which is exactly why no column may be built on the difference.
+    expect(s.learning.labels).not.toContain('placedByUser');
   });
 
   // ⚠️ THE ONE THAT CATCHES A FORGOTTEN VERSION BUMP. Removing a trailing
@@ -239,7 +299,7 @@ describe('the report never claims a preference for what you rated worst', () => 
     for (const w of insight.top) expect(w.observations).toBeGreaterThanOrEqual(min);
   });
 
-  // priority/dayFill/placedByUser stay in the fit and never get a sentence.
+  // priority/dayFill stay in the fit and never get a sentence.
   it('never narrates a column that is not about when or what you scheduled', async () => {
     const { buildWrapReport } = await import('../src/ui/report.js');
     const s = new Schedule({ config: defaultConfig });
@@ -278,12 +338,11 @@ describe('humanLabel — plain language, generated from the feature constants', 
 
   // These stay in the FIT — they are real confound controls — and never get a
   // sentence. priority is a claim about the user's own labelling; dayFill's
-  // weight flips sign between retrains; placedByUser narrates the user's
-  // relationship with the app and its negative reading is a P-1 hazard.
-  it('excludes the three columns that must never be spoken', () => {
+  // weight flips sign between retrains. (`placedByUser` was a third until
+  // layout v6 dropped it from the fit outright — see the leakage guard below.)
+  it('excludes the columns that must never be spoken', () => {
     expect(isNarratable('priority')).toBe(false);
     expect(isNarratable('dayFill')).toBe(false);
-    expect(isNarratable('placedByUser')).toBe(false);
     expect(isNarratable('tag:study')).toBe(true);
     expect(isNarratable('time:evening')).toBe(true);
   });

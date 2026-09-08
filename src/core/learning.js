@@ -4,7 +4,7 @@
 // in plain language. Deterministic: zero-initialized, fixed epoch count.
 //
 // Features are additive base terms: tag, time-of-day, day-of-week, duration,
-// priority, day-fill, placed-by-user, move-count. (The `role` was ripped out —
+// priority, day-fill. (The `role` was ripped out —
 // see design/RECONCILIATION.md — so the old `role×time`/`role×weekend` interaction
 // terms are gone; per-position learning returns in L-2 keyed off *load*, not an
 // enum. Steering now reads a bucket's character from its load vector, in suggest.js.)
@@ -29,7 +29,21 @@ import { clamp } from './time.js';
 // downranking exactly the work that detector exists to surface, and narrating
 // it is moral bookkeeping (P-1). `history.moveCount` is still RECORDED — only
 // the feature is gone. See design/ML-HEURISTICS-RECOMMENDATIONS.md §1.3b.
-export const MODEL_LAYOUT_VERSION = 5;
+// 6 (2026-09-08): dropped `placedByUser`. Measured across `ratedSamples()`, the
+// column got two of four rows wrong — it is neither "I chose this time" nor its
+// negation. Ticking a task done partway through sends `endTime: cut`
+// (`App.jsx:344`) into `updateTask`, which flips `placedBy` on ANY time change
+// (`Schedule.js:384`), so an engine-placed task the user never touched reads 1
+// purely because they FINISHED IT EARLY — the outcome leaking into the input.
+// In the other direction `ratedSamples` hard-codes `placedBy:'auto'` on every
+// materialised occurrence (`Schedule.js:489`), so a recurring event the user
+// placed by hand reads 0. What was left is a mixture of "not recurring" and
+// "finished early", and it was inert at placement besides (a task-level
+// constant cannot move the arg-max) while double-counting `w.stability`, which
+// already reads `placedBy` directly (`placement.js:319` → `scoring.js:120`).
+// The FIELD is untouched — stability, re-optimize and carry-over all still read
+// it; only the feature is gone. See design/ML-HEURISTICS-RECOMMENDATIONS.md §1.2.
+export const MODEL_LAYOUT_VERSION = 6;
 
 export const TIME_BUCKETS = ['early', 'morning', 'midday', 'afternoon', 'evening', 'night'];
 // Finer low end than before ([45,90,150,240]): "< 45" was one bucket, so the
@@ -91,9 +105,9 @@ export function humanLabel(label) {
  *
  * `priority` is a claim about the user's own labelling, not their life.
  * `dayFill` has a weight that flips sign between retrains, so it is not a
- * sentence. `placedByUser` narrates the user's relationship with the app, and
- * its negative reading is a P-1 hazard on its face. All three stay in the FIT —
- * they are real confound controls — and none of them gets a sentence.
+ * sentence. Both stay in the FIT — they are real confound controls — and
+ * neither gets a sentence. (`placedByUser` was a third; it was removed from the
+ * fit entirely in layout v6, for leakage rather than for narration.)
  *
  * What remains is exactly the four families a person can act on by choosing
  * WHEN and WHAT to schedule.
@@ -146,10 +160,9 @@ export class LearningModule {
     // alongside `energyAt`, for the same reason: deriving it later would train
     // the model on a day that never happened.
     const dayFill = task.dayFillAtCompletion ?? 0;
-    const placedByUser = task.placedBy === 'user' ? 1 : 0;
     return [
       ...tagInd, ...time, ...day, ...dur,
-      priorityNorm, dayFill, placedByUser,
+      priorityNorm, dayFill,
     ];
   }
 
@@ -159,7 +172,7 @@ export class LearningModule {
       ...TIME_BUCKETS.map((t) => `time:${t}`),
       ...['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].map((d) => `day:${d}`),
       ...['dur:<15', 'dur:15-30', 'dur:30-45', 'dur:45-90', 'dur:90-150', 'dur:150-240', 'dur:>240'],
-      'priority', 'dayFill', 'placedByUser',
+      'priority', 'dayFill',
     ];
     // The gated set. It was empty after the role rip-out, so the gating
     // machinery below no-opped — and the DURATION buckets were the columns that
