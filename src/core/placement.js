@@ -327,7 +327,8 @@ export function findBestSlot(schedule, task, opts = {}) {
           dayFillAfter,
           stability,
           modelScore: ms,
-          arrivalDepletion: depletionAt(slot.start, taskLoad),
+          // The task under placement is excluded from its own arrival state.
+          arrivalDepletion: depletionAt(slot.start, taskLoad, { excludeId: task.id }),
           // Finish-early preference: a fifth of the RUNWAY clear of the
           // deadline, where the runway starts at `from` — the moment the plan is
           // being made. Nothing about the task's own size enters into it, so a

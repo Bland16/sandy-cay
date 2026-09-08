@@ -242,20 +242,28 @@ export function arrivalDepletionFor(schedule) {
   const prior = capacityPrior(schedule);
   const capOf = (a) => (learned && Number.isFinite(learned[a]) ? learned[a] : prior[a]) || 1;
 
-  return function depletionAt(at, load) {
+  return function depletionAt(at, load, { excludeId = null } = {}) {
     const l = load ? normalizeLoad(load) : null;
     if (!l) return null;
     let weightSum = 0;
     for (const a of LOAD_AXES) weightSum += Math.abs(l[a]);
     if (weightSum <= 0) return null; // characterless task — no opinion
 
-    const reserve = reserveAt(schedule, at);
+    const reserve = reserveAt(schedule, at, { excludeId });
     let acc = 0;
     for (const a of LOAD_AXES) {
       const w = Math.abs(l[a]);
       if (w <= 0) continue;
       const spent = Math.max(0, -reserve[a]); // reserve ≤ 0; deeper is more negative
-      acc += w * Math.min(1, spent / capOf(a));
+      const frac = Math.min(1, spent / capOf(a));
+      // ⚠️ RESTORING WORK WANTS THE DEPLETED SLOT, NOT THE FRESH ONE, and this
+      // scored it backwards. `Math.abs` above lets an all-negative load through
+      // the gate, and it was then treated exactly like a spender — while
+      // `scoring.js` rewards `1 − depletion`, i.e. arriving FRESH. So the term
+      // put a nap BEFORE a five-hour grind rather than after it, overriding
+      // proximity to do so. `generate.js#energyRank` has had the sign branch
+      // all along: "Spending seeks the least-depleted day, restoring the most."
+      acc += w * (l[a] > 0 ? frac : 1 - frac);
     }
     return acc / weightSum;
   };
@@ -266,9 +274,19 @@ export function arrivalDepletion(schedule, at, load) {
   return arrivalDepletionFor(schedule)(at, load);
 }
 
-export function reserveAt(schedule, now = new Date()) {
+export function reserveAt(schedule, now = new Date(), { excludeId = null } = {}) {
   const tasks = schedule.getTasksForDay(now)
-    .filter((t) => !t.chunking && t.completion !== 'skipped' && t.startTime.getTime() <= now.getTime());
+    .filter((t) => !t.chunking && t.completion !== 'skipped'
+      && t.startTime.getTime() <= now.getTime()
+      // ⚠️ THE TASK BEING PLACED IS NOT ALREADY SPENT. `findBestSlot` scores
+      // candidates for a task that is ALREADY in `schedule.tasks`, so without
+      // this its own load counted as drain the user had supposedly already
+      // taken — at every candidate at or after where it currently sits.
+      // Measured on a day holding nothing but the task itself: depletion 0 at
+      // 08:00 and 1 at every later candidate, on an EMPTY day. The correct
+      // answer is 0 everywhere. It made the term a blanket "earlier than
+      // wherever this already is" force that outvoted proximity and stability.
+      && !(excludeId && t.id === excludeId));
   return reserveWalk(schedule, tasks).reserve;
 }
 

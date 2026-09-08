@@ -361,6 +361,54 @@ describe('the energy term — how depleted you arrive (D-1, C3)', () => {
     expect(physical).toBe(0);
   });
 
+  // ⚠️ THE TASK BEING PLACED IS NOT ALREADY SPENT. `findBestSlot` scores
+  // candidates for a task that is ALREADY in `schedule.tasks`, and `reserveAt`
+  // had no exclusion — so its own load counted as drain the user had supposedly
+  // taken, at every candidate at or after where it currently sat. Measured on a
+  // day holding NOTHING BUT the task: depletion 0 at 08:00 and 1.00 at 10:00,
+  // 14:00 and 18:00, on an empty day. It made the term a blanket "earlier than
+  // wherever this already is" force that outvoted proximity and stability.
+  it('does not count the task being placed against itself', () => {
+    const s = new Schedule({ config: defaultConfig });
+    s.addBucket({ label: 'Work', tags: ['work'], load: { mental: 2 } });
+    const essay = s.addFixed({
+      title: 'Essay', tags: ['work'], startTime: at(0, 9), endTime: at(0, 13),
+    });
+    const dep = arrivalDepletionFor(s);
+    const load = loadForTask(s, essay);
+    // The day holds only this task, so every candidate arrives at a fresh day.
+    for (const h of [8, 10, 14, 18]) {
+      expect(dep(at(0, h), load, { excludeId: essay.id })).toBe(0);
+    }
+    // Without the exclusion the same day reads as fully spent from 10:00 on,
+    // which is the bug — kept here so the exclusion cannot quietly stop working.
+    expect(dep(at(0, 14), load)).toBeGreaterThan(0.9);
+  });
+
+  // ⚠️ RESTORING WORK WANTS THE DEPLETED SLOT. `Math.abs` let an all-negative
+  // load through the gate and it was then scored exactly like a spender, while
+  // scoring.js rewards `1 − depletion`, i.e. arriving FRESH. So the term put a
+  // nap BEFORE a five-hour grind rather than after it. generate.js#energyRank
+  // has had the sign branch all along: "Spending seeks the least-depleted day,
+  // restoring the most."
+  it('scores a restorative task toward the drained slot, not the fresh one', () => {
+    const s = new Schedule({ config: defaultConfig });
+    s.addBucket({ label: 'Deep', tags: ['work'], load: { mental: 2, creative: 1 } });
+    s.addBucket({ label: 'Rest', tags: ['rest'], load: { mental: -2, physical: -1 } });
+    for (let h = 9; h < 14; h += 1) {
+      s.addFixed({ title: `W${h}`, tags: ['work'], startTime: at(0, h), endTime: at(0, h + 1) });
+    }
+    const dep = arrivalDepletionFor(s);
+    const nap = loadForTask(s, { tags: ['rest'] });
+
+    const fresh = dep(at(0, 7), nap); // before the grind
+    const drained = dep(at(0, 17), nap); // after it
+    // scoring.js uses `1 − depletion`, so LOWER depletion scores higher. Rest
+    // must therefore read as MORE depleted where the user is fresh.
+    expect(fresh).toBeGreaterThan(drained);
+    expect(drained).toBeLessThan(0.5);
+  });
+
   it('is bounded in [0,1] even when the day is far past any ceiling', () => {
     const s = new Schedule({ config: defaultConfig });
     s.addBucket({ label: 'Study', tags: ['study'], load: { mental: 2 } });
