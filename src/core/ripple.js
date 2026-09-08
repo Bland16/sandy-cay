@@ -35,12 +35,33 @@ export function rippleShift(schedule, pivotTask, deltaMin) {
   const pivotEnd = pivotTask.endTime;
 
   // Downstream same-day tasks (start ≥ pivot end), sorted.
-  const downstream = schedule.tasks
+  //
+  // ⚠️ OCCURRENCES ARE IN THIS LIST, AND THEY WERE NOT. This filtered
+  // `schedule.tasks` on `!t.recurrence` and — alone among the engine modules —
+  // never concatenated the materialised occurrences back. `conflicts`,
+  // `evacuate`, `carryOver`, `projects`, `routines`, `generate`, `placement`
+  // and ripple's OWN overflow branch ninety lines below all do it; that branch
+  // even comments "occurrences are anchors (§4.4)". This scan did not, so a
+  // weekly gym or lecture was invisible to `findFirstWallIdx`, `limit` ran to
+  // the day-window end instead of the session's start, and the plain-shift
+  // branch never tripped the overflow guard.
+  //
+  // Measured before the fix — resize a task, and the flexible after it:
+  //     shifted  : [ 'Reading -> 11:00-12:00' ]
+  //     evacuated: []
+  //     OVERLAPS : [ 'Gym(11:00) X Reading(11:00)' ]
+  // A silent overlap, which §0 forbids, with no warning and no evacuation.
+  //
+  // `getTasksForDay` materialises the day, so occurrences arrive as `fixed` and
+  // `isAnchored` makes them walls. The raw PATTERN is excluded: it is not a
+  // placement, and shifting it would rewrite every future week.
+  const downstream = schedule.getTasksForDay(pivotTask.startTime)
     .filter(
       (t) =>
         t !== pivotTask &&
+        t.id !== pivotTask.id &&
         !t.chunking &&
-        !t.recurrence &&
+        !(t.recurrence && !t.isOccurrence) &&
         // §2.4's resolved rule: `skipped` neither moves nor holds its slot, so
         // it is not part of the chain at all. `done`/`partial` DO hold theirs —
         // they stay in `downstream` on purpose, to be found as a wall below.
@@ -58,7 +79,14 @@ export function rippleShift(schedule, pivotTask, deltaMin) {
   // may be rippled THROUGH them either — which is what makes it a wall rather
   // than merely a skip.
   const firstWallIdx = downstream.findIndex((t) => t.holdsItsSlot() || t.isAnchored(protectedTags));
-  const affected = firstWallIdx >= 0 ? downstream.slice(0, firstWallIdx) : downstream;
+  const affected = (firstWallIdx >= 0 ? downstream.slice(0, firstWallIdx) : downstream)
+    // ⚠️ BELT AND BRACES, and not redundant. A materialised occurrence is a
+    // THROWAWAY object — `getTasksForDay` builds it fresh and discards it — so
+    // moving one mutates nothing and would look exactly like success. §4.4
+    // makes occurrences `fixed`, so `isAnchored` already stops them above; this
+    // guarantees it rather than inheriting it, because the failure mode if that
+    // ever changes is silent.
+    .filter((t) => !t.isOccurrence);
   const wall = firstWallIdx >= 0 ? downstream[firstWallIdx] : null;
   const dayEnd = dayWindowBounds(config, pivotTask.startTime).end;
   const limit = wall ? new Date(Math.min(wall.startTime.getTime(), dayEnd.getTime())) : dayEnd;

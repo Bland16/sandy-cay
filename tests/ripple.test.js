@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { Schedule, Task, resetIds } from '../src/core/index.js';
+import { Schedule, Task, resetIds, weekStart as weekStartOf } from '../src/core/index.js';
 import { defaultConfig } from '../src/core/config.js';
 
 const MON = new Date(2026, 6, 13, 0, 0, 0, 0);
@@ -173,5 +173,78 @@ describe('§2.2 — ripple honours exclusive zones (the automatic guarantee)', (
     // The zone isn't in force today, so its hours are ordinary time again.
     expect(res.evacuated.length).toBe(0);
     expect(res.shifted.map((t) => t.id)).toContain(errand.id);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// A RECURRING SESSION IS A WALL. This file had no occurrence in it at all —
+// 177 lines, zero mentions — and the `downstream` scan filtered `!t.recurrence`
+// from `schedule.tasks` without ever concatenating the materialised occurrences
+// back. Ripple's OWN overflow branch does it and comments "occurrences are
+// anchors (§4.4)"; the scan ninety lines above it did not.
+//
+// Measured before the fix: resize a task and the flexible after it slides onto
+// your weekly gym — `shifted: ['Reading -> 11:00-12:00']`, `evacuated: []`,
+// `OVERLAPS: ['Gym(11:00) X Reading(11:00)']`. A silent overlap, which §0
+// forbids, with no toast, no schedulingWarning and no evacuation.
+// ════════════════════════════════════════════════════════════════════════════
+describe('ripple — a recurring session is a wall, not a hole', () => {
+  const MON = weekStartOf(new Date(2026, 8, 7));
+  const on = (h, m = 0) => { const d = new Date(MON); d.setHours(h, m, 0, 0); return d; };
+
+  const withGym = () => {
+    resetIds();
+    const s = new Schedule({ config: defaultConfig });
+    s.addFixed({
+      title: 'Gym', startTime: on(11), endTime: on(12),
+      recurrence: { freq: 'weekly', periods: [{ windows: [{ day: 'mon', start: '11:00', end: '12:00' }] }] },
+    });
+    return s;
+  };
+
+  const overlaps = (s) => {
+    const day = s.getTasksForDay(on(9)).filter((t) => !t.chunking);
+    const out = [];
+    for (let i = 0; i < day.length; i += 1) {
+      for (let j = i + 1; j < day.length; j += 1) {
+        const a = day[i]; const b = day[j];
+        if (a.startTime < b.endTime && b.startTime < a.endTime) out.push(`${a.title}×${b.title}`);
+      }
+    }
+    return out;
+  };
+
+  it('never shifts a task on top of an occurrence', () => {
+    const s = withGym();
+    const pivot = s.addFlexible({ title: 'Study', startTime: on(9), endTime: on(10) });
+    s.addFlexible({ title: 'Reading', startTime: on(10), endTime: on(11) });
+
+    s.rippleShift(pivot, 60);
+    expect(overlaps(s)).toEqual([]);
+  });
+
+  it('treats it as the wall: the task overflows and is evacuated instead', () => {
+    const s = withGym();
+    const pivot = s.addFlexible({ title: 'Study', startTime: on(9), endTime: on(10) });
+    const reading = s.addFlexible({ title: 'Reading', startTime: on(10), endTime: on(11) });
+
+    const res = s.rippleShift(pivot, 60);
+    expect(res.shifted.map((t) => t.title)).not.toContain('Reading');
+    expect(res.evacuated.map((t) => t.title)).toContain('Reading');
+    // And it actually went somewhere legal, rather than being parked on the gym.
+    expect(reading.startTime.getTime()).not.toBe(on(11).getTime());
+  });
+
+  // ⚠️ A materialised occurrence is a THROWAWAY object — getTasksForDay builds
+  // it fresh each call. "Shifting" one mutates nothing and looks like success,
+  // so it must never enter the affected set even if the wall test changes.
+  it('never tries to move the occurrence itself', () => {
+    const s = withGym();
+    const pivot = s.addFlexible({ title: 'Study', startTime: on(9), endTime: on(10) });
+    const res = s.rippleShift(pivot, 60);
+    for (const t of [...res.shifted, ...res.evacuated]) expect(t.isOccurrence).toBeFalsy();
+    // The session is still exactly where the pattern puts it.
+    const gym = s.getTasksForDay(on(9)).find((t) => t.title === 'Gym');
+    expect(gym.startTime.getTime()).toBe(on(11).getTime());
   });
 });
