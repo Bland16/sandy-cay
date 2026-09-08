@@ -30,3 +30,10 @@ npm-debug.log*
 # committed copy lives in design/ (HANDOFF, "public/ holds only what the app ships").
 public/*-mockups.html
 public/*-viewer.html
+
+# Claude Code's working directory. Untracked is right — settings.local.json and
+# the agent worktrees are per-machine — but NOT ignoring it is expensive:
+# `.claude/worktrees/` holds full checkouts, each with its own node_modules, so
+# every `git ls-files --others` walks them. Two of those wedged at 2.7 GB apiece
+# on 2026-09-07 and took the machine to 0.7 GB free, which killed the dev server.
+.claude/
