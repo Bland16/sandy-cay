@@ -394,14 +394,21 @@ describe('L-1 energy UI', () => {
     }
   };
 
-  it('stays "still learning" until calibrated — no fabricated ceiling or verdict', () => {
+  it('draws no ceiling and passes no verdict before one is earned', () => {
     resetIds();
     const s = new Schedule({ config: wide() });
     s.addBucket({ label: 'Work', tags: ['work'], load: { mental: 2 } });
     for (let i = 0; i < 5; i += 1) s.addFixed({ title: `W${i}`, tags: ['work'], startTime: D(15, 7 + i), endTime: D(15, 8 + i) });
-    render(<EnergyCard sched={s} now={D(15, 12)} />); // no ratings → uncalibrated
-    expect(screen.getByText(/still learning/i)).toBeTruthy();
-    expect(screen.queryByText('in the red')).toBeNull(); // never a verdict pre-calibration
+    render(<EnergyCard sched={s} now={D(15, 12)} />); // no ratings → nothing earned
+
+    // ⚠️ The assertion used to be `getByText(/still learning/i)`, which pinned
+    // the WORDING of a sentence that also carried "(0 of 3 weeks rated)" — a
+    // quota against work the reader has to do. The wording changed; the rule it
+    // was guarding did not, so this now asserts the rule: no ceiling is drawn,
+    // no bar is drawn against one, and no verdict is passed.
+    expect(screen.queryByText('in the red')).toBeNull();
+    expect(document.querySelectorAll('.bar2')).toHaveLength(0);
+    expect(screen.getByText(/no ceiling is drawn/i)).toBeTruthy();
   });
 
   it('the energy card flags a reserve in the red once calibrated (physics, not a scold)', () => {
@@ -417,6 +424,57 @@ describe('L-1 energy UI', () => {
 
     expect(screen.getByText('mental')).toBeTruthy();
     expect(screen.getAllByText('in the red').length).toBeGreaterThan(0);
+  });
+
+  // ⚠️ A REGRESSION I INTRODUCED. `learnedCapacity` was changed on 2026-09-03 to
+  // return null for an axis with no evidence rather than substituting the config
+  // prior — correct, and P-2 — but EnergyCard did not follow. `x.capacity || 1`
+  // turned that null into 1, so an axis the user had never spent a minute on
+  // rendered a FULL bar labelled "8.0/null": the word null, printed on the card,
+  // over a bar reading as maxed out. Reproduced before fixing.
+  it('never prints a bar or a ceiling for an axis with no learned limit', () => {
+    resetIds();
+    const s = new Schedule({ config: wide() });
+    s.addBucket({ label: 'Work', tags: ['work'], load: { mental: 2 } });
+    s.addBucket({ label: 'Gym', tags: ['gym'], load: { physical: 2 } });
+    calibrate(s); // earns MENTAL a ceiling; physical/social/creative earn none
+    // A day that spends heavily on physical, which has no evidence behind it.
+    for (let i = 0; i < 4; i += 1) {
+      s.addFixed({ title: `G${i}`, tags: ['gym'], startTime: D(22, 7 + i), endTime: D(22, 8 + i) });
+    }
+    render(<EnergyCard sched={s} now={D(22, 12)} />);
+
+    const text = document.body.textContent;
+    expect(text).not.toMatch(/null|NaN|undefined/);
+    expect(text).not.toMatch(/\/\s*$/); // no "8.0/" with nothing after it
+    // The dip is still stated — it is observed, not invented.
+    expect(text).toMatch(/spent|steady/);
+    // A bar is drawn only where a ceiling was earned: mental, and nothing else.
+    expect(document.querySelectorAll('.bar2').length).toBe(1);
+  });
+
+  // ⚠️ NO QUOTA AND NO HOMEWORK, on a card the user sees every day. This said
+  // "(0 of 3 weeks rated)" — a progress bar against work they have to do — and
+  // "Rate how your tasks leave you and this becomes a real reserve in a few
+  // weeks", which is an explicit ask. P-2 is a statement about what the APP
+  // knows; it is not a bill.
+  it('never asks the user to feed the model, and never counts their ratings', () => {
+    resetIds();
+    const s = new Schedule({ config: wide() });
+    s.addBucket({ label: 'Work', tags: ['work'], load: { mental: 2 } });
+    for (let i = 0; i < 5; i += 1) {
+      s.addFixed({ title: `W${i}`, tags: ['work'], startTime: D(15, 7 + i), endTime: D(15, 8 + i) });
+    }
+    render(<EnergyCard sched={s} now={D(15, 12)} />); // nothing rated at all
+
+    const text = document.body.textContent;
+    expect(text).not.toMatch(/\d+ of \d+ weeks/i);
+    expect(text).not.toMatch(/rate how your tasks/i);
+    expect(text).not.toMatch(/becomes a real reserve/i);
+    // And no praise, which is a verdict whose absence tomorrow is a demerit.
+    expect(text).not.toMatch(/topped up|well done|good job/i);
+    // It still says why there is no ceiling, without narrating it as a shortfall.
+    expect(text).toMatch(/no ceiling is drawn/i);
   });
 
   it('says nothing about an axis it has no evidence for, even once calibrated', () => {
