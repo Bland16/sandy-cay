@@ -534,6 +534,150 @@ describe('§7.1 — when it happened, on one shared clock', () => {
     expect(op(shades[shades.length - 1])).toBeGreaterThan(op(shades[0]));
   });
 
+  // ⚠️ A TASK NESTED INSIDE A LONGER ONE. `reserveWalk` sorts by START and stamps
+  // each point at that task's END, and `energyTrajectory` handed those points on
+  // as though they were in time order. They are not, the moment one task sits
+  // inside another — so the strip's walk moved `prev` BACKWARDS and emitted
+  // overlapping segments. Measured before the fix, a five-hour call inside a
+  // nine-hour lab:
+  //
+  //        0 → 1200  depth  0.00
+  //     1020 → 1440  depth 42.00     ← overlaps the row above
+  //
+  // Two translucent fills stacked over 17:00–20:00 read darker than the scale's
+  // own maximum allows, and the nine hours holding the day's entire workload
+  // were painted at depth 0 — the wash said you were fresh straight through it.
+  //
+  // ⚠️ THE MORNING BLOCK IS LOad-BEARING, not scenery. The wash only draws
+  // segments with depth above zero, so with the nested pair ALONE the earlier
+  // segment is invisible and there is nothing for the later one to overlap —
+  // the first draft of this case passed against the unfixed code for exactly
+  // that reason. Something has to have been spent BEFORE the pair for the
+  // double-painting to become visible, which is also the realistic shape: the
+  // nested call happens in the middle of a day already under way.
+  it('never paints two washes over the same hour', () => {
+    const s = new Schedule({ config: defaultConfig });
+    s.addBucket({ label: 'Study', tags: ['study'], load: { mental: 3, creative: 1 } });
+    s.addFixed({ title: 'Morning', tags: ['study'], startTime: at(0, 9), endTime: at(0, 11) });
+    s.addFixed({ title: 'Long lab', tags: ['study'], startTime: at(0, 11), endTime: at(0, 20) });
+    s.addFixed({ title: 'Nested call', tags: ['study'], startTime: at(0, 12), endTime: at(0, 17) });
+    persist(s);
+
+    render(<App />);
+    openReport();
+
+    const shades = [...[...document.querySelectorAll('.rp-strip')][0]
+      .querySelectorAll('.rp-strip-shade')];
+    expect(shades.length).toBeGreaterThan(0);
+    expect(shades.length).toBeGreaterThanOrEqual(2); // or there is nothing to overlap
+    const spans = shades.map((el) => ({
+      from: pct(el, 'left'), to: pct(el, 'left') + pct(el, 'width'),
+    })).sort((a, b) => a.from - b.from);
+    for (let i = 1; i < spans.length; i += 1) {
+      expect(spans[i].from).toBeGreaterThanOrEqual(spans[i - 1].to - 1e-6);
+    }
+  });
+
+  // …and THE DEPTHS. Fixing the geometry alone leaves a subtler wrong: the
+  // strip's `Math.max` guard stops `prev` moving backwards, which collapses the
+  // out-of-order points into ONE drawn band covering everything after 17:00 —
+  // no overlap, and no wash at all over the nine hours holding the day's entire
+  // workload. Re-sorting the points does not fix it either, because each one
+  // carries a cumulative total from its position in the START order, not from
+  // its own hour: sorted, the row read 42 load-hours at 17:00 dropping to 27 at
+  // 20:00, as though finishing the lab had rested you.
+  //
+  // ⚠️ ASSERT TWO BANDS BEFORE COMPARING THEM. With one band the ordering check
+  // below is vacuously true, which is exactly how the first draft of this case
+  // passed against the unfixed code.
+  it('deepens at each hour work finished, and never lightens while spending', () => {
+    const s = new Schedule({ config: defaultConfig });
+    s.addBucket({ label: 'Study', tags: ['study'], load: { mental: 3, creative: 1 } });
+    s.addFixed({ title: 'Long lab', tags: ['study'], startTime: at(0, 11), endTime: at(0, 20) });
+    s.addFixed({ title: 'Nested call', tags: ['study'], startTime: at(0, 12), endTime: at(0, 17) });
+    persist(s);
+
+    render(<App />);
+    openReport();
+
+    const shades = [...[...document.querySelectorAll('.rp-strip')][0]
+      .querySelectorAll('.rp-strip-shade')]
+      .sort((a, b) => pct(a, 'left') - pct(b, 'left'));
+    // Two tasks finish at different hours, so the wash steps twice.
+    expect(shades.length).toBeGreaterThanOrEqual(2);
+    const ops = shades.map((el) => parseFloat(el.style.opacity));
+    for (let i = 1; i < ops.length; i += 1) expect(ops[i]).toBeGreaterThan(ops[i - 1]);
+  });
+
+  // ⚠️ THE WASH AND THE TRACK ARE ONE DRAWING. The shade is built in day
+  // coordinates (0…1440) before the axis is known, and the axis is the union of
+  // every day's window and every task — so a week whose axis ran 480→1500 put
+  // the first segment at −47.1% of the track and left 1440→1500 with no
+  // background at all, which is the same complaint that moved the wash off the
+  // open window in the first place ("it shouldn't only be during day hours").
+  //
+  // ⚠️ NO MIDNIGHT-CROSSING TASK IN THIS FIXTURE, deliberately. One would push
+  // `axisTo` out to 25 hours all by itself and the tail would fit inside the
+  // track for the wrong reason — which is how the first draft of this case
+  // passed against the unfixed code. The overflow needs a day whose LAST task
+  // ends before the window closes, so the debt it leaves behind lands past the
+  // end of the axis: measured at 114% of the track, drawn off the end of the row.
+  it('never runs the wash off the end of the track', () => {
+    const s = new Schedule({ config: defaultConfig });
+    s.addBucket({ label: 'Study', tags: ['study'], load: { mental: 3, creative: 1 } });
+    s.addFixed({ title: 'Evening', tags: ['study'], startTime: at(0, 18), endTime: at(0, 21) });
+    persist(s);
+
+    render(<App />);
+    openReport();
+
+    const shades = [...[...document.querySelectorAll('.rp-strip')][0]
+      .querySelectorAll('.rp-strip-shade')];
+    expect(shades.length).toBeGreaterThan(0);
+    const right = Math.max(...shades.map((el) => pct(el, 'left') + pct(el, 'width')));
+    const left = Math.min(...shades.map((el) => pct(el, 'left')));
+    expect(right).toBeLessThanOrEqual(100 + 1e-6);
+    expect(left).toBeGreaterThanOrEqual(-1e-6);
+    // …and it must still REACH the end: the debt a late block leaves behind is
+    // the most informative stretch on the row, and clipping it to the old axis
+    // deleted the day's only shading outright.
+    expect(right).toBeGreaterThan(95);
+  });
+
+  // ⚠️ THE CALIBRATION, WHICH HAD NO GRADIENT IN IT. The wash caps at four steps
+  // so it never competes with the ink of the blocks, and the step was 2
+  // load-hours — putting the whole useful range of the scale inside one morning.
+  // Measured on an ordinary week: a 90-minute lecture arrived at 3 of 4 steps,
+  // and a 9.5-hour Wednesday was INDISTINGUISHABLE from a 5-hour Thursday. What
+  // was asked for was "a gradient based on levels of exaustion".
+  //
+  // Asserted on the two days a reader most wants told apart, not on the constant
+  // — a test that reads `shadeStep` back would agree with any value at all.
+  it('tells a heavy day apart from a merely busy one', () => {
+    const s = new Schedule({ config: defaultConfig });
+    s.addBucket({ label: 'Study', tags: ['study'], load: { mental: 3, creative: 1 } });
+    s.addBucket({ label: 'Class', tags: ['class'], load: { mental: 2, social: 1 } });
+    // Mon: one lecture. Tue: a five-hour day. Wed: a nine-and-a-half hour one.
+    s.addFixed({ title: 'Lecture', tags: ['class'], startTime: at(0, 10), endTime: at(0, 11, 30) });
+    s.addFixed({ title: 'Gym-ish', tags: ['class'], startTime: at(1, 9), endTime: at(1, 11) });
+    s.addFixed({ title: 'Thesis', tags: ['study'], startTime: at(1, 11), endTime: at(1, 14) });
+    s.addFixed({ title: 'Seminar', tags: ['class'], startTime: at(2, 9), endTime: at(2, 13) });
+    s.addFixed({ title: 'Problem set', tags: ['study'], startTime: at(2, 14), endTime: at(2, 19) });
+    persist(s);
+
+    render(<App />);
+    openReport();
+
+    const darkest = (i) => Math.max(0, ...[...[...document.querySelectorAll('.rp-strip')][i]
+      .querySelectorAll('.rp-strip-shade')].map((el) => parseFloat(el.style.opacity)));
+
+    // The two full days must not read the same. This is the assertion the old
+    // calibration failed: both sat pinned at the four-step maximum.
+    expect(darkest(2)).toBeGreaterThan(darkest(1));
+    // And one lecture must not already be most of the way to the darkest shade.
+    expect(darkest(0)).toBeLessThan(darkest(2) / 2);
+  });
+
   it('is readable without the picture', () => {
     const s = new Schedule({ config: defaultConfig });
     s.tasks.push(new Task({ title: 'A', type: 'fixed', startTime: at(0, 9), endTime: at(0, 11) }));

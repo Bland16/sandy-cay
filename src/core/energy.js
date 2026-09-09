@@ -155,12 +155,41 @@ export function spendRestore(schedule, tasks) {
   return { axes, totals, any: totals.spend > 0 || totals.restore > 0 };
 }
 
-/** The day's reserve TRAJECTORY — per-axis reserve after each task, in time order.
- *  The "time points" a future model can learn bottom-out patterns from, and the
- *  basis for a when-you-dip read in the card. */
+/**
+ * The day's reserve TRAJECTORY — per-axis reserve as of each hour work finished,
+ * IN TIME ORDER. The "time points" a future model can learn bottom-out patterns
+ * from, and the background wash on the wrap report's day strips.
+ *
+ * ⚠️ THIS DOC COMMENT SAID "in time order" AND THE FUNCTION DID NOT DO IT.
+ * It returned `reserveWalk`'s points unchanged, and that walk sorts tasks by
+ * START while stamping each point at that task's END — two orderings that
+ * disagree the moment one task is NESTED inside a longer one. A five-hour call
+ * inside a nine-hour lab produced points at 20:00 then 17:00, and the wash
+ * consuming them painted overlapping segments whose depths ran BACKWARDS: 42
+ * load-hours at 17:00 dropping to 27 at 20:00, as though finishing the lab had
+ * rested you.
+ *
+ * Re-sorting the points cannot fix it, because each one carries a cumulative
+ * total from its position in the START order, not from its own hour. The
+ * question the trajectory answers is "how much had you spent by T", so each
+ * point is now the reserve over exactly the work FINISHED by then.
+ *
+ * ⚠️ AND IT IS `reserveWalk` THAT ANSWERS IT, once per boundary, rather than
+ * an accumulation written out again here. The reserve is clamped at 0 — rest
+ * banked above the line is dropped — which makes the arithmetic
+ * ORDER-DEPENDENT: applying a nap before the grind it sits inside is worth
+ * nothing, while applying it after is worth its full value (measured: −27
+ * against −25). A second walk written to look equivalent would differ exactly
+ * there, on the days the wash matters most.
+ */
 export function energyTrajectory(schedule, date) {
   const tasks = schedule.getTasksForDay(date).filter((t) => !t.chunking && t.completion !== 'skipped');
-  const { points, low } = reserveWalk(schedule, tasks);
+  const { low } = reserveWalk(schedule, tasks);
+  const ends = [...new Set(tasks.map((t) => t.endTime.getTime()))].sort((a, b) => a - b);
+  const points = ends.map((ms) => ({
+    at: new Date(ms),
+    reserve: reserveWalk(schedule, tasks.filter((t) => t.endTime.getTime() <= ms)).reserve,
+  }));
   return { points, low };
 }
 

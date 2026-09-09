@@ -650,6 +650,14 @@ function buildDayStrips(sched, ws) {
     //
     // 0 → 1440 now. The row is a whole day, and the wash is the only background
     // it has.
+    // ⚠️ THIS WALK ASSUMES THE POINTS ARE IN TIME ORDER, and for a year they
+    // were not — `energyTrajectory` returned `reserveWalk`'s points, which are
+    // sorted by task START and stamped at task END. One task nested inside a
+    // longer one put them out of order, `prev` moved BACKWARDS, and the row got
+    // two overlapping fills whose depths ran the wrong way. That is fixed at the
+    // source, where the arithmetic lives; the `Math.max` below is the assumption
+    // stated rather than assumed, so a future regression upstream degrades to a
+    // flat segment instead of a double-painted one.
     const { points } = energyTrajectory(sched, date);
     const depthOf = (r) => LOAD_AXES.reduce((n, a) => n + Math.max(0, -r[a]), 0);
     const shade = [];
@@ -660,7 +668,7 @@ function buildDayStrips(sched, ws) {
       const at = minsFrom(pt.at);
       if (at > prev) shade.push({ from: prev, to: at, depth: carried });
       carried = depthOf(pt.reserve);
-      prev = at;
+      prev = Math.max(prev, at);
     }
     if (prev < DAY_END) shade.push({ from: prev, to: DAY_END, depth: carried });
 
@@ -679,13 +687,91 @@ function buildDayStrips(sched, ws) {
 
   if (!Number.isFinite(axisFrom) || axisTo <= axisFrom) return null;
   // One step of shading = this many load-hours spent and not yet recovered.
-  const SHADE_STEP = 2;
+  //
+  // ⚠️ IT WAS 2, AND AT 2 THERE WAS NO GRADIENT. The wash is capped at four
+  // steps so it never competes with the ink of the blocks sitting on it, which
+  // put the whole useful range of the scale between 0 and 8 load-hours — about
+  // one morning. Measured on an ordinary week:
+  //
+  //     Mon    90m    depth  4.5    3 of 4 steps
+  //     Tue   120m    depth  6.0    3 of 4
+  //     Thu   300m    depth 14.0    4 of 4
+  //     Wed   570m    depth 21.5    4 of 4
+  //
+  // A single ninety-minute lecture arrived three-quarters of the way to the
+  // darkest shade, and a nine-and-a-half hour Wednesday was indistinguishable
+  // from a five-hour Thursday — the two days the reader most wants told apart.
+  // What was asked for was "a gradient based on levels of exaustion"; what the
+  // calibration delivered was a band that goes dark by mid-morning and stays
+  // there. At 10 the same week reads 1, 1, 2, 3 of 4, which is a gradient.
+  //
+  // Still ABSOLUTE, not scaled to the week's own worst day — a punishing week
+  // must shade darker than a gentle one, which is why these are constants here
+  // and not a maximum computed from `days`.
+  //
+  // ⚠️ AND THE STEP SIZE ALONE COULD NOT FIX IT — the CAP was the problem.
+  // Four steps cannot carry both readings the wash is asked for at once. Within
+  // one day the interesting range is a couple of load-hours at a time (a rest
+  // block must visibly lighten what follows it); across days it is forty. At a
+  // step of 2 the second reading was lost — every full day pinned at the
+  // maximum; at a step of 10 the FIRST was, and a five-hour morning shaded
+  // perfectly flat. Ten steps of 4 carry both, and the darkest shade is exactly
+  // as dark as it was, so the wash still never competes with the ink of the
+  // blocks sitting on it:
+  //
+  //     90m lecture   4.5 → 2/10        five-hour morning  2,4,6,8,10 → 1,1,2,2,3
+  //     5h day       14.0 → 4/10        9.5h day          21.5 → 6/10
+  const SHADE_STEP = 4;
+  const SHADE_STEPS = 10;
   // Whole hours, so the labels land on the hour and the grid reads as a clock.
   axisFrom = Math.floor(axisFrom / 60) * 60;
   axisTo = Math.ceil(axisTo / 60) * 60;
+  // ⚠️ THE WASH AND THE BLOCKS SHARE ONE MAPPING, so they have to share one
+  // RANGE. The shade is built in day coordinates (0 … 1440) before the axis is
+  // known, and the axis is the union of every day's window and every task — so
+  // the two disagreed at BOTH ends. Measured on a week whose axis ran 480→1500:
+  // the first segment started at 0, which is −47.1% of the track, and the last
+  // ended at 1440, leaving the hour a midnight-crossing task had stretched the
+  // axis to reach as the one stretch with no background at all. (The user's
+  // call, 2026-09-07: the wash "shouldn't only be during day hours. This gives
+  // less information." An unwashed tail is the same complaint one hour later.)
+  //
+  // Clamped to the drawn track, and the last segment carried out to its end.
+  // ⚠️ THE AXIS COVERS THE WASH — NOT THE OTHER WAY ROUND. Clipping the shade
+  // to the axis is the obvious repair and it deletes the most important segment
+  // on the row: the debt a late block LEAVES BEHIND lands after that block ends,
+  // so on a day whose last task finishes at 23:00 the whole of the day's
+  // shading sat past an axis that stopped at 23:00, and clipping erased it.
+  // (That segment used to be drawn at 104% of the track — off the end of the
+  // row. It was visible only because it was out of bounds.)
+  //
+  // So the last hour a day still carries debt EXTENDS the shared clock, exactly
+  // as a task running late does. The cost is real: on most weeks this carries
+  // the axis out to midnight and every block loses a little width. That is the
+  // trade the user already chose once, when the wash stopped being clipped to
+  // the open window — "it shouldn't only be during day hours. This gives less
+  // information."
+  const litTo = Math.max(...days.map((d) => {
+    const lit = d.shade.filter((g) => g.depth > 0);
+    return lit.length ? lit[lit.length - 1].to : -Infinity;
+  }));
+  if (Number.isFinite(litTo)) axisTo = Math.max(axisTo, Math.ceil(litTo / 60) * 60);
+
+  // Now that the track spans the wash, trim anything outside it (the leading
+  // 00:00→axisFrom stretch, which has no row under it) and carry the last
+  // segment out to the end so no hour of the track is left with no background.
+  for (const d of days) {
+    d.shade = d.shade
+      .map((g) => ({ ...g, from: Math.max(g.from, axisFrom), to: Math.min(g.to, axisTo) }))
+      .filter((g) => g.to > g.from);
+    const last = d.shade[d.shade.length - 1];
+    if (last && last.to < axisTo) last.to = axisTo;
+  }
   const any = days.some((d) => d.items.length > 0);
   const anyShade = days.some((d) => d.shade.some((g) => g.depth > 0));
-  return any ? { axisFrom, axisTo, days, shadeStep: SHADE_STEP, anyShade } : null;
+  return any
+    ? { axisFrom, axisTo, days, shadeStep: SHADE_STEP, shadeSteps: SHADE_STEPS, anyShade }
+    : null;
 }
 
 /**

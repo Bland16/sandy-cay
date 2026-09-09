@@ -120,6 +120,11 @@ function SandBars({ load }) {
  * on the chart's least informative variable. The BACKGROUND carries the energy
  * curve instead — which is the thing that actually varies through a day.
  */
+// The darkest the wash may ever be. The blocks sit ON the wash, so this is the
+// ceiling that keeps it a background rather than a competing layer of ink; the
+// number of steps below it is a resolution choice and this is not.
+const MAX_SHADE = 0.22;
+
 function DayStrips({ strips }) {
   const { axisFrom, axisTo, days } = strips;
   const span = Math.max(1, axisTo - axisFrom);
@@ -164,8 +169,11 @@ function DayStrips({ strips }) {
                 recovered by that hour, in fixed steps of load-hours — so a
                 punishing week shades darker than a gentle one instead of both
                 filling the same range, and a rest block visibly lightens what
-                follows it. Capped at four steps so the wash never competes with
-                the ink of the blocks sitting on top. */}
+                follows it. Capped in DARKNESS — `MAX_SHADE` — so the wash never
+                competes with the ink of the blocks sitting on top; the number of
+                steps under that ceiling is a resolution choice, and it was four
+                for a while, which was too few for the range to carry both the
+                within-a-day reading and the across-days one. See the builder. */}
             {d.shade.map((g) => (
               g.depth > 0 && (
                 <span
@@ -174,7 +182,8 @@ function DayStrips({ strips }) {
                   style={{
                     left: `${pc(g.from)}%`,
                     width: `${Math.max(0, pc(g.to) - pc(g.from))}%`,
-                    opacity: Math.min(4, Math.ceil(g.depth / strips.shadeStep)) * 0.055,
+                    opacity: Math.min(strips.shadeSteps, Math.ceil(g.depth / strips.shadeStep))
+                      * (MAX_SHADE / strips.shadeSteps),
                   }}
                 />
               )
@@ -205,7 +214,8 @@ function DayStrips({ strips }) {
         One clock across all seven days.
         {strips.anyShade && (
           <> The darker the background, the more you had spent by then — each
-            step is {strips.shadeStep} load-hours not yet recovered.</>
+            step is {strips.shadeStep} load-hours not yet recovered, and the
+            darkest is {strips.shadeStep * strips.shadeSteps} or more.</>
         )}
         {' '}Each block is a session, at the hour it sat.
       </p>
