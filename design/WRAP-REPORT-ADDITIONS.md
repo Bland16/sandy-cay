@@ -721,15 +721,42 @@ Checked so far, so the next person does not redo it:
   `stepIndex` (`Task.js:107`, `Schedule.js:743`). So `ratedSamples()` is NOT
   excluding them by walking the wrong collection — this is not another instance
   of the eight-times "one door" bug.
-- Which moves the question to whether a touchpoint can be **rated at all**, and
-  whether its rating carries the duration facet the suggestion reads. If the
-  rating UI does not offer the facet on a touchpoint, routines contribute
-  nothing to this denominator no matter how many of them run.
+- **They can be rated, and the ratings DO reach the detector.** Checked by
+  execution, not by reading. A touchpoint is a plain task — `isOccurrence`
+  false, `chunking` false — so `RightPanel` opens the ordinary `TaskPanel` for
+  it (nothing anywhere routes on `routineId`), the rating block renders
+  unconditionally with the full facet row including `duration`, and the
+  non-occurrence branch writes through `Schedule#updateTask`, where
+  `satisfaction` is on `UPDATE_WHITELIST` and `_snapshotEnergy` stamps the
+  context. Measured, rating one touchpoint:
 
-To do: find where the suggestion's denominator is built, print the actual sample
-set for `break` on the user's own week, and establish whether touchpoints are in
-it. Fix the denominator before touching the threshold — a threshold tuned
-against a broken denominator is tuned to nothing.
+      in ratedSamples BEFORE?  false
+      in ratedSamples AFTER?   true
+      energy context stamped?  dayFill=0.0222
+      detector on 3 answers:   {suggest:true, count:3, total:3}
+      detector WITHOUT it:     {suggest:false}
+
+  The last two lines are the proof: removing the touchpoint from the sample set
+  drops the denominator below the detector's floor and the suggestion vanishes.
+  It was being counted.
+
+- `durationFitSuggestion` is also called correctly — `report.js:252` passes
+  `sched.ratedSamples()`, the one door, so recurring sessions are in as well.
+
+**So the hypothesis is wrong, and the real cause is the threshold itself.**
+`detectors.js:145` returns early only below `answered.length < 3`, and the bar is
+`tooLong / total >= 0.6`. The weakest evidence that can produce a confident
+recommendation is therefore **2 out of 3** — which is exactly what the report
+printed. `3 of 4` and `3 of 5` clear it the same way.
+
+That is the same defect as `53d7c8d` one level up: that fix corrected the
+denominator (it had excluded everyone who answered "just right"), and left the
+floor where it was. A correct ratio over three samples is still three samples.
+
+To do: raise the evidence floor, and consider requiring a MARGIN rather than a
+bare ratio — 2 of 3 and 12 of 20 are both 60% and are not the same claim. Any
+new floor should be stated in the sentence the report prints, so the reader can
+weigh it without opening the code.
 
 ### R-2 — The energy wash needed to be darker ✅ done 2026-09-09
 
