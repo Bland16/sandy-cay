@@ -126,6 +126,23 @@ function SandBars({ load }) {
 const MAX_SHADE = 0.22;
 
 function DayStrips({ strips }) {
+  // ⚠️ NOTHING RAN, WHICH IS NOT THE SAME AS NOTHING TO SAY. This section used
+  // to disappear outright on a week whose sessions were all marked skipped,
+  // while the bars above went on reporting the hours those sessions were
+  // scheduled for. The two are measuring different things and both are right;
+  // what was missing was the page admitting it. A count and a fact — never a
+  // list of what was not done (§7.1, P-1).
+  if (strips.nothingRan) {
+    return (
+      <div className="rp-strips">
+        <p className="rp-dim rp-strip-key">
+          Nothing to put on the clock — this section draws sessions that ran, and
+          this week{'’'}s {strips.skipped === 1 ? 'one is' : `${strips.skipped} are`} marked
+          skipped. The bars above count the hours they were scheduled for.
+        </p>
+      </div>
+    );
+  }
   const { axisFrom, axisTo, days } = strips;
   const span = Math.max(1, axisTo - axisFrom);
   const pc = (m) => ((m - axisFrom) / span) * 100;

@@ -691,6 +691,37 @@ describe('§7.1 — when it happened, on one shared clock', () => {
     expect(label).toMatch(/2h|block/);
   });
 
+  // ⚠️ TWO SECTIONS OF ONE PAGE, TWO DENOMINATORS, AND NOTHING SAYING SO. On a
+  // week where every session was marked skipped this block returned null and
+  // disappeared, while the sand bars above went on reporting 1200 minutes over
+  // five days — `getWeekLoad` counts what was SCHEDULED and is right to, since a
+  // skipped block still occupied the grid and placement's balance term needs it.
+  // A reader saw a full week of bars and no clock at all, with no explanation.
+  it('does not vanish on a week whose sessions were all skipped', () => {
+    const s = new Schedule({ config: defaultConfig });
+    s.addBucket({ label: 'Study', tags: ['study'], load: { mental: 3 } });
+    for (let d = 0; d < 5; d += 1) {
+      const t = s.addFixed({ title: `Block ${d}`, tags: ['study'], startTime: at(d, 9), endTime: at(d, 13) });
+      t.completion = 'skipped';
+    }
+    persist(s);
+
+    render(<App />);
+    openReport();
+
+    // The bars still report the scheduled hours…
+    expect(bars().length).toBeGreaterThan(0);
+    // …and the clock is still on the page, saying why it is empty.
+    expect(strips()).toBeTruthy();
+    const said = strips().textContent;
+    expect(said).toMatch(/sessions that ran/);
+    expect(said).toMatch(/5 are marked\s+skipped/);
+    // A COUNT, never a list (§7.1) — no session titles anywhere in it.
+    expect(said).not.toMatch(/Block \d/);
+    // And no verdict about the reader (P-1).
+    expect(said).not.toMatch(/you (didn|did not|failed|missed)/i);
+  });
+
   it('says nothing at all on a week with no blocks to place', () => {
     const s = new Schedule({ config: defaultConfig });
     s.addCommitment({

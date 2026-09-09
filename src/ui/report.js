@@ -769,9 +769,29 @@ function buildDayStrips(sched, ws) {
   }
   const any = days.some((d) => d.items.length > 0);
   const anyShade = days.some((d) => d.shade.some((g) => g.depth > 0));
-  return any
-    ? { axisFrom, axisTo, days, shadeStep: SHADE_STEP, shadeSteps: SHADE_STEPS, anyShade }
-    : null;
+  if (any) {
+    return { axisFrom, axisTo, days, shadeStep: SHADE_STEP, shadeSteps: SHADE_STEPS, anyShade };
+  }
+
+  // ⚠️ A SECTION THAT VANISHES IS NOT A SECTION THAT SAID NOTHING. On a week
+  // where every session was marked skipped, this returned `null` and the whole
+  // "when it happened" block disappeared — while the sand bars above it went on
+  // reporting 1200 minutes across five days, because `getWeekLoad` counts what
+  // was SCHEDULED and is right to (a skipped block still occupied the grid, and
+  // placement's balance term needs it). Two sections of one page, two different
+  // denominators, and nothing on the page saying so.
+  //
+  // Which is the denominator rule exactly: the reader must be able to name what
+  // a quantity is out of. So the section stays and names both. A COUNT, never a
+  // list — §7.1 is explicit, and P-1 forbids the verdict that an itemised
+  // "what you didn't do" amounts to. The sentence is about the two drawings, not
+  // about the reader.
+  let skipped = 0;
+  for (let i = 0; i < 7; i += 1) {
+    skipped += sched.getTasksForDay(addDays(ws, i))
+      .filter((t) => !t.chunking && t.completion === 'skipped').length;
+  }
+  return skipped > 0 ? { nothingRan: true, skipped } : null;
 }
 
 /**
