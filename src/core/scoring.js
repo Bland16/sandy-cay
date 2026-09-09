@@ -12,15 +12,42 @@
 
 import { minutesBetween, clamp } from './time.js';
 
-/** Renormalize the weights so they sum to 1 (SPEC §2.3 "renormalized"). */
+/**
+ * Renormalize the weights so they sum to 1 (SPEC §2.3 "renormalized").
+ *
+ * ⚠️ `?? 0` IS NOT A NUMBER GUARD — it catches null and undefined and nothing
+ * else, and these values come from a saved config file. Measured, before this:
+ *
+ *   proximity NaN     → every weight NaN, and `sum <= 0` does NOT fire,
+ *   proximity "0,5"   →   because NaN <= 0 is false. `findBestSlot` then scores
+ *   proximity "abc"   →   every candidate NaN, no comparison is ever true, and
+ *                          the FIRST slot the walker produced wins. Every
+ *                          placement in the app becomes "the earliest gap",
+ *                          silently, with no error anywhere.
+ *
+ * A string is not exotic here: `"0,5"` is what a decimal comma types, `+`
+ * CONCATENATES it rather than adding, and it survives a JSON round trip
+ * untouched. And a plain negative is the quietest of the lot — `proximity: -1`
+ * left a sum of 0.2, so the normalized proximity came out at −5.0: five times
+ * the magnitude of every other term and pointing the wrong way, while the set
+ * still summed to 1 and looked perfectly ordinary.
+ *
+ * Coerced, and anything that is not a non-negative finite number reads as 0 —
+ * "this term is off", which is the one safe meaning. If that empties the set,
+ * the `sum <= 0` fallback below is already the answer.
+ */
 export function normalizeWeights(weights) {
+  const num = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 0 ? n : 0;
+  };
   const w = {
-    proximity: weights.proximity ?? 0,
-    balance: weights.balance ?? 0,
-    stability: weights.stability ?? 0,
-    preference: weights.preference ?? 0,
-    buffer: weights.buffer ?? 0,
-    energy: weights.energy ?? 0,
+    proximity: num(weights.proximity),
+    balance: num(weights.balance),
+    stability: num(weights.stability),
+    preference: num(weights.preference),
+    buffer: num(weights.buffer),
+    energy: num(weights.energy),
   };
   const sum = w.proximity + w.balance + w.stability + w.preference + w.buffer + w.energy;
   if (sum <= 0) {

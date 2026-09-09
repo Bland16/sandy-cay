@@ -683,6 +683,80 @@ describe('config values that were declared and never read', () => {
   });
 });
 
+describe('config values a saved file can carry into the engine', () => {
+  beforeEach(() => resetIds());
+
+  // ⚠️ `?? 0` IS NOT A NUMBER GUARD. It catches null and undefined and nothing
+  // else, and these values arrive from a JSON file. A NaN made every weight NaN
+  // — and `sum <= 0` does NOT fire on NaN, because `NaN <= 0` is false — so
+  // `findBestSlot` scored every candidate NaN, no comparison was ever true, and
+  // the first slot the walker produced won. Every placement in the app becomes
+  // "the earliest gap", silently.
+  //
+  // `"0,5"` is not exotic: it is what a decimal comma types, `+` CONCATENATES
+  // it rather than adding, and it survives a JSON round trip untouched.
+  it('cannot be knocked into NaN by one bad weight', async () => {
+    const { normalizeWeights } = await import('../src/core/index.js');
+    for (const bad of [NaN, '0,5', 'abc', Infinity, undefined, null]) {
+      const w = normalizeWeights({ ...defaultConfig.weights, proximity: bad });
+      const sum = Object.values(w).reduce((n, v) => n + v, 0);
+      for (const v of Object.values(w)) expect(Number.isFinite(v)).toBe(true);
+      expect(sum).toBeCloseTo(1, 10);
+    }
+  });
+
+  // The quietest of the lot, and the one with no NaN to notice: `proximity: -1`
+  // left a sum of 0.2, so the normalized proximity came out at −5.0 — five times
+  // the magnitude of every other term and pointing the WRONG WAY, while the set
+  // still summed to 1 and looked entirely ordinary.
+  it('never turns a negative weight into the loudest term in the sum', async () => {
+    const { normalizeWeights } = await import('../src/core/index.js');
+    const w = normalizeWeights({ ...defaultConfig.weights, proximity: -1 });
+    for (const v of Object.values(w)) {
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThanOrEqual(1);
+    }
+    expect(w.proximity).toBe(0); // off, which is the one safe reading of it
+  });
+
+  // ⚠️ A CAPACITY IS A DENOMINATOR, and `Number.isFinite` is not enough for one.
+  // 0 and −3 are both finite and both survive a save. Measured against a day
+  // that had spent 3 of a prior 6 — so the answer is 0.3333 and the fixture
+  // genuinely discriminates rather than saturating at 1:
+  //
+  //     capacity  6   depletion  0.3333   energy term 0.6667
+  //     capacity  0   depletion  1.0000   energy term 0.0000
+  //     capacity −3   depletion −0.6667   energy term 1.6667   ← out of bounds
+  //
+  // `Math.min(1, spent / cap)` has no lower bound, so a negative capacity gives
+  // a negative depletion, `1 − depletion` exceeds 1, and the energy term grows
+  // past its own weight — enough to outvote every other term in the score.
+  it('never lets a bad capacity push the energy term outside [0, 1]', async () => {
+    const { arrivalDepletionFor, loadForTask } = await import('../src/core/index.js');
+    const results = [];
+    for (const cap of [6, 0, -3, NaN, 'x']) {
+      const cfg = JSON.parse(JSON.stringify(defaultConfig));
+      cfg.energy.capacity.mental = cap;
+      const s = new Schedule({ config: cfg });
+      s.addBucket({ label: 'Study', tags: ['study'], load: { mental: 3 } });
+      s.addFixed({ title: 'Grind', tags: ['study'], startTime: at(0, 9), endTime: at(0, 10) });
+      const draft = new Task({ title: 'Next', tags: ['study'], startTime: at(0, 15), endTime: at(0, 16) });
+      const d = arrivalDepletionFor(s)(at(0, 15), loadForTask(s, draft));
+      expect(d).not.toBeNull();
+      expect(d).toBeGreaterThanOrEqual(0);
+      expect(d).toBeLessThanOrEqual(1);
+      results.push(d);
+    }
+    // Not saturated at either end — or the bounds above hold for the wrong
+    // reason and this case proves nothing.
+    expect(results[0]).toBeGreaterThan(0);
+    expect(results[0]).toBeLessThan(1);
+    // Every bad value falls back to the same prior, so it answers as a valid
+    // config does rather than merely staying inside the rails.
+    for (const d of results) expect(d).toBeCloseTo(results[0], 10);
+  });
+});
+
 describe('a suggestion may not contradict its own evidence', () => {
   beforeEach(() => resetIds());
 

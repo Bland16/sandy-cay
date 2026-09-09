@@ -60,7 +60,14 @@ const durationHours = (t) => Math.max(0, (t.endTime - t.startTime) / HOUR);
 export function capacityPrior(schedule) {
   const cap = (schedule.config.energy && schedule.config.energy.capacity) || {};
   const out = {};
-  for (const a of LOAD_AXES) out[a] = Number.isFinite(cap[a]) ? cap[a] : 6;
+  // ⚠️ FINITE IS NOT ENOUGH — THIS IS A DENOMINATOR. 0 and −3 are both finite
+  // and both survive a save. A negative one makes `spent / capacity` negative,
+  // `Math.min(1, …)` passes it straight through, and the depletion comes out
+  // BELOW ZERO — so `1 − depletion` exceeds 1 and the energy term outgrows its
+  // own weight (measured: 0.1465 against a legal maximum of 0.0968), letting it
+  // outvote every other term in the sum. Anything not strictly positive falls
+  // back to the prior.
+  for (const a of LOAD_AXES) out[a] = Number.isFinite(cap[a]) && cap[a] > 0 ? cap[a] : 6;
   return out;
 }
 
@@ -269,7 +276,11 @@ export function arrivalDepletionFor(schedule) {
   // a placement, so it is computed once here and closed over.
   const learned = learnedCapacity(schedule);
   const prior = capacityPrior(schedule);
-  const capOf = (a) => (learned && Number.isFinite(learned[a]) ? learned[a] : prior[a]) || 1;
+  // `|| 1` used to be the whole guard here, and it catches a 0 by accident (0 is
+  // falsy) while letting −3 through untouched. Stated properly: a capacity is a
+  // denominator, so it must be a positive number or it is not one.
+  const pos = (v) => (Number.isFinite(v) && v > 0 ? v : null);
+  const capOf = (a) => (learned && pos(learned[a])) || pos(prior[a]) || 1;
 
   return function depletionAt(at, load, { excludeId = null } = {}) {
     const l = load ? normalizeLoad(load) : null;
