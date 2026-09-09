@@ -6,7 +6,7 @@
 // deliverable is `design/probes/probe-rank-openings.mjs`, which PRINTS a real
 // afternoon; this locks what that probe established, plus the panel's own words.
 import { describe, it, expect } from 'vitest';
-import { render } from '@testing-library/react';
+import { render, fireEvent } from '@testing-library/react';
 import {
   Schedule, defaultConfig, addDays, rankOpenings, modelCanSpeak, dipIfPlaced, draftFor,
 } from '../src/core/index.js';
@@ -119,6 +119,71 @@ describe('the model only speaks when it can', () => {
     const s = week();
     expect(modelCanSpeak(s, 'study')).toBe(false);
     expect(modelCanSpeak(s, 'nonsense')).toBe(false);
+  });
+
+  /** The same week, plus a study history with a real morning preference in it. */
+  const trained = () => {
+    const s = week();
+    for (let i = 0; i < 16; i += 1) {
+      const day = addDays(MON, -(21 - i));
+      const morning = i % 2 === 0;
+      const t = s.addFixed({
+        title: `Study ${i}`,
+        startTime: new Date(day.getFullYear(), day.getMonth(), day.getDate(), morning ? 9 : 20, 0),
+        endTime: new Date(day.getFullYear(), day.getMonth(), day.getDate(), morning ? 10 : 21, 0),
+        tags: ['study'],
+      });
+      t.completion = 'done';
+      t.satisfaction = { overall: morning ? 5 : 2 };
+    }
+    s.retrain();
+    return s;
+  };
+
+  // ⚠️ THE POSITIVE CASE FIRST, and it is not decoration. Without it the
+  // negative case below passes just as well when the model never speaks at all
+  // — which is exactly what a too-strict gate would look like.
+  it('DOES rank by the model once it has earned it', () => {
+    const s = trained();
+    expect(s.modelMaySpeak()).toBe(true);
+    expect(s.learning.vocab).toContain('study');
+    expect(modelCanSpeak(s, 'study')).toBe(true);
+    expect(rankOpenings(s, openingsOf(s), { tag: 'study', durationMin: 60 }).rule)
+      .toBe('learned');
+  });
+
+  // ⚠️ THE GATE THIS FILE WAS ASKING WAS THE OLD ONE. `modelCanSpeak` tested
+  // `learning.trained` plus a hand-copied cold-start comparison — the gate as it
+  // stood when the file was written — and never learned about `skill`, the
+  // cross-validated R² that silences a model predicting worse than the average
+  // of the user's own ratings. Measured: `modelMaySpeak()` false everywhere
+  // while `rankOpenings` still returned rule 'learned' and told the user "you
+  // usually do study around here". And because that branch returns EARLY, the
+  // discredited model did not tint the energy ordering — it replaced it.
+  it('falls back to energy when the model is measured as worse than guessing', () => {
+    const s = trained();
+    s.learning.skill = -0.18; // what `_assessSkill` returns for a fit below the mean
+    expect(s.modelMaySpeak()).toBe(false);
+    expect(modelCanSpeak(s, 'study')).toBe(false);
+    expect(rankOpenings(s, openingsOf(s), { tag: 'study', durationMin: 60 }).rule)
+      .toBe('energy');
+  });
+
+  // … and the fallback must not print "24 of 10 ratings" — a fraction whose
+  // denominator the reader cannot name. Asserted on what the panel RENDERS.
+  it('does not offer a count as the reason once the count has been met', () => {
+    const s = trained();
+    s.learning.skill = -0.18;
+    const { container } = render(
+      <FindPanel sched={s} weekStart={MON} onClose={() => {}} showToast={() => {}} />,
+    );
+    const input = container.querySelector('input[aria-label="Tag to rank openings by"]');
+    fireEvent.change(input, { target: { value: 'study' } });
+
+    const line = [...container.querySelectorAll('.insight')].map((n) => n.textContent).join(' ');
+    expect(line).toMatch(/least drained/);
+    expect(line).not.toMatch(/of \d+ ratings/); // the nonsense fraction
+    expect(line).toMatch(/do not point to a particular time/);
   });
 });
 

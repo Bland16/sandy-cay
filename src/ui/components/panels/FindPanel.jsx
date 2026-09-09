@@ -84,11 +84,23 @@ export default function FindPanel({ sched, weekStart, onClose, showToast }) {
         {/* ⚠️ WHICH RULE IS IN FORCE, always said. The two orderings behave
             differently and a silent switch between them is the surprise P-1
             exists to prevent — and the "still learning" count is the shape the
-            energy card already uses rather than a fabricated confidence. */}
+            energy card already uses rather than a fabricated confidence.
+            ⚠️ TWO REASONS FOR THE ENERGY RULE, and the count answers only one.
+            Past the cold start the model can still be silenced for predicting
+            worse than the average of your own ratings, and the count sentence
+            then reads "24 of 10 ratings" — a fraction whose denominator the
+            reader cannot name. `reason` from `ratingsUntilLearned` says which,
+            and the second sentence is about the DATA, never the user (P-1). */}
         {ranked.rule === 'learned' && (
           <p className="insight">Sorted by what you have actually done with <b>{tag.trim()}</b>.</p>
         )}
-        {ranked.rule === 'energy' && (
+        {ranked.rule === 'energy' && learning.reason === 'no-pattern' && (
+          <p className="insight">
+            Sorted by which day it leaves least drained — your ratings do not point
+            to a particular time for this yet.
+          </p>
+        )}
+        {ranked.rule === 'energy' && learning.reason !== 'no-pattern' && (
           <p className="insight">
             Sorted by which day it leaves least drained — still learning your preferences
             {' '}({learning.have} of {learning.need} ratings).

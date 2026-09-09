@@ -22,9 +22,16 @@
 //   the model can speak about this tag  → rank by what you have ACTUALLY DONE
 //   otherwise                           → least impact first, then most left
 //
-// ⚠️ "Once there is data" is NOT a threshold invented here. `modelScore`
-// already returns 0 below `config.coldStartRatings`, which is this project's own
-// answer to when the model may speak and what `scoring.js` already relies on.
+// ⚠️ "Once there is data" is NOT a threshold invented here. It is
+// `Schedule#modelMaySpeak()`, THE ONE DOOR every surface that acts on the
+// learned model asks. This file used to ask `learning.trained` plus a
+// hand-copied cold-start comparison instead — which was the gate as it stood
+// when this was written, and stopped being it when the cross-validated `skill`
+// was added. So a model measured as WORSE THAN GUESSING was silenced in
+// placement, in the wrap report, in the Cabana and in what-to-do, and went on
+// re-ordering your openings here, under the sentence "you usually do study
+// around here". Ask the door; never re-derive what it asks.
+//
 // The per-tag half is `vocab`: the vocabulary is the top-N tags by frequency
 // among RATED tasks, so a tag absent from it has no term in the feature vector
 // at all and the score would carry no information about it. Both halves are
@@ -42,17 +49,30 @@ import { LOAD_AXES, loadForTask, dipIfPlaced, reserveAt } from './energy.js';
 /** Would the learned model say anything useful about this tag? */
 export function modelCanSpeak(schedule, tag) {
   const m = schedule.learning;
-  if (!m || !m.trained) return false;
-  const need = (schedule.config && schedule.config.coldStartRatings) ?? 10;
-  if ((m.sampleCount || 0) < need) return false;
+  if (!m || !schedule.modelMaySpeak()) return false;
   return Array.isArray(m.vocab) && m.vocab.includes(tag);
 }
 
-/** How many more ratings before the model may speak — for the "still learning" line. */
+/**
+ * Why the model is not speaking — for the "still learning" line.
+ *
+ * ⚠️ THERE ARE TWO REASONS AND THEY NEED DIFFERENT SENTENCES. Counting
+ * ratings answers only the first. Once the count is met the model can still be
+ * silenced by `skill` (cross-validated R² ≤ 0: it predicts worse than the
+ * average of your own ratings), and a panel that only knows the count then says
+ * "still learning — 24 of 10 ratings", a fraction whose denominator the reader
+ * cannot name. `reason` is what a caller words the line from.
+ *
+ * `'no-pattern'` is a statement about the DATA, never about the user (P-1):
+ * ratings that do not yet separate one hour from another are not a failing.
+ */
 export function ratingsUntilLearned(schedule) {
   const m = schedule.learning;
   const need = (schedule.config && schedule.config.coldStartRatings) ?? 10;
-  return { have: (m && m.sampleCount) || 0, need };
+  const have = (m && m.sampleCount) || 0;
+  const reason = schedule.modelMaySpeak() ? null
+    : (have < need ? 'cold-start' : 'no-pattern');
+  return { have, need, reason };
 }
 
 /**
@@ -94,7 +114,10 @@ export function rankOpenings(schedule, slots, { tag = null, durationMin = 60 } =
 
   if (modelCanSpeak(schedule, tag)) {
     for (const row of rows) {
-      row.score = schedule.learning.modelScore(draft, row.slot);
+      // The GATED score (`Schedule#_modelScore`), not `learning.modelScore` —
+      // the module's own method checks `trained` and cold start and knows
+      // nothing about `skill`.
+      row.score = schedule._modelScore(draft, row.slot);
       row.reason = `you usually do ${tag} around here`;
     }
     // Descending: a higher model score is a better fit.
