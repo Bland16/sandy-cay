@@ -68,7 +68,13 @@ describe('§4.2 exceptions can relocate and add sessions', () => {
     expect(extra.parentId).toBe(t.id); // same task identity, so ratings still count
 
     // The pattern is untouched: next week is back to a single Monday session.
-    expect(t.recurrence.periods[0].windows).toEqual([{ day: 'mon', start: '18:00', end: '19:00' }]);
+    // Asserted field by field rather than by deep equality, because `seq` — the
+    // window's stable session ordinal — is backfilled on first expansion and is
+    // not a change to the PATTERN. What this case is about is that adding an
+    // exception does not add, remove or retime a window.
+    const windows = t.recurrence.periods[0].windows;
+    expect(windows).toHaveLength(1);
+    expect(windows[0]).toMatchObject({ day: 'mon', start: '18:00', end: '19:00' });
     expect(expandRecurrence(t, W1).length).toBe(1);
   });
 

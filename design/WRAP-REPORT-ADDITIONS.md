@@ -692,3 +692,47 @@ uncommitted pruning pass itself**.
    document currently loses most of its reference marks on paper.
 7. **A9–A14** — new domains, cheapest first.
 8. **A15–A21** — the copy and framing pass, once the structure is settled.
+
+---
+
+## Open, reported from use (2026-09-09)
+
+### R-1 — "Worth a look" still recommends shorter blocks, on 3 sessions
+
+Reported with a screenshot of a live report:
+
+> break blocks may want to be shorter — 2 of 3 rated break sessions said the
+> block ran long
+> exercise blocks may want to be shorter — 3 of 4 rated exercise sessions …
+> social blocks may want to be shorter — 3 of 5 rated social sessions …
+
+This is the second time this suggestion has been reported as unfounded. The
+first (`53d7c8d`) raised the evidence bar after "three complaints out of twenty";
+these fire at **2 of 3** and **3 of 4**, so the bar is still being cleared by
+denominators of three and four.
+
+The user's reading is that **routine sessions are not reaching the training /
+evidence**, which would explain denominators that small — a week's breaks are
+mostly routine touchpoints.
+
+Checked so far, so the next person does not redo it:
+
+- Touchpoints ARE real `Task`s in `schedule.tasks`, carrying `routineId` and
+  `stepIndex` (`Task.js:107`, `Schedule.js:743`). So `ratedSamples()` is NOT
+  excluding them by walking the wrong collection — this is not another instance
+  of the eight-times "one door" bug.
+- Which moves the question to whether a touchpoint can be **rated at all**, and
+  whether its rating carries the duration facet the suggestion reads. If the
+  rating UI does not offer the facet on a touchpoint, routines contribute
+  nothing to this denominator no matter how many of them run.
+
+To do: find where the suggestion's denominator is built, print the actual sample
+set for `break` on the user's own week, and establish whether touchpoints are in
+it. Fix the denominator before touching the threshold — a threshold tuned
+against a broken denominator is tuned to nothing.
+
+### R-2 — The energy wash needed to be darker ✅ done 2026-09-09
+
+`MAX_SHADE` 0.22 → 0.40. The blocks are the same `--ink` at full opacity, so the
+wash had room. One constant; the ten steps and the key's stated top scale with
+it.

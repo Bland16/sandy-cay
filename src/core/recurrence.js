@@ -62,6 +62,86 @@ function intervalMatches(recurrence, period, date) {
  * anything outside the week. Checking only the week's own month is how a
  * straddled session silently disappears.
  */
+/**
+ * A window's date signature — the fields that decide WHICH dates it lands on.
+ * Windows sharing one signature land on exactly the same dates, so they are the
+ * set that competes for ordinals on any given day.
+ */
+function daySignature(w) {
+  return JSON.stringify([w.day ?? null, w.nth ?? null, w.monthDay ?? null, w.month ?? null]);
+}
+
+/**
+ * Give every window in a period a STABLE ordinal (`seq`), assigning them to any
+ * that lack one.
+ *
+ * ⚠️ THE ORDINAL USED TO BE A POSITION IN A SORTED LIST, and a position is not
+ * an identity. `expandRecurrence` sorted the day's windows by declared start and
+ * keyed them `date`, `date#2`, `date#3` — so a pattern's sessions were numbered
+ * by where they SAT among their siblings. Add an earlier one and everything
+ * after it shifts up, while `occurrenceData` is keyed by exactly those strings.
+ * Measured on a once-a-day evening dose that had been taken and rated, when a
+ * morning dose was added to the pattern:
+ *
+ *   BEFORE   2026-09-09    @ 21:00   completion=done  satisfaction={overall:4}
+ *   AFTER    2026-09-09    @ 09:00   completion=done  satisfaction={overall:4}
+ *            2026-09-09#2  @ 21:00   completion=null  satisfaction=null
+ *
+ * The lived data stayed on the KEY and the key changed hands. A 09:00 session
+ * that had never happened was now marked done and carrying someone else's
+ * rating, and the evening that did happen was blank. Deleting a window did the
+ * same in reverse. The file's own comment three lines below already named the
+ * rule this broke — "one session = one identity" (§4.4) — and the `add`
+ * exception path already solved it, giving extra sessions their own `#add`
+ * namespace precisely "so the extra session's identity, and therefore its lived
+ * data, cannot shift if a pattern window is later added or removed from that
+ * day." The pattern's own windows never got the same treatment.
+ *
+ * ⚠️ ADDING A WINDOW NEEDS NO CEREMONY. Append it with no `seq` and the
+ * backfill below gives it the next free number IN ITS OWN GROUP, because it
+ * only ever assigns to windows that lack one and never touches a number already
+ * taken. So the editor appends a plain `{day, start, end}` exactly as it always
+ * has, and the numbering takes care of itself. (An earlier draft exported a
+ * `nextWindowSeq` for callers to use; nothing needed it, and a helper nobody
+ * calls is the shape of defect this repo has a whole test describing.)
+ *
+ * ⚠️ THE BACKFILL REPRODUCES TODAY'S KEYS EXACTLY, which is the whole point: a
+ * stored `2026-09-09#2` must go on meaning the session it means now. Windows are
+ * grouped by the dates they land on and ranked by declared start — the existing
+ * rule — so every key in every existing save is unchanged on upgrade. From then
+ * on the number belongs to the window and stops moving. A NEW window takes the
+ * next free number in its own group, so it is always added at the end and never
+ * displaces a sibling.
+ */
+export function ensureWindowSeqs(period) {
+  const windows = (period && period.windows) || [];
+  if (windows.length === 0) return windows;
+  if (windows.every((w) => Number.isInteger(w.seq) && w.seq > 0)) return windows;
+
+  const groups = new Map();
+  for (const w of windows) {
+    const k = daySignature(w);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(w);
+  }
+  for (const group of groups.values()) {
+    // Ties broken by array order, which is what a stable sort already gives —
+    // said out loud because the numbers this assigns are permanent.
+    const taken = new Set(group.filter((w) => Number.isInteger(w.seq)).map((w) => w.seq));
+    const ordered = group
+      .map((w, i) => ({ w, i }))
+      .sort((a, b) => String(a.w.start).localeCompare(String(b.w.start)) || a.i - b.i);
+    let next = 1;
+    for (const { w } of ordered) {
+      if (Number.isInteger(w.seq) && w.seq > 0) continue;
+      while (taken.has(next)) next += 1;
+      w.seq = next;
+      taken.add(next);
+    }
+  }
+  return windows;
+}
+
 function datesForWindow(freq, w, weekStartDate) {
   if (freq === 'weekly') {
     const dayIdx = DAY_KEYS.indexOf(w.day);
@@ -169,6 +249,9 @@ export function expandRecurrence(task, weekStartDate) {
   //    take its lived data with it (§4.4: one session = one identity).
   for (const period of rec.periods || []) {
     const freq = freqOf(period);
+    // Backfilled here so a save written before ordinals were stable gets them on
+    // first read, with exactly the numbers its stored keys already imply.
+    ensureWindowSeqs(period);
     const byDate = new Map();
     for (const w of period.windows || []) {
       for (const date of datesForWindow(freq, w, weekStartDate)) {
@@ -180,12 +263,24 @@ export function expandRecurrence(task, weekStartDate) {
 
     for (const [k, entries] of byDate) {
       entries.sort((a, b) => String(a.w.start).localeCompare(String(b.w.start)));
-      entries.forEach(({ w, date }, i) => {
+      // Two windows in DIFFERENT date-groups can hold the same ordinal — a
+      // monthly "first Tuesday" and a monthly "the 5th" are separate groups and
+      // occasionally fall on one date. Their keys would collide there and `emit`
+      // drops the second in silence, so the later-starting one steps to the next
+      // free number ON THAT DATE only. Its own group's numbering is untouched.
+      const used = new Set();
+      for (const e of entries) {
+        let n = Number.isInteger(e.w.seq) && e.w.seq > 0 ? e.w.seq : 1;
+        while (used.has(n)) n += 1;
+        used.add(n);
+        e.seq = n;
+      }
+      entries.forEach(({ w, date, seq }) => {
         if (!periodActiveOn(period, date)) return;
         // Parity is per-occurrence, so a monthly pattern counts months and a
         // weekly one counts weeks off the same anchor.
         if (!intervalMatches(rec, period, date)) return;
-        const occKey = i === 0 ? k : `${k}#${i + 1}`;
+        const occKey = seq === 1 ? k : `${k}#${seq}`;
 
         // Exceptions are matched on the SESSION's key, so "skip Wednesday" on a
         // once-daily pattern behaves exactly as it always did, and a twice-daily

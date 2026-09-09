@@ -239,6 +239,96 @@ describe('occurrence identity', () => {
     expect(occ[0].id.endsWith('@2026-09-07')).toBe(true);
   });
 
+  // ⚠️ THE ORDINAL WAS A POSITION IN A SORTED LIST, AND A POSITION IS NOT AN
+  // IDENTITY. `occurrenceData` is keyed by these strings, so renumbering hands
+  // one session's lived data to another. The case above proves a MOVE does not
+  // renumber; adding and removing windows did. Measured on an evening dose that
+  // had been taken and rated, when a morning dose was added:
+  //
+  //   BEFORE   2026-09-09    @ 21:00  completion=done  satisfaction={overall:4}
+  //   AFTER    2026-09-09    @ 09:00  completion=done  satisfaction={overall:4}
+  //            2026-09-09#2  @ 21:00  completion=null  satisfaction=null
+  //
+  // A 09:00 session that never happened, marked done and carrying the evening's
+  // rating; the evening that did happen, blank.
+  it('does not hand a session\'s rating to a NEW one added earlier in the day', () => {
+    const t = new Task({
+      title: 'Meds', type: 'fixed',
+      recurrence: {
+        periods: [{
+          interval: 1,
+          windows: [{ day: 'mon', start: '20:00', end: '20:15' }],
+          effectiveFrom: new Date(2026, 8, 7), effectiveUntil: null,
+        }],
+        anchorDate: new Date(2026, 8, 7), exceptions: [],
+      },
+    });
+    t.occurrenceData = { '2026-09-07': { completion: 'done', satisfaction: { overall: 4 } } };
+    expect(expandRecurrence(t, MON)[0].satisfaction).toEqual({ overall: 4 });
+
+    // Appended exactly as the editor appends one: a plain window, no ordinal.
+    t.recurrence.periods[0].windows.push({ day: 'mon', start: '08:00', end: '08:15' });
+    const occ = expandRecurrence(t, MON).sort((a, b) => a.startTime - b.startTime);
+
+    const morning = occ.find((o) => o.startTime.getHours() === 8);
+    const evening = occ.find((o) => o.startTime.getHours() === 20);
+    expect(evening.occurrenceDate).toBe('2026-09-07');       // unmoved
+    expect(evening.satisfaction).toEqual({ overall: 4 });    // and it kept it
+    expect(morning.occurrenceDate).toBe('2026-09-07#2');
+    expect(morning.satisfaction).toBeNull();                 // it never happened
+    expect(morning.completion).toBeNull();
+  });
+
+  // The same failure in reverse: deleting the morning dose used to promote the
+  // evening one to the bare key, where it inherited the MORNING's history.
+  it('does not hand a deleted session\'s rating to the one that outlives it', () => {
+    const t = twiceDaily();
+    expandRecurrence(t, MON); // the numbering is assigned on first read
+    t.occurrenceData = {
+      '2026-09-07': { completion: 'done', satisfaction: { overall: 5 } },   // 08:00
+      '2026-09-07#2': { completion: 'done', satisfaction: { overall: 2 } }, // 20:00
+    };
+    t.recurrence.periods[0].windows = t.recurrence.periods[0].windows
+      .filter((w) => w.start !== '08:00');
+
+    const occ = expandRecurrence(t, MON);
+    expect(occ).toHaveLength(1);
+    expect(occ[0].startTime.getHours()).toBe(20);
+    expect(occ[0].occurrenceDate).toBe('2026-09-07#2');   // still its own key
+    expect(occ[0].satisfaction).toEqual({ overall: 2 });  // still its own rating
+  });
+
+  // ⚠️ THE UPGRADE MUST MOVE NOTHING. Every save in existence was keyed by the
+  // old sorted-position rule, so a stored `#2` has to go on meaning the session
+  // it means today. The backfill reproduces those numbers exactly and only then
+  // freezes them.
+  it('a save written before ordinals were stable keeps every key it had', () => {
+    const t = twiceDaily();
+    for (const w of t.recurrence.periods[0].windows) expect(w.seq).toBeUndefined();
+    t.occurrenceData = {
+      '2026-09-07': { completion: 'done', satisfaction: { overall: 5 } },
+      '2026-09-07#2': { completion: 'done', satisfaction: { overall: 2 } },
+    };
+
+    const occ = expandRecurrence(t, MON).sort((a, b) => a.startTime - b.startTime);
+    expect(occ[0].startTime.getHours()).toBe(8);
+    expect(occ[0].occurrenceDate).toBe('2026-09-07');
+    expect(occ[0].satisfaction).toEqual({ overall: 5 });
+    expect(occ[1].occurrenceDate).toBe('2026-09-07#2');
+    expect(occ[1].satisfaction).toEqual({ overall: 2 });
+  });
+
+  // Sharp edge #15: the ordinal is only an identity if it SURVIVES A SAVE.
+  it('carries the ordinal through a round trip', () => {
+    const t = twiceDaily();
+    expandRecurrence(t, MON);
+    const seqs = t.recurrence.periods[0].windows.map((w) => [w.start, w.seq]);
+    expect(seqs).toEqual([['08:00', 1], ['20:00', 2]]);
+
+    const back = Task.fromJSON(JSON.parse(JSON.stringify(t.toJSON())));
+    expect(back.recurrence.periods[0].windows.map((w) => [w.start, w.seq])).toEqual(seqs);
+  });
+
   it('numbers by the DECLARED time, so a move does not renumber the sessions', () => {
     // Move the morning dose to the evening. It must keep `#1`'s bare key —
     // otherwise its ratings would jump to the other session.

@@ -123,7 +123,15 @@ function SandBars({ load }) {
 // The darkest the wash may ever be. The blocks sit ON the wash, so this is the
 // ceiling that keeps it a background rather than a competing layer of ink; the
 // number of steps below it is a resolution choice and this is not.
-const MAX_SHADE = 0.22;
+//
+// 0.22 was too timid on paper — asked for directly, 2026-09-09: "the gradient
+// for energy needs to be darker on the wrap up report." The blocks are the SAME
+// `--ink` at full opacity, so the wash can go a good deal further before the two
+// stop being tellable apart; at 0.40 the darkest band is still a little over a
+// third of a block's weight. One number, and the ten steps under it scale with
+// it — the key on the sheet reads its top from `shadeStep × shadeSteps`, so
+// nothing has to be edited twice.
+const MAX_SHADE = 0.40;
 
 function DayStrips({ strips }) {
   // ⚠️ NOTHING RAN, WHICH IS NOT THE SAME AS NOTHING TO SAY. This section used
