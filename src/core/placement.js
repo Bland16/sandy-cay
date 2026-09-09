@@ -402,8 +402,39 @@ export function placeTask(schedule, task, opts = {}) {
     // deadline nothing can satisfy, hence this branch) landed at 08:00 when it
     // was already 15:00. A park is a last resort to keep the task VISIBLE; it
     // is not a licence to schedule into hours that have already been lived.
-    const start = wStart.getTime() < from.getTime() ? new Date(from.getTime()) : wStart;
-    best = { slot: { start, end: addMinutes(start, task.getDuration() || config.defaultDuration) }, score: 0, day: dayStart(from) };
+    let start = wStart.getTime() < from.getTime() ? new Date(from.getTime()) : wStart;
+    const durMin = task.getDuration() || config.defaultDuration;
+
+    // ⚠️ PARKS MUST NOT PARK ON EACH OTHER. This branch computed its position
+    // from the window and `from` alone and never looked at `occupied`, so every
+    // task that reached it landed on the SAME instant. Reported from use:
+    // "re-optimize places about 3 things in the same row each time I run it."
+    // Measured on a week with no room in it, three homeless tasks:
+    //
+    //     Homeless 0   Mon 08:00 -> 09:00
+    //     Homeless 1   Mon 08:00 -> 09:00
+    //     Homeless 2   Mon 08:00 -> 09:00
+    //
+    // A park is a LAST RESORT whose entire purpose is to keep the task visible,
+    // and three tasks on one instant are three tasks you cannot see. Overlapping
+    // real work is this branch's nature and is left alone — by the time we are
+    // here, step 3 has already searched every window with breaks and zones
+    // relaxed and found nothing free, so overlapping SOMETHING is unavoidable.
+    // Overlapping another park is not, and it is the one collision that hides
+    // the thing it is trying to show.
+    const parked = (opts.occupied || []).filter(
+      (iv) => iv.task && iv.task !== task && iv.task.id !== task.id && iv.task.schedulingWarning,
+    );
+    // Bounded: each step clears one parked interval, and there are finitely many.
+    for (let guard = 0; guard < parked.length + 1; guard += 1) {
+      const s0 = start.getTime();
+      const e0 = s0 + durMin * 60000;
+      const hit = parked.find((iv) => iv.start.getTime() < e0 && iv.end.getTime() > s0);
+      if (!hit) break;
+      start = new Date(hit.end.getTime());
+    }
+
+    best = { slot: { start, end: addMinutes(start, durMin) }, score: 0, day: dayStart(from) };
     warning = true;
   }
 

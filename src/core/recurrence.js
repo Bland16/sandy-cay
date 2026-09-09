@@ -196,7 +196,7 @@ export function expandRecurrence(task, weekStartDate) {
         if (ex && ex.action === 'move' && ex.toDate && ex.toDate !== k) return;
 
         let start = atTime(date, w.start);
-        let end = atTime(date, w.end);
+        let end = endAfter(start, atTime(date, w.end));
         if (ex && ex.action === 'move') {
           if (ex.start) start = resolveTime(date, ex.start);
           if (ex.end) end = resolveTime(date, ex.end);
@@ -213,7 +213,8 @@ export function expandRecurrence(task, weekStartDate) {
     if (ex.action === 'move' && ex.toDate && ex.toDate !== ex.date) {
       const host = parseDateKey(ex.toDate);
       if (!ex.start || !ex.end) continue; // a relocation always carries its times
-      emit(ex.date, resolveTime(host, ex.start), resolveTime(host, ex.end));
+      const mStart = resolveTime(host, ex.start);
+      emit(ex.date, mStart, endAfter(mStart, resolveTime(host, ex.end)));
     } else if (ex.action === 'add' && ex.start && ex.end) {
       // An EXTRA session gets its own identity namespace (`date#add`) rather
       // than competing for the date's bare key. That is the fix for "one more
@@ -224,7 +225,8 @@ export function expandRecurrence(task, weekStartDate) {
       // its lived data, cannot shift if a pattern window is later added or
       // removed from that day.
       const host = parseDateKey(ex.date);
-      emit(`${ex.date}#add`, resolveTime(host, ex.start), resolveTime(host, ex.end));
+      const aStart = resolveTime(host, ex.start);
+      emit(`${ex.date}#add`, aStart, endAfter(aStart, resolveTime(host, ex.end)));
     }
   }
 
@@ -276,6 +278,25 @@ function buildOccurrence(task, identity, key, start, end, od) {
   });
 }
 
+/**
+ * A session's end, given its start — rolled to the NEXT DAY when the declared
+ * end is earlier than the declared start.
+ *
+ * ⚠️ "23:00–00:30" IS AN ORDINARY SESSION and nothing here knew it. All three
+ * emit paths resolved both times against the same host date, so the end landed
+ * BEFORE the start; the pair was then sorted into order downstream and read as a
+ * block running 00:30 → 23:00. Measured on a session moved to Friday
+ * 23:00–00:30: `durationMin = 1350`, a twenty-two-and-a-half hour task sitting
+ * across the whole of Friday, from one drag.
+ *
+ * Strictly earlier, not "not later": an end EQUAL to the start is a degenerate
+ * window, not a twenty-four hour one, and `Task`'s own constructor already has a
+ * rule for that.
+ */
+function endAfter(start, end) {
+  return end < start ? new Date(end.getTime() + 24 * 60 * 60 * 1000) : end;
+}
+
 function resolveTime(date, val) {
   if (val instanceof Date) return atTime(date, `${String(val.getHours()).padStart(2, '0')}:${String(val.getMinutes()).padStart(2, '0')}`);
   if (typeof val === 'number') return new Date(val);
@@ -293,7 +314,21 @@ function resolveTime(date, val) {
  */
 export function addException(task, dateKeyStr, action, times = {}) {
   if (!task.recurrence) return;
-  task.recurrence.exceptions = task.recurrence.exceptions.filter((e) => e.date !== dateKeyStr);
+  // ⚠️ TWO NAMESPACES ON ONE DATE, and this replaced across both. An `add`
+  // emits into `date#add` — deliberately, so an extra session's identity cannot
+  // shift when a pattern window changes (see pass 2 below) — while `skip` and
+  // `move` address the pattern's OWN session at `date`. They are different
+  // sessions and both may be true at once: "I'm not doing Wednesday's 07:00, I
+  // did one at 18:00 instead" is the ordinary case.
+  //
+  // Filtering on the date alone made the second of those silently undo the
+  // first. Measured: skip Wed 07:00, then add Wed 18:00, and the exception list
+  // held only the add — the 07:00 session came back from the dead and the day
+  // showed BOTH.
+  const isAdd = action === 'add';
+  task.recurrence.exceptions = task.recurrence.exceptions.filter(
+    (e) => e.date !== dateKeyStr || (e.action === 'add') !== isAdd,
+  );
   const ex = { date: dateKeyStr, action };
   if (times.start) ex.start = times.start;
   if (times.end) ex.end = times.end;

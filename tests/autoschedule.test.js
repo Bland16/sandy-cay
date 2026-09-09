@@ -172,3 +172,65 @@ describe('re-optimize leaves finished work where it happened', () => {
     expect(skip.startTime.getTime()).toBe(before);
   });
 });
+
+// ⚠️ REPORTED FROM USE: "reoptimize places about 3 things in the same row each
+// time I run it." The park branch — `placeTask` step 4, the last resort when no
+// slot exists at all — computed its position from the day window and `from`
+// alone and never looked at `occupied`, so every task reaching it landed on the
+// same instant, stacked and mutually invisible.
+//
+// A park is ALLOWED to overlap real work; by the time it runs, the search has
+// already tried every window with zones and breaks relaxed and found nothing
+// free, so overlapping something is unavoidable. Overlapping ANOTHER PARK is
+// avoidable, and it is the one collision that hides the thing the park exists to
+// show.
+describe('a week with no room in it parks work where you can see it', () => {
+  beforeEach(() => resetIds());
+
+  const packedWeek = () => {
+    const s = new Schedule({ config: defaultConfig });
+    // Wall-to-wall fixed work every day: nothing fits anywhere.
+    for (let d = 0; d < 7; d += 1) {
+      s.tasks.push(new Task({
+        title: `Wall ${d}`, type: 'fixed', startTime: D(d, 0, 0), endTime: D(d, 23, 59),
+      }));
+    }
+    return s;
+  };
+
+  it('does not stack the tasks it cannot place on one another', () => {
+    const s = packedWeek();
+    for (let i = 0; i < 3; i += 1) {
+      s.tasks.push(new Task({
+        title: `Homeless ${i}`, type: 'flexible', startTime: D(0, 9), endTime: D(0, 10),
+      }));
+    }
+
+    const { placed } = s.autoSchedule({ weekStart: MON, now: MON });
+    expect(placed).toHaveLength(3);
+    // Every one of them reached the park — or this case is testing another path.
+    for (const t of placed) expect(t.schedulingWarning).toBe(true);
+
+    const starts = placed.map((t) => t.startTime.getTime());
+    expect(new Set(starts).size).toBe(3);
+    // Not merely distinct — non-overlapping, or they still hide each other.
+    const spans = placed
+      .map((t) => ({ s: t.startTime.getTime(), e: t.endTime.getTime() }))
+      .sort((a, b) => a.s - b.s);
+    for (let i = 1; i < spans.length; i += 1) {
+      expect(spans[i].s).toBeGreaterThanOrEqual(spans[i - 1].e);
+    }
+  });
+
+  it('still parks a lone task at the window start, as it always did', () => {
+    const s = packedWeek();
+    s.tasks.push(new Task({
+      title: 'Homeless', type: 'flexible', startTime: D(0, 9), endTime: D(0, 10),
+    }));
+    const { placed } = s.autoSchedule({ weekStart: MON, now: MON });
+    // The spreading must not have moved the FIRST park; only the ones that
+    // would have landed on top of it.
+    expect(placed[0].startTime.getHours()).toBe(8);
+    expect(placed[0].startTime.getDate()).toBe(MON.getDate());
+  });
+});
