@@ -611,7 +611,25 @@ function buildDayStrips(sched, ws) {
     // as a quiet count, never a list, which this now is by construction.
     const items = sched.getTasksForDay(date)
       .filter((t) => !t.chunking && t.completion !== 'skipped')
-      .map((t) => ({ id: t.id, title: t.title, from: t.startTime, to: t.endTime }))
+      .map((t) => {
+        // ⚠️ ONE COLOUR PER BLOCK, AND IT IS THE APP'S OWN.
+        // `dominantBucketForTask` is the engine's answer to "which bucket claims
+        // this" — most tags matched wins, ties fall to bucket order so it is
+        // stable across renders — and its docstring already says it exists for
+        // exactly this: "used when one colour is needed and a blend would be
+        // meaningless". The grid tints its cards through the same door, so a
+        // block on this sheet is the colour that block is in the week.
+        const b = sched.dominantBucketForTask(t);
+        return {
+          id: t.id,
+          title: t.title,
+          from: t.startTime,
+          to: t.endTime,
+          bucketId: b ? b.id : null,
+          bucketLabel: b ? b.label : null,
+          color: b ? b.color : null,
+        };
+      })
       .sort((a, b) => a.from - b.from);
 
     const dayStart = new Date(date); dayStart.setHours(0, 0, 0, 0);
@@ -767,10 +785,34 @@ function buildDayStrips(sched, ws) {
     const last = d.shade[d.shade.length - 1];
     if (last && last.to < axisTo) last.to = axisTo;
   }
+  // ⚠️ THE LEGEND IS NOT DECORATION — IT IS §10 COMPLIANCE, AND IT IS THE ANSWER.
+  //
+  // Two jobs. Colour may never be the only carrier of meaning, so every hue on
+  // the sheet is named here in words. And the strip was asked a question it did
+  // not answer: "how am I supposed to use this information — it would be easier
+  // if there were colors for like different buckets so I can see where my time
+  // goes." A row of coloured blocks shows WHEN. The total beside each name is
+  // WHERE, which is what a weekly review is actually for.
+  //
+  // Ordered by minutes, largest first, because that ordering IS the finding.
+  // Untagged work is left uncoloured and out of the legend rather than swept
+  // into an "other" — a category it does not have is not a category.
+  const byBucket = new Map();
+  for (const d of days) {
+    for (const it of d.items) {
+      if (!it.bucketId) continue;
+      const cur = byBucket.get(it.bucketId)
+        || { id: it.bucketId, label: it.bucketLabel, color: it.color, minutes: 0 };
+      cur.minutes += Math.max(0, it.to - it.from);
+      byBucket.set(it.bucketId, cur);
+    }
+  }
+  const legend = [...byBucket.values()].sort((a, b) => b.minutes - a.minutes);
+
   const any = days.some((d) => d.items.length > 0);
   const anyShade = days.some((d) => d.shade.some((g) => g.depth > 0));
   if (any) {
-    return { axisFrom, axisTo, days, shadeStep: SHADE_STEP, shadeSteps: SHADE_STEPS, anyShade };
+    return { axisFrom, axisTo, days, legend, shadeStep: SHADE_STEP, shadeSteps: SHADE_STEPS, anyShade };
   }
 
   // ⚠️ A SECTION THAT VANISHES IS NOT A SECTION THAT SAID NOTHING. On a week

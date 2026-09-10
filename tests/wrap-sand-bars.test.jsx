@@ -678,6 +678,97 @@ describe('§7.1 — when it happened, on one shared clock', () => {
     expect(darkest(0)).toBeLessThan(darkest(2) / 2);
   });
 
+  // ⚠️ THE STRIP WAS ANSWERING THE WRONG QUESTION. Asked directly, looking at the
+  // printed sheet: "how am I supposed to use this information — it would be
+  // easier if there were colors for like different buckets so I can see where my
+  // time goes." The wash answered "how drained was I", which is a feeling the
+  // reader already has. Blocks now carry their bucket's colour and the energy
+  // moved to a lane of its own underneath.
+  describe('colour says which bucket, and the legend says it in words', () => {
+    const coloured = () => {
+      const s = new Schedule({ config: defaultConfig });
+      // Loads, or there is no energy to draw and the lane case below passes
+      // vacuously against a strip that renders no lane at all.
+      s.addBucket({ label: 'Deep work', tags: ['study'], color: '#457b9d', load: { mental: 3, creative: 1 } });
+      s.addBucket({ label: 'Exercise', tags: ['gym'], color: '#e07a5f', load: { physical: 2 } });
+      s.addFixed({ title: 'Thesis', tags: ['study'], startTime: at(0, 9), endTime: at(0, 12) });
+      s.addFixed({ title: 'Reading', tags: ['study'], startTime: at(1, 9), endTime: at(1, 11) });
+      s.addFixed({ title: 'Gym', tags: ['gym'], startTime: at(2, 7), endTime: at(2, 8) });
+      // Untagged work belongs to no bucket and must not be given one.
+      s.addFixed({ title: 'Errand', startTime: at(3, 15), endTime: at(3, 16) });
+      return s;
+    };
+    const swatchColours = () => [...document.querySelectorAll('.rp-strip-swatch')]
+      .map((el) => el.style.background);
+
+    it('draws each block in its bucket colour', () => {
+      persist(coloured());
+      render(<App />);
+      openReport();
+
+      const mon = [...rowBlocks(0)];
+      const wed = [...rowBlocks(2)];
+      expect(mon).toHaveLength(1);
+      expect(wed).toHaveLength(1);
+      expect(mon[0].style.background).toBeTruthy();
+      // Two different buckets must not render the same colour, or the channel
+      // is carrying nothing.
+      expect(wed[0].style.background).not.toBe(mon[0].style.background);
+    });
+
+    // ⚠️ §10 — NEVER MEANING BY COLOUR ALONE. Stated structurally rather than by
+    // counting rows: every colour that appears ON the strip must be named in the
+    // legend. A test that checked "the legend has 2 entries" would pass while a
+    // third colour went unnamed.
+    it('names every colour it uses', () => {
+      persist(coloured());
+      render(<App />);
+      openReport();
+
+      const used = new Set([...document.querySelectorAll('.rp-strip-block')]
+        .map((el) => el.style.background)
+        .filter(Boolean));
+      expect(used.size).toBeGreaterThan(1); // or there is nothing to name
+      const named = new Set(swatchColours());
+      for (const c of used) expect(named.has(c)).toBe(true);
+    });
+
+    it('orders the legend by where the time actually went', () => {
+      persist(coloured());
+      render(<App />);
+      openReport();
+
+      const rows = [...document.querySelectorAll('.rp-strip-legend li')]
+        .map((el) => el.textContent);
+      // study 3h + 2h = 5h, gym 1h. Largest first, because that order IS the
+      // finding the section was asked for.
+      expect(rows[0]).toMatch(/Deep work/);
+      expect(rows[0]).toMatch(/5h/);
+      expect(rows[1]).toMatch(/Exercise/);
+      expect(rows[1]).toMatch(/1h/);
+      // The untagged errand has no bucket, so it is not invented into one.
+      expect(rows.join(' ')).not.toMatch(/Errand|other|Other/);
+    });
+
+    // The energy reading survives the move — it is a lane now, not a background.
+    it('keeps the energy reading, in its own lane', () => {
+      const s = coloured();
+      persist(s);
+      render(<App />);
+      openReport();
+
+      const lanes = [...document.querySelectorAll('.rp-strip-energy')];
+      expect(lanes.length).toBeGreaterThan(0);
+      const shaded = lanes.flatMap((l) => [...l.querySelectorAll('.rp-strip-shade')]);
+      expect(shaded.length).toBeGreaterThan(0);
+      // and the wash is no longer inside the block track, where it competed
+      // with the colours for the same pixels.
+      for (const track of document.querySelectorAll('.rp-strip-track')) {
+        expect(track.querySelector('.rp-strip-shade')).toBeNull();
+      }
+    });
+  });
+
   it('is readable without the picture', () => {
     const s = new Schedule({ config: defaultConfig });
     s.tasks.push(new Task({ title: 'A', type: 'fixed', startTime: at(0, 9), endTime: at(0, 11) }));

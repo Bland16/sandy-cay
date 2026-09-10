@@ -1501,6 +1501,24 @@ button:focus-visible, .dhopen:focus-visible, .card:focus-visible, .slot:focus-vi
    spent the background channel on a near-constant fact, and clipped the energy
    wash to day hours. The wash is the background now, and it runs the full 24h. */
 .rp-strip-shade { position: absolute; top: 0; bottom: 0; background: var(--ink); pointer-events: none; }
+/* The energy lane: its own strip under each day's blocks, on the same clock, so
+   neither reading has to be read THROUGH the other. Indented to clear the day
+   label and the total, so it lines up with the track above it. */
+.rp-strip-energy {
+  position: relative; height: 5px; margin: 1px 0 3px 34px;
+  margin-right: 46px; background: var(--paper-2, #f4f1ea); border-radius: 2px; overflow: hidden;
+}
+.rp-strip-legend {
+  list-style: none; margin: 8px 0 0; padding: 0;
+  display: flex; flex-wrap: wrap; gap: 4px 14px;
+  font-family: var(--font-type); font-size: 10px; color: var(--ink-soft);
+}
+.rp-strip-legend li { display: flex; align-items: center; gap: 5px; }
+.rp-strip-legend b { color: var(--ink); font-weight: 600; }
+.rp-strip-swatch {
+  width: 9px; height: 9px; border-radius: 2px; flex: 0 0 9px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+}
 .rp-strip-block {
   position: absolute; top: 1px; bottom: 1px; border-radius: 2px;
   background: var(--ink);

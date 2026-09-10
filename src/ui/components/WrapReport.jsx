@@ -120,18 +120,22 @@ function SandBars({ load }) {
  * on the chart's least informative variable. The BACKGROUND carries the energy
  * curve instead — which is the thing that actually varies through a day.
  */
-// The darkest the wash may ever be. The blocks sit ON the wash, so this is the
-// ceiling that keeps it a background rather than a competing layer of ink; the
-// number of steps below it is a resolution choice and this is not.
+// The wash's range. The blocks sit ON the wash at full `--ink`, so the ceiling is
+// what keeps it a background rather than a competing layer of ink.
 //
-// 0.22 was too timid on paper — asked for directly, 2026-09-09: "the gradient
-// for energy needs to be darker on the wrap up report." The blocks are the SAME
-// `--ink` at full opacity, so the wash can go a good deal further before the two
-// stop being tellable apart; at 0.40 the darkest band is still a little over a
-// third of a block's weight. One number, and the ten steps under it scale with
-// it — the key on the sheet reads its top from `shadeStep × shadeSteps`, so
-// nothing has to be edited twice.
-const MAX_SHADE = 0.40;
+// ⚠️ TWO NUMBERS, BECAUSE A RAMP FROM ZERO IS A RAMP THAT STARTS INVISIBLE. This
+// was one number and ten even steps up to it, so the first step rendered at a
+// tenth of the ceiling — and an ordinary week lives in the LOW steps. Reported
+// twice from the printed sheet, the second time with it: "do you see what I mean
+// about lack of contrast?" Days of 5–8½ hours land around 12–25 load-hours,
+// which was three to seven steps of a ten-step ramp — a spread of about 0.12 to
+// 0.28 against white, with each step a barely-perceptible 0.04 apart.
+//
+// So the ramp starts at MIN_SHADE, where a band is already legible, and reaches
+// MAX_SHADE at the top. Every step is a real jump, and the range a normal week
+// actually occupies is the range the eye can read.
+const MIN_SHADE = 0.10;
+const MAX_SHADE = 0.55;
 
 function DayStrips({ strips }) {
   // ⚠️ NOTHING RAN, WHICH IS NOT THE SAME AS NOTHING TO SAY. This section used
@@ -176,43 +180,24 @@ function DayStrips({ strips }) {
               d.blocked ? 'blocked' : d.items.length === 0 ? 'nothing scheduled'
                 : `${fmtDur(d.scheduledMin)} across ${d.items.length} ${d.items.length === 1 ? 'block' : 'blocks'}`}`}
           >
-            {/* ⚠️ THE PALE OPEN-WINDOW BAND IS GONE (user's call, 2026-09-07).
-                It drew the day's own window as a filled band, which spent the
-                background — the one channel with room for a continuous quantity
-                — on a near-constant fact the grid already states, while the
-                energy behind the day had nowhere to go. "The background should
-                be a gradient based on levels of exaustion and it shouldn't only
-                be during day hours. This gives less information."
+            {/* ⚠️ THE BLOCKS CARRY THE BUCKET NOW, AND THE ENERGY MOVED DOWNSTAIRS.
+                Asked directly, looking at the printed sheet: "how am I supposed
+                to use this information — it would be easier if there were colors
+                for like different buckets so I can see where my time goes."
 
-                The wash below is now the only background, and it spans the whole
-                24 hours rather than being clipped to the window it used to sit
-                inside. The cost is real and was accepted: a Sunday that opens at
-                10:00 no longer reads as a shorter day at a glance. The scheduled
-                total at the end of each row still says so in words.
+                Fair. The wash answered "how drained was I", which is a feeling
+                the reader already has; it never answered "where did my time go",
+                which is what a weekly review is for. So the row's own space goes
+                to the thing being reviewed, and the energy gets a lane of its own
+                underneath rather than sitting behind the blocks and competing
+                with them for the same pixels.
 
-                The energy behind the day. Darker = more spent and not yet
-                recovered by that hour, in fixed steps of load-hours — so a
-                punishing week shades darker than a gentle one instead of both
-                filling the same range, and a rest block visibly lightens what
-                follows it. Capped in DARKNESS — `MAX_SHADE` — so the wash never
-                competes with the ink of the blocks sitting on top; the number of
-                steps under that ceiling is a resolution choice, and it was four
-                for a while, which was too few for the range to carry both the
-                within-a-day reading and the across-days one. See the builder. */}
-            {d.shade.map((g) => (
-              g.depth > 0 && (
-                <span
-                  key={`${g.from}-${g.to}`}
-                  className="rp-strip-shade"
-                  style={{
-                    left: `${pc(g.from)}%`,
-                    width: `${Math.max(0, pc(g.to) - pc(g.from))}%`,
-                    opacity: Math.min(strips.shadeSteps, Math.ceil(g.depth / strips.shadeStep))
-                      * (MAX_SHADE / strips.shadeSteps),
-                  }}
-                />
-              )
-            ))}
+                ⚠️ NEVER MEANING BY COLOUR ALONE (§10). Every hue here is named in
+                the legend below with its total beside it, the `title` gives the
+                bucket in words on hover, and the row's `aria-label` does not
+                depend on colour at all. A block with no bucket keeps the plain
+                ink it always had — uncoloured, rather than given a category it
+                does not have. */}
             {d.items.map((t) => (
               <span
                 key={t.id}
@@ -220,11 +205,38 @@ function DayStrips({ strips }) {
                 style={{
                   left: `${pc(t.from)}%`,
                   width: `${Math.max(0.6, pc(t.to) - pc(t.from))}%`,
+                  ...(t.color ? { background: t.color } : {}),
                 }}
-                title={t.title}
+                title={t.bucketLabel ? `${t.title} — ${t.bucketLabel}` : t.title}
               />
             ))}
           </div>
+          {/* The energy lane. Same clock, its own strip, so neither reading has
+              to be read THROUGH the other. Darker = more spent and not yet
+              recovered by that hour, in fixed steps of load-hours — so a
+              punishing week shades darker than a gentle one instead of both
+              filling the same range, and a rest block visibly lightens what
+              follows it. `aria-hidden`: the lane is a second view of the day, and
+              the row above already names the day and its total. */}
+          {strips.anyShade && (
+            <div className="rp-strip-energy" aria-hidden="true">
+              {d.shade.map((g) => (
+                g.depth > 0 && (
+                  <span
+                    key={`${g.from}-${g.to}`}
+                    className="rp-strip-shade"
+                    style={{
+                      left: `${pc(g.from)}%`,
+                      width: `${Math.max(0, pc(g.to) - pc(g.from))}%`,
+                      opacity: MIN_SHADE
+                        + ((Math.min(strips.shadeSteps, Math.ceil(g.depth / strips.shadeStep))
+                          / strips.shadeSteps) * (MAX_SHADE - MIN_SHADE)),
+                    }}
+                  />
+                )
+              ))}
+            </div>
+          )}
           <span className="rp-strip-val">
             {d.blocked ? <span className="rp-dim">blocked</span>
               : d.scheduledMin > 0 ? fmtDur(d.scheduledMin)
@@ -235,14 +247,29 @@ function DayStrips({ strips }) {
       {/* The key names the two things the drawing encodes, and nothing else.
           It briefly named three completion states while four rendered; the
           states are gone entirely now — see the builder for why. */}
+      {/* ⚠️ §10: NEVER MEANING BY COLOUR ALONE. Every hue on the strip is named
+          here in words, so the sheet survives greyscale printing and colour
+          blindness — and the totals make the legend do a second job, which is
+          the one the strip was actually asked for: where the week went. Ordered
+          largest first, because that ordering IS the finding. */}
+      {strips.legend && strips.legend.length > 0 && (
+        <ul className="rp-strip-legend">
+          {strips.legend.map((b) => (
+            <li key={b.id}>
+              <span className="rp-strip-swatch" style={{ background: b.color }} aria-hidden="true" />
+              {b.label} <b>{fmtDur(b.minutes)}</b>
+            </li>
+          ))}
+        </ul>
+      )}
       <p className="rp-dim rp-strip-key">
         One clock across all seven days.
+        {' '}Each block is a session, at the hour it sat, coloured by its bucket.
         {strips.anyShade && (
-          <> The darker the background, the more you had spent by then — each
-            step is {strips.shadeStep} load-hours not yet recovered, and the
+          <> The thin lane under each day is how spent you were by that hour —
+            each step is {strips.shadeStep} load-hours not yet recovered, and the
             darkest is {strips.shadeStep * strips.shadeSteps} or more.</>
         )}
-        {' '}Each block is a session, at the hour it sat.
       </p>
     </div>
   );
