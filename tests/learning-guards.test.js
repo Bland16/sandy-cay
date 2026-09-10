@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   Schedule, Task, Bucket, resetIds, getWeekLoad, weekStart as weekStartOf, addDays,
   humanLabel, isNarratable, MODEL_LAYOUT_VERSION, LearningModule,
-  arrivalDepletionFor, loadForTask,
+  arrivalDepletionFor, loadForTask, energyCalibration, steerBias,
 } from '../src/core/index.js';
 import { defaultConfig } from '../src/core/config.js';
 
@@ -680,6 +680,85 @@ describe('config values that were declared and never read', () => {
     // It existed only as a `?? 0.2` inside suggest.js, so the largest nudge
     // after loadBias was invisible to anyone reading or tuning the config.
     expect(defaultConfig.suggest.reserveBias).toBe(0.2);
+  });
+});
+
+describe('a sentence about your life may not be four months old', () => {
+  beforeEach(() => resetIds());
+
+  const SEPT = weekStartOf(new Date(2026, 8, 7));
+  const NOW = new Date(2026, 8, 9, 8, 0);
+
+  /** Twelve rated gym sessions starting at `month`, plus one block this week. */
+  const gymRatedFrom = (month, day) => {
+    const s = new Schedule({ config: defaultConfig });
+    s.addBucket({ label: 'Exercise', tags: ['gym'], load: { physical: 2 } });
+    for (let i = 0; i < 12; i += 1) {
+      const d = new Date(2026, month, day + i * 2, 8, 0);
+      const t = new Task({
+        title: `Gym ${i}`, tags: ['gym'], type: 'fixed',
+        startTime: d, endTime: new Date(d.getTime() + 60 * 60000),
+      });
+      t.completion = 'done';
+      t.satisfaction = { overall: 4, durationFit: 1, energy: 3 };
+      s.tasks.push(t);
+    }
+    // One gym block in the report's own week, so the tag reaches the detector.
+    s.tasks.push(new Task({
+      title: 'Gym now', tags: ['gym'], type: 'fixed',
+      startTime: new Date(2026, 8, 9, 8, 0), endTime: new Date(2026, 8, 9, 9, 0),
+    }));
+    return s;
+  };
+  const fitFindings = async (s) => {
+    const { buildWrapReport } = await import('../src/ui/report.js');
+    return buildWrapReport(s, SEPT).suggestions.filter((x) => x.kind === 'duration-fit');
+  };
+
+  // ⚠️ THE POOL WAS EVERY RATING EVER, while the TAG list comes from this week's
+  // tasks. So a September report printed "12 of 12 rated gym sessions said the
+  // block ran long" from twelve sessions rated in February — 139 days stale —
+  // beside "Gym hasn't happened in 4 weeks". "12 of 12" reads as recent AND
+  // unanimous, and neither was true.
+  it('says nothing about a tag whose evidence is all from last term', async () => {
+    const s = gymRatedFrom(1, 2); // February
+    expect(await fitFindings(s)).toHaveLength(0);
+    expect(energyCalibration(s, NOW).calibrated).toBe(false);
+    expect(steerBias(s, NOW).trained).toBe(false);
+  });
+
+  // ⚠️ THE CONTROL, AND IT IS THE WHOLE CASE. Every assertion above is satisfied
+  // by a detector that has simply been switched off. The same twelve sessions,
+  // moved inside the window, must produce all three findings.
+  it('and still speaks when the same evidence is recent', async () => {
+    const s = gymRatedFrom(7, 3); // August, inside the 56-day window
+    const fit = await fitFindings(s);
+    expect(fit).toHaveLength(1);
+    expect(fit[0].detail).toMatch(/12 of 12/);
+    expect(energyCalibration(s, NOW).calibrated).toBe(true);
+    expect(steerBias(s, NOW).trained).toBe(true);
+  });
+
+  // Calibration has to stay EARNED. It counted distinct rated weeks EVER, so
+  // four weeks rated in February left a user permanently calibrated and the
+  // budget card could never return to its honest "still learning" shape. A
+  // ceiling that outlives its evidence is the invented ceiling P-2 forbids; it
+  // just takes longer to become one.
+  it('lets calibration lapse when the ratings behind it do', () => {
+    const stale = energyCalibration(gymRatedFrom(1, 2), NOW);
+    expect(stale.weeksRated).toBe(0);
+    expect(stale.calibrated).toBe(false);
+  });
+
+  // `recentRated` took the trailing window OR the last N by recency, whichever
+  // yielded MORE — so an empty window fell through to the ten most recent
+  // ratings whenever they were. The window never bounded staleness; it chose
+  // between "recent" and "old" and preferred whichever set was bigger.
+  it('never falls back to old ratings when nothing is recent', () => {
+    const s = gymRatedFrom(1, 2);
+    const bias = steerBias(s, NOW);
+    expect(bias.trained).toBe(false);
+    expect(bias.energyBalance).toBe(0); // and steers on nothing, rather than on February
   });
 });
 

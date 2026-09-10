@@ -1,8 +1,19 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Schedule, Bucket, Activity, Task, resetIds, normalizeLoad, loadForTask, learnedCapacity, energyTrajectory, reserveAt, LOAD_AXES } from '../src/core/index.js';
 import { defaultConfig } from '../src/core/config.js';
 
+
+// ⚠️ THE CLOCK IS PINNED, and these cases were time-bombed without it. Energy
+// calibration — and `learnedCapacity`, which gates on it — now only counts
+// ratings inside `detectors.evidenceWindowDays`, because a capacity learned in
+// February must not still be governing September (P-2: a ceiling that outlives
+// its evidence is an invented one). These fixtures sit in July, so against the
+// REAL clock they drifted out of the window and every capacity assertion here
+// began failing on the day the gap passed 56 — 59 days, three too many. Same
+// remedy as learning-guards and placement-range-floor, which went off before it.
 const D = (d, h) => new Date(2026, 6, d, h, 0, 0, 0);
+beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 6, 20, 6, 0, 0)); });
+afterEach(() => { vi.useRealTimers(); });
 const wide = () => ({ ...defaultConfig, windows: { ...defaultConfig.windows, monFri: { start: '06:00', end: '23:00' } } });
 
 describe('load basis', () => {

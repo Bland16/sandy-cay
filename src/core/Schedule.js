@@ -468,16 +468,38 @@ export class Schedule {
    * A session with no stamped `at` is a rating from before that fix and is
    * skipped deliberately: reconstructing its time from today's pattern would be
    * a guess presented as data (design/RATINGS-AND-LEARNING.md §6).
+   *
+   * ⚠️ `since` BOUNDS THE POOL IN TIME, and the default of "no bound" is
+   * deliberate rather than an oversight. Two kinds of caller ask this question
+   * and they want different answers:
+   *
+   *   - `retrain` wants EVERYTHING. A preference learned in March is still a
+   *     preference, the model is starved as it is at n≈10–30, and throwing
+   *     history away to make it feel current would cost accuracy for nothing.
+   *
+   *   - Anything that PRINTS A SENTENCE about the user's life wants a window,
+   *     because "your break blocks run long" is a claim about NOW. Unbounded,
+   *     the wrap report for September stated a finding drawn entirely from
+   *     twelve February sessions — 139 days stale — and printed it beside
+   *     "Gym hasn't happened in 4 weeks". "12 of 12" reads as recent and
+   *     unanimous, which is exactly the reading the denominator rule exists to
+   *     protect.
+   *
+   * So the door stays one door and the bound is a parameter, rather than a
+   * second walk growing somewhere with its own idea of what counts.
    */
-  ratedSamples() {
+  ratedSamples({ since = null } = {}) {
+    const floor = since ? new Date(since).getTime() : null;
+    const inWindow = (d) => floor === null || (d && d.getTime() >= floor);
     const out = [];
     for (const t of this.tasks) {
       if (t.chunking) continue;
-      if (t.satisfaction) out.push(t);
+      if (t.satisfaction && inWindow(t.startTime)) out.push(t);
       for (const key of Object.keys(t.occurrenceData || {})) {
         const od = t.occurrenceData[key];
         if (!od || !od.satisfaction || !od.at) continue;
         const start = new Date(od.at);
+        if (!inWindow(start)) continue;
         out.push(new Task({
           id: `${t.id}@${key}`,
           title: t.title,

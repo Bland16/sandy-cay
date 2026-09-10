@@ -169,6 +169,10 @@ function buildPlanDiff(sched, ws) {
 function buildSuggestions(sched, ws, weekLoad, weekTasks) {
   const out = [];
   const config = sched.config;
+  // The oldest evidence any sentence in this section may rest on. One value for
+  // the whole section, so two findings printed side by side cannot be speaking
+  // about different stretches of the user's life.
+  const evidenceFloor = addDays(ws, -(config.detectors.evidenceWindowDays ?? 56));
 
   for (const task of sched.tasks) {
     if (task.recurrence) {
@@ -257,7 +261,14 @@ function buildSuggestions(sched, ws, weekLoad, weekTasks) {
     // `ratedSamples()` is the single door that already exists for exactly this,
     // and its own header says why: "Two readers, one of them forgotten." There
     // were four. See also `suggest.js` and `whatToDo.js`, fixed in the same pass.
-    const fit = durationFitSuggestion(sched.ratedSamples(), tag);
+    //
+    // ⚠️ AND BOUNDED IN TIME. The pool was every rating ever recorded, while
+    // the TAG list comes from this week's tasks — so a September report stated
+    // "12 of 12 rated gym sessions said the block ran long" from twelve sessions
+    // rated in February, 139 days earlier, printed beside "Gym hasn't happened
+    // in 4 weeks". A sentence about how your blocks are going is a claim about
+    // NOW, and "12 of 12" reads as recent and unanimous.
+    const fit = durationFitSuggestion(sched.ratedSamples({ since: evidenceFloor }), tag);
     if (fit.suggest) {
       out.push({
         id: `fit:${tag}`,

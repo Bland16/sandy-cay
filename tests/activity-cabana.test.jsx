@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // Phase B — the Cabana Tag Manager and Activities editor, driven standalone with
 // a tiny mutate harness (the components are pure: props are just sched + mutate).
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { useState } from 'react';
 import { render, cleanup, screen, fireEvent } from '@testing-library/react';
 import { Schedule, resetIds, STARTER_BUCKETS } from '../src/core/index.js';
@@ -358,6 +358,16 @@ describe('retire hides a tag from the new-task picker', () => {
 });
 
 describe('L-1 energy UI', () => {
+  // ⚠️ THE CLOCK IS PINNED, and these two cases were time-bombed without it.
+  // Calibration — and `learnedCapacity`, which gates on it — only counts ratings
+  // inside `detectors.evidenceWindowDays` now, because a capacity learned in
+  // February must not still govern September. These fixtures sit in July, so
+  // against the REAL clock they fell out of the window the day the gap passed 56
+  // and the card correctly stopped drawing a ceiling — which is the right
+  // behaviour and the wrong test. Scoped to this describe, like the same fix in
+  // learning-guards.test.js.
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 6, 20, 6, 0, 0)); });
+  afterEach(() => { vi.useRealTimers(); });
   const D = (d, h) => new Date(2026, 6, d, h, 0, 0, 0);
   const wide = () => ({ ...defaultConfig, protectedTags: [], windows: { ...defaultConfig.windows, monFri: { start: '06:00', end: '23:00' } } });
 

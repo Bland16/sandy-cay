@@ -18,7 +18,6 @@ function suggestCfg(config) {
   const s = (config && config.suggest) || {};
   return {
     window: s.window ?? 10,
-    recentDays: s.recentDays ?? 14,
     fitWeight: s.fitWeight ?? 1,
     loadBias: s.loadBias ?? 0.35,
     reserveBias: s.reserveBias ?? 0.2, // nudge away from deepening a bottomed-out axis
@@ -26,6 +25,18 @@ function suggestCfg(config) {
     priorityPressureHigh: s.priorityPressureHigh ?? 0.15,
     restFlat: s.restFlat ?? 3,
     coldStart: (config && config.coldStartRatings) ?? 10,
+    // ⚠️ ONE NUMBER FOR "LATELY", read from the same place the report reads it.
+    // `recentDays` was 14 and `coldStart` is 10 — ten ratings inside a fortnight,
+    // a bar a weekly rater cannot clear. It never bit, because the window opted
+    // out of itself whenever it came up short (see `recentRated`). Bounding the
+    // window without noticing that would have swapped "steers off February" for
+    // "never steers at all", which is the quieter failure and no more honest.
+    //
+    // So the window is the shared `evidenceWindowDays`, not a second constant
+    // beside it: two numbers meaning "lately" drift, and this file has a test
+    // about exactly that kind of drift.
+    recentDays: s.recentDays
+      ?? ((config && config.detectors && config.detectors.evidenceWindowDays) ?? 56),
   };
 }
 
@@ -50,8 +61,8 @@ function loadOf(schedule, item) {
   return loadForTask(schedule, item); // a task → averaged across its tags' buckets
 }
 
-/** Recent rated tasks: the trailing `recentDays`, or the last `window`, whichever
- *  yields more (spec). Rated = a numeric satisfaction.overall. */
+/** Recent rated tasks: at most `window` of them, drawn from the trailing
+ *  `recentDays` and nowhere else. */
 function recentRated(schedule, now, cfg) {
   // ⚠️ `ratedSamples()`, NOT `schedule.tasks`. A recurring session's rating lives
   // in the parent's `occurrenceData`, never in `schedule.tasks` — so this pool
@@ -62,10 +73,22 @@ function recentRated(schedule, now, cfg) {
   const rated = schedule.ratedSamples()
     .filter((t) => t.satisfaction && typeof t.satisfaction.overall === 'number')
     .sort((a, b) => b.startTime - a.startTime);
+  // ⚠️ THE WINDOW OPTED OUT OF ITSELF WHEN IT WAS EMPTY. This took `within`
+  // (the trailing `recentDays`) or `lastN` (the last `window` by recency),
+  // WHICHEVER YIELDED MORE — so a user with nothing recent fell through to the
+  // ten most recent ratings they had, whenever those were. Measured on a
+  // schedule whose last rating was in April: steering on 9 September came back
+  // `trained: true, energyBalance: -10`, tuned entirely by February. The window
+  // never bounded staleness at all; it chose between "recent" and "old" and
+  // preferred whichever set was bigger.
+  //
+  // `window` is a CAP on how many recent ratings to steer from, not a rescue
+  // when there are none. Nothing recent now means nothing to steer from, which
+  // is the honest answer and the one the cold-start gate is built to handle.
   const cutoff = addDays(dayStart(now), -cfg.recentDays).getTime();
-  const within = rated.filter((t) => t.startTime.getTime() >= cutoff);
-  const lastN = rated.slice(0, cfg.window);
-  return within.length >= lastN.length ? within : lastN;
+  return rated
+    .filter((t) => t.startTime.getTime() >= cutoff)
+    .slice(0, cfg.window);
 }
 
 /** "Priority space" — normalised minutes of incomplete P4–P5 work due within the

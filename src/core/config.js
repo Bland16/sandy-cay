@@ -76,6 +76,22 @@ export const defaultConfig = {
     overpackDays: 3,
     overpackBreakFactor: 1.5,
     pinnedRatioNote: 0.5,
+    // ⚠️ HOW FAR BACK A PRINTED SENTENCE MAY REACH. Report findings had no time
+    // bound at all: the wrap report for the week of 7 September stated "12 of 12
+    // rated gym sessions said the block ran long" from twelve sessions rated
+    // February–April — 139 days stale — immediately beside "Gym hasn't happened
+    // in 4 weeks". "12 of 12" reads as recent and unanimous, and neither was
+    // true.
+    //
+    // 56 days is eight weeks: long enough for a habit to show a pattern, short
+    // enough that it is still honestly "lately", and about half a term. The
+    // trade is real and is the right way round — a shorter window means smaller
+    // samples, and a smaller sample should mean SILENCE rather than a confident
+    // claim about the wrong months.
+    //
+    // The learning model is deliberately NOT bounded by this; see
+    // `Schedule#ratedSamples`.
+    evidenceWindowDays: 56,
     // ⚠️ THIS KEY DID NOT EXIST. `report.js` read
     // `config.detectors.deadlineBufferHours ?? 24` and nothing ever defined it,
     // so every wrap report ever printed judged "close to the wire" against a
@@ -118,8 +134,19 @@ export const defaultConfig = {
   // Activity-library "what to do" steering (design/ACTIVITY-LIBRARY.md, Phase C).
   // Fit dominates; the load bias is a gentle nudge derived only from ratings.
   suggest: {
-    window: 10, // recent rated tasks to steer from…
-    recentDays: 14, // …or the trailing days, whichever yields more
+    window: 10, // at most this many recent ratings to steer from…
+    // …drawn from the trailing evidence window and NOWHERE ELSE. These used to
+    // be "whichever yields more", which meant an empty window fell back to the
+    // ten most recent ratings whenever they were — February steering September.
+    // `window` caps, it does not rescue.
+    //
+    // The window itself is NOT declared here any more. It was 14 days beside a
+    // cold start of 10 — ten ratings inside a fortnight, which a weekly rater
+    // cannot clear and which only ever passed because the window did not bind.
+    // `suggestCfg` reads `detectors.evidenceWindowDays` instead, so the app has
+    // ONE definition of "lately" and two findings side by side cannot be
+    // speaking about different stretches of the user's life. Set `recentDays`
+    // here to override it deliberately.
     fitWeight: 1, // opening-fit weight (dominant)
     loadBias: 0.35, // magnitude of one steering lean (by load character)
     varietyPenalty: 0.15, // nudge away from the load character just finished

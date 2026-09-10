@@ -4,7 +4,7 @@
 // order, draining/refilling a per-axis reserve, and reports the deepest dip — so *when*
 // you rest matters, not just how much. Physics, never a scold (P-1).
 
-import { isoWeekKey, dateKey } from './time.js';
+import { isoWeekKey, dateKey, addDays, dayStart } from './time.js';
 
 export const LOAD_AXES = ['mental', 'physical', 'social', 'creative'];
 
@@ -79,14 +79,25 @@ export function capacityPrior(schedule) {
  * learning" shape and NEVER a fabricated ceiling or over/under verdict.
  * Returns `{ calibrated, weeksRated, weeksNeeded }`.
  */
-export function energyCalibration(schedule) {
+export function energyCalibration(schedule, now = new Date()) {
   const need = (schedule.config.energy && schedule.config.energy.calibrationWeeks) ?? 3;
+  // ⚠️ CALIBRATION HAS TO STAY EARNED, NOT JUST GET EARNED. This counted
+  // distinct rated weeks EVER, so a user who rated four weeks in February was
+  // permanently calibrated — the budget card could never return to its honest
+  // "still learning" shape, however many months went by without a rating. A
+  // ceiling that outlives its evidence is the invented ceiling P-2 exists to
+  // forbid; it just takes longer to become one.
+  //
+  // Bounded by the same window a printed finding may reach back over, so the
+  // card and the report agree about what "lately" means.
+  const days = (schedule.config.detectors && schedule.config.detectors.evidenceWindowDays) ?? 56;
+  const since = addDays(dayStart(now), -days);
   const weeks = new Set();
   // Both stores, via the one door — a recurring session's energy rating counts
   // exactly as much as a one-off's. Walking `schedule.tasks` here meant a
   // recurring-heavy user could never calibrate, so the budget card sat in its
   // "still learning" shape forever (design/RATINGS-AND-LEARNING.md §3).
-  for (const t of schedule.ratedSamples()) {
+  for (const t of schedule.ratedSamples({ since })) {
     const s = t.satisfaction;
     if (t.completion === 'done' && s && typeof s.energy === 'number') weeks.add(isoWeekKey(t.startTime));
   }
@@ -269,12 +280,12 @@ export function dipIfPlaced(schedule, slot, draft) {
  * nowhere it would be shown: this number is arithmetic the user never sees, and
  * the term has to work in week one. See `capacityPrior`.
  */
-export function arrivalDepletionFor(schedule) {
+export function arrivalDepletionFor(schedule, now = new Date()) {
   // ⚠️ HOISTED DELIBERATELY. `learnedCapacity` walks every rated sample and
   // every rated day's tasks; calling it from inside `findBestSlot`'s per-slot
   // loop would run that walk once per candidate. Capacity cannot change during
   // a placement, so it is computed once here and closed over.
-  const learned = learnedCapacity(schedule);
+  const learned = learnedCapacity(schedule, now);
   const prior = capacityPrior(schedule);
   // `|| 1` used to be the whole guard here, and it catches a 0 by accident (0 is
   // falsy) while letting −3 through untouched. Stated properly: a capacity is a
@@ -339,8 +350,15 @@ export function reserveAt(schedule, now = new Date(), { excludeId = null } = {})
  * most you took and still felt fine). Needs calibration + ≥ 2 evidence days per axis,
  * else that axis falls back to the config prior. Returns null until calibrated.
  */
-export function learnedCapacity(schedule) {
-  if (!energyCalibration(schedule).calibrated) return null;
+export function learnedCapacity(schedule, now = new Date()) {
+  // ⚠️ `now` IS THE WINDOW, and it has to be threadable. Capacity is gated on
+  // calibration, and calibration is bounded in time — so a capacity learned in
+  // February lapses back to null along with the ratings behind it, which is the
+  // same P-2 rule one step down: a ceiling that outlives its evidence is still
+  // an invented ceiling. Without the parameter a caller could not say WHICH now
+  // it meant, and every test of this function became a time bomb that passed
+  // until the fixture drifted past the window.
+  if (!energyCalibration(schedule, now).calibrated) return null;
 
   // ⚠️ BOTH STORES, via the one door. This walked `schedule.tasks`, where a
   // materialized occurrence has never lived — so for a recurring-heavy user
