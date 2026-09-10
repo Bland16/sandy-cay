@@ -173,7 +173,11 @@ function buildSuggestions(sched, ws, weekLoad, weekTasks) {
   for (const task of sched.tasks) {
     if (task.recurrence) {
       // 6B — the pattern has drifted; offer to make the drift the pattern.
-      const d = driftCheck(task, config);
+      // The same weeks the skip-streak detector reads, so both findings about
+      // one pattern rest on the same stretch of the user's life. `driftN` weeks
+      // is at least `driftN` occurrences for a weekly pattern and more for a
+      // daily one — `driftCheck` takes the last `driftN` of whatever it finds.
+      const d = driftCheck(sched, task, recentWeeks(ws, config.detectors.driftN), config);
       if (d.drift) {
         const mins = Math.round(Math.abs(d.median));
         out.push({
@@ -181,7 +185,11 @@ function buildSuggestions(sched, ws, weekLoad, weekTasks) {
           kind: 'drift',
           taskId: task.id,
           headline: `${task.title} keeps moving ${d.direction}`,
-          detail: `${d.count} of the last ${config.detectors.driftN} sessions started about ${hours(mins)} ${d.direction} than the pattern says.`,
+          // ⚠️ THE SAMPLE, NOT THE CONSTANT. This printed `config.driftN` as the
+          // denominator regardless of how many sessions were actually behind
+          // the finding — so a pattern with four occurrences on record claimed
+          // "of the last 5", inventing the fifth.
+          detail: `${d.count} of the last ${d.total} session${d.total === 1 ? '' : 's'} started about ${hours(mins)} ${d.direction} than the pattern says.`,
           actions: [
             { kind: 'apply', label: `Make that the pattern` },
             { kind: 'dismiss', label: 'Leave it as it is' },

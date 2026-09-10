@@ -9,10 +9,10 @@ const W0 = new Date(2026, 6, 13, 0, 0, 0, 0);
 describe('§7.2/7.3 detectors', () => {
   beforeEach(() => resetIds());
 
-  it('drift: ≥4 of last 5 occurrences moved same direction ≥30min', () => {
+  /** A Monday gym at 08:00, with `moves` of its recent weeks dragged to 10:00. */
+  const gymDrifting = (weeks, moves) => {
     const t = new Task({
-      title: 'Gym',
-      type: 'fixed',
+      title: 'Gym', type: 'fixed',
       startTime: new Date(2026, 6, 13, 8, 0),
       endTime: new Date(2026, 6, 13, 9, 0),
       recurrence: {
@@ -21,14 +21,58 @@ describe('§7.2/7.3 detectors', () => {
         exceptions: [],
       },
     });
-    // 5 weeks all moved to 10:00 (+120 min).
-    for (let i = 0; i < 5; i += 1) {
+    for (let i = 0; i < moves; i += 1) {
       t.recurrence.exceptions.push({ date: dateKey(addDays(W0, i * 7)), action: 'move', start: '10:00', end: '11:00' });
     }
-    const res = driftCheck(t, defaultConfig);
+    const s = new Schedule({ config: defaultConfig });
+    s.tasks.push(t);
+    // Most-recent-first, as the report supplies them.
+    const ws = Array.from({ length: weeks }, (_, i) => addDays(W0, (weeks - 1 - i) * 7));
+    return { t, run: () => driftCheck(s, t, ws, defaultConfig) };
+  };
+
+  it('drift: \u22654 of last 5 occurrences moved same direction \u226530min', () => {
+    const res = gymDrifting(5, 5).run();
     expect(res.drift).toBe(true);
     expect(res.direction).toBe('later');
     expect(res.median).toBe(120);
+    expect(res.total).toBe(5);
+  });
+
+  // \u26a0\ufe0f THE DENOMINATOR WAS THE MOVES, NOT THE SESSIONS \u2014 the same defect that
+  // made "exercise blocks may want to be shorter" fire on three complaints out
+  // of twenty. The sample came from `exceptions` filtered to `action: 'move'`,
+  // so only sessions the user had DRAGGED could enter it. Sixteen that started
+  // exactly where the pattern said were invisible to the arithmetic.
+  it('counts the sessions that ran ON the pattern, not just the ones you moved', () => {
+    // Twenty weeks of gym; four of them moved. Under the old rule the sample was
+    // those four, all four counted, and 4 >= driftHits fired.
+    // The four moves are the OLDEST weeks, so under the old rule they were the
+    // entire sample — four of four, `4 >= driftHits`, fired. The sample is now
+    // the last five OCCURRENCES, which are five unremarkable on-pattern weeks.
+    const res = gymDrifting(20, 4).run();
+    expect(res.total).toBe(defaultConfig.detectors.driftN); // five sessions, not four moves
+    expect(res.drift).toBe(false);
+    expect(res.median).toBe(0); // they ran where the pattern said
+  });
+
+  // \u2026and the detector must still fire when the drift is real, or the fix has
+  // simply switched it off. Four of the last five moved is a genuine finding.
+  it('still fires when most of the recent sessions really did move', () => {
+    const res = gymDrifting(5, 4).run();
+    expect(res.drift).toBe(true);
+    expect(res.count).toBe(4);
+    expect(res.total).toBe(5);
+  });
+
+  // The finding is bounded in time: `driftN` occurrences out of the weeks it is
+  // given, so old moves cannot produce a claim about the present.
+  it('reports a denominator it can actually name', () => {
+    const res = gymDrifting(3, 3).run();
+    // Three weeks supplied, so three sessions \u2014 not the config constant. The
+    // report printed "of the last {driftN}" regardless, inventing sessions.
+    expect(res.total).toBe(3);
+    expect(res.total).not.toBe(defaultConfig.detectors.driftN);
   });
 
   it('starvation: displaced + carried ≥ 3', () => {

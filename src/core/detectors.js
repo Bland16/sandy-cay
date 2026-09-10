@@ -2,7 +2,6 @@
 // physics notice, overpack (§7.3). Detectors observe; they never nag (P-1).
 
 import {
-  dateFromKey,
   dayKeyOf,
   hhmmToMinutes,
   addDays,
@@ -29,31 +28,63 @@ function patternStartMin(task, dayKeyStr, date) {
   return null;
 }
 
-/** Drift: ≥driftHits of the last driftN occurrences moved the same direction by
- *  ≥driftMin minutes (SPEC §7.2, 6B). */
-export function driftCheck(task, config) {
+/**
+ * Drift: ≥driftHits of the last driftN OCCURRENCES started ≥driftMin minutes off
+ * the pattern, in the same direction (SPEC §7.2, 6B).
+ *
+ * ⚠️ THE DENOMINATOR WAS THE MOVES, NOT THE SESSIONS — the same defect that
+ * made "exercise blocks may want to be shorter" fire on three complaints out of
+ * twenty. This built its sample from `recurrence.exceptions` filtered to
+ * `action === 'move'`, so ONLY sessions the user had dragged could enter it.
+ * Twenty sessions of which four were moved gave a sample of four, all four
+ * counted as drift, and `4 >= driftHits` fired — while the sixteen that started
+ * exactly where the pattern said were invisible to the arithmetic. A session
+ * that ran on time is evidence ABOUT the pattern, and it was being discarded for
+ * being unremarkable.
+ *
+ * Occurrences are the sample now, and one that was never moved carries a delta
+ * of ZERO rather than being absent. That also bounds the finding in TIME: it
+ * reads the last `driftN` occurrences out of the weeks handed in, so four moves
+ * from last year can no longer produce a finding about this month.
+ *
+ * `total` is returned because a sentence has to be able to state its own
+ * evidence. The report printed "N of the last {config.driftN}" — the CONSTANT,
+ * not the sample — so with four moves on record it asserted a fifth session that
+ * did not exist.
+ *
+ * ⚠️ A session relocated to another DATE is still measured against its own
+ * pattern window's time of day. Drift is a claim about the CLOCK ("you keep
+ * starting this later"), so that is the right comparison; which day it landed on
+ * is `skipStreakCheck`'s business, not this one's.
+ */
+export function driftCheck(schedule, task, weekStarts, config) {
   const { driftN, driftHits, driftMin } = config.detectors;
-  if (!task.recurrence) return { drift: false };
-  const deltas = (task.recurrence.exceptions || [])
-    .filter((e) => e.action === 'move' && e.start)
-    .map((e) => {
-      const date = dateFromKey(e.date);
-      const ps = patternStartMin(task, dayKeyOf(date), date);
-      if (ps == null) return null;
-      return { date, delta: hhmmToMinutes(e.start) - ps };
-    })
-    .filter(Boolean)
-    .sort((a, b) => a.date - b.date);
+  if (!task.recurrence) return { drift: false, total: 0 };
+
+  // Keyed by occurrence identity, so one session cannot be counted twice when
+  // two of the supplied weeks overlap it.
+  const seen = new Map();
+  for (const ws of weekStarts) {
+    for (const occ of schedule._expand(task, ws)) {
+      const at = occ.startTime;
+      const ps = patternStartMin(task, dayKeyOf(at), at);
+      if (ps == null) continue;
+      const actual = at.getHours() * 60 + at.getMinutes();
+      seen.set(occ.id, { at: at.getTime(), delta: actual - ps });
+    }
+  }
+  const deltas = [...seen.values()].sort((a, b) => a.at - b.at);
 
   const recent = deltas.slice(-driftN);
+  const total = recent.length;
   const later = recent.filter((d) => d.delta >= driftMin).length;
   const earlier = recent.filter((d) => d.delta <= -driftMin).length;
   const sorted = recent.map((d) => d.delta).sort((a, b) => a - b);
   const median = sorted.length ? sorted[Math.floor(sorted.length / 2)] : 0;
 
-  if (later >= driftHits) return { drift: true, direction: 'later', median, count: later };
-  if (earlier >= driftHits) return { drift: true, direction: 'earlier', median, count: earlier };
-  return { drift: false, median };
+  if (later >= driftHits) return { drift: true, direction: 'later', median, count: later, total };
+  if (earlier >= driftHits) return { drift: true, direction: 'earlier', median, count: earlier, total };
+  return { drift: false, median, total };
 }
 
 /** Starvation: displacedCount + carriedCount ≥ threshold (SPEC §7.2, 6D). */
