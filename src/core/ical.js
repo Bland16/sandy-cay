@@ -51,6 +51,11 @@ const pad = (n) => String(n).padStart(2, '0');
 
 /** Local floating time — no Z. The user's 09:00 is 09:00 wherever they open it. */
 export function toICSDate(d) {
+  // ⚠️ AN INVALID DATE USED TO BECOME THE STRING "NaNNaNNaNTNaNNaN00", which is
+  // truthy — so a `.filter(Boolean)` downstream let it through and the export
+  // shipped a malformed line that any calendar will reject. Null instead, so the
+  // filters that already exist actually catch it.
+  if (!(d instanceof Date) || Number.isNaN(d.getTime())) return null;
   return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
 }
 
@@ -271,6 +276,14 @@ export function toICS(tasks, { calName = 'Sandy Cay', now = new Date() } = {}) {
         .map((e) => toICSDate(atLocal(e.date, hhmmOf(t, e.date))))
         .filter(Boolean);
       if (exdates.length) lines.push(fold(`EXDATE:${exdates.join(',')}`));
+      // ⚠️ KNOWN GAP, NOT FIXED HERE: one VEVENT per TASK, so a pattern with two
+      // windows on the same weekday ("meds at 09:00 and 21:00") exports as a
+      // single series at DTSTART's time and the second session is not in the
+      // file at all. The EXDATE above is now well-formed and names the right
+      // session — but on such a pattern it names one the export does not
+      // contain. Representing it needs a VEVENT per window, which is a larger
+      // change than repairing the NaN. See design/TODO.md I-4.
+
     }
 
     // Ours, and only ours: Google drops X- props, our own re-import keeps them.
@@ -301,8 +314,25 @@ export function toICS(tasks, { calName = 'Sandy Cay', now = new Date() } = {}) {
 }
 
 /** 'YYYY-MM-DD' + 'HH:MM' → local Date. */
+/**
+ * Split an occurrence key into its date and its session ordinal.
+ *
+ * ⚠️ EXCEPTION KEYS ARE NOT PLAIN DATES. They are SESSION keys — `2026-09-07`
+ * for a day's first session, `2026-09-07#2` for its second, `#add` for an extra
+ * one — because a twice-daily pattern has to be able to skip just the evening.
+ * Everything here treated them as dates, so `'09-07#2'.split('-').map(Number)`
+ * produced NaN and the export wrote `EXDATE:NaNNaNNaNTNaNNaN00`.
+ */
+function keyParts(k) {
+  const str = String(k);
+  const hash = str.indexOf('#');
+  if (hash < 0) return { date: str, seq: 1 };
+  const n = Number(str.slice(hash + 1));
+  return { date: str.slice(0, hash), seq: Number.isInteger(n) && n > 0 ? n : null };
+}
+
 function atLocal(dateKeyStr, hhmm = '00:00') {
-  const [y, m, d] = String(dateKeyStr).split('-').map(Number);
+  const [y, m, d] = keyParts(dateKeyStr).date.split('-').map(Number);
   const [h, mi] = String(hhmm).split(':').map(Number);
   return new Date(y, m - 1, d, h || 0, mi || 0, 0, 0);
 }
@@ -317,11 +347,21 @@ function atLocal(dateKeyStr, hhmm = '00:00') {
  *  occurrence silently reappeared on the far side of an export. */
 function hhmmOf(task, dateKeyStr) {
   const periods = task.recurrence.periods || [];
+  const { seq } = keyParts(dateKeyStr);
   const d = atLocal(dateKeyStr);
   const period = periods.find((p) => periodActiveOn(p, d)) || periods[0];
   if (!period) return '00:00';
   const dayKey = Object.keys(DAY_TO_BYDAY)[(d.getDay() + 6) % 7];
-  const w = (period.windows || []).find((x) => x.day === dayKey) || (period.windows || [])[0];
+  const onDay = (period.windows || []).filter((x) => x.day === dayKey);
+  // ⚠️ THE ORDINAL PICKS THE WINDOW, and taking the first match was wrong for
+  // exactly the pattern this matters on. Both of a twice-daily pattern's windows
+  // carry the same weekday, so skipping the EVENING exported an EXDATE at the
+  // MORNING's time — a well-formed line naming the wrong session, which deletes
+  // the wrong one in whatever calendar reads it. `seq` is the window's stable
+  // identity (see recurrence.js), and it is what the key's suffix refers to.
+  const w = (seq != null && onDay.find((x) => x.seq === seq))
+    || onDay[0]
+    || (period.windows || [])[0];
   return w ? w.start : '00:00';
 }
 

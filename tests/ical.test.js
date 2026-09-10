@@ -45,6 +45,71 @@ describe('iCalendar dates', () => {
   });
 });
 
+describe('an exception key is a SESSION key, not a date', () => {
+  beforeEach(() => resetIds());
+
+  /** Meds twice on a Monday: 09:00 and 21:00, the evening one skipped. */
+  const twiceDaily = (skipKey) => {
+    const t = new Task({
+      title: 'Meds', type: 'fixed',
+      startTime: new Date(2026, 8, 7, 9, 0), endTime: new Date(2026, 8, 7, 9, 15),
+      recurrence: {
+        freq: 'weekly', interval: 1,
+        periods: [{
+          from: null, until: null,
+          windows: [
+            { day: 'mon', start: '09:00', end: '09:15', seq: 1 },
+            { day: 'mon', start: '21:00', end: '21:15', seq: 2 },
+          ],
+        }],
+        exceptions: [{ date: skipKey, action: 'skip' }],
+      },
+    });
+    return toICS([t]);
+  };
+  const exdateOf = (ics) => (ics.split(/\r?\n/).find((l) => l.startsWith('EXDATE:')) || '').slice(7);
+
+  // ⚠️ `'2026-09-07#2'.split('-').map(Number)` gives NaN for the last part, and
+  // the result was rendered anyway: `EXDATE:NaNNaNNaNTNaNNaN00`. It survived
+  // `.filter(Boolean)` because a string of "NaN"s is truthy. Any calendar
+  // reading that file rejects it.
+  it('does not write a NaN into the file', () => {
+    const ics = twiceDaily('2026-09-07#2');
+    expect(ics).not.toMatch(/NaN/);
+    expect(exdateOf(ics)).toMatch(/^\d{8}T\d{6}$/);
+  });
+
+  // ⚠️ THE HALF THAT WAS STILL WRONG ONCE THE NaN WAS GONE. Both windows carry
+  // the same weekday, and `hhmmOf` took the FIRST match — so skipping the
+  // evening exported an EXDATE at the MORNING's time. A well-formed line naming
+  // the wrong session deletes the wrong one in whatever calendar reads it, which
+  // is worse than a line that fails loudly.
+  it('names the session the key actually refers to', () => {
+    expect(exdateOf(twiceDaily('2026-09-07#2'))).toBe('20260907T210000'); // the evening
+    expect(exdateOf(twiceDaily('2026-09-07'))).toBe('20260907T090000');   // the morning
+  });
+
+  it('still handles a plain once-daily skip', () => {
+    const t = new Task({
+      title: 'Gym', type: 'fixed',
+      startTime: new Date(2026, 8, 7, 18, 0), endTime: new Date(2026, 8, 7, 19, 0),
+      recurrence: {
+        freq: 'weekly', interval: 1,
+        periods: [{ from: null, until: null, windows: [{ day: 'mon', start: '18:00', end: '19:00' }] }],
+        exceptions: [{ date: '2026-09-07', action: 'skip' }],
+      },
+    });
+    expect(exdateOf(toICS([t]))).toBe('20260907T180000');
+  });
+
+  // `toICSDate` returning a truthy garbage string is what let the NaN through in
+  // the first place. Null, so the filters that already exist can catch it.
+  it('refuses an invalid date instead of stringifying it', () => {
+    expect(toICSDate(new Date('nonsense'))).toBeNull();
+    expect(toICSDate(new Date(2026, 8, 7, 9, 0))).toBe('20260907T090000');
+  });
+});
+
 describe('recurrence maps to RRULE both ways', () => {
   beforeEach(() => resetIds());
 

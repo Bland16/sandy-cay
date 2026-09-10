@@ -131,6 +131,18 @@ issue until Q-3 is described.**
 - [ ] **I-2 · `.ics` export writes a literal NaN.** A `#2` session key produces
       `EXDATE:NaNNaNNaNTNaNNaN00` — the date parser chokes on the ordinal
       suffix. Any calendar importing that file will reject or mangle it.
+- [x] **~~I-2 · `.ics` export writes a literal NaN~~** — done. Exception keys are
+      SESSION keys (`2026-09-07#2`), not dates; `atLocal` parsed them as dates.
+      Also fixed the half nobody had noticed: `hhmmOf` took the first window
+      matching the weekday, so skipping the EVENING of a twice-daily pattern
+      exported an EXDATE at the MORNING's time — well-formed, wrong session,
+      deletes the wrong one in whatever calendar reads it.
+- [ ] **I-4 · A twice-daily pattern exports as once-daily.** Found while fixing
+      I-2. `toICS` emits one VEVENT per TASK, so two windows on the same weekday
+      collapse into a single series at `DTSTART`'s time and the second session
+      never reaches the file. Needs a VEVENT per window. ⚠️ This makes I-2's
+      EXDATE name a session the export does not contain — correct in our model,
+      unresolvable in the file, until this is done.
 - [ ] **I-3 · Google `safeRRULE` returns `windows-differ`** for a period-split
       pattern, so a term whose pattern was edited exports without its rule.
       Behaviour may be intentional; confirm before changing.
