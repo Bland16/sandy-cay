@@ -26,13 +26,13 @@ Ranked by how wrong the user-visible sentence can get. Three of the twelve
 surfaces the detector audit found are already fixed (`ed4bf1a`, `a6a3a47`, and
 the time bounds below).
 
-- [ ] **T-1 · `starvationCheck` counts a lifetime, inside a weekly report.**
+- [x] **~~T-1 · `starvationCheck` counts a lifetime, inside a weekly report~~** — done.
       Proven firing on a task **completed in March** inside September's report,
       on a week whose `isEmpty` is `true`. The guard excludes `skipped` but not
       `done`; `buildSuggestions` iterates `sched.tasks`, not `weekTasks`; and
       `displacedCount`/`carriedCount` are lifetime counters. "Pushed 3 times" —
       over what period is unanswerable.
-- [ ] **T-2 · `buildInsight` prints the wrong denominator.** "Across 24 ratings,
+- [x] **~~T-2 · `buildInsight` prints the wrong denominator~~** — done. "Across 24 ratings,
       late evenings run about a shell below your others" where **that column has
       4 observations**. `buildInsight` already computes `observations` per
       column and the JSX drops it — the honest number is in hand at the render

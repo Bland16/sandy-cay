@@ -838,6 +838,61 @@ describe('§7.1 — when it happened, on one shared clock', () => {
 
 // A8, A11, A14 — three corrections to sections that already existed and were
 // reporting the wrong quantity.
+describe('§7.1 — a finding names the evidence that is actually behind it', () => {
+  // ⚠️ IT FIRED ON WORK THAT WAS ALREADY DONE, AND ON WORK STRANDED IN THE PAST.
+  // The guard excluded `skipped` and nothing else, and the loop walks
+  // `sched.tasks` — every task ever, not this week's. Measured on an otherwise
+  // empty September report: "Tax forms keeps getting pushed · Pinning it gives
+  // it right of way next week", about a task COMPLETED IN MARCH.
+  const pushed = (title, start, completion) => {
+    const t = new Task({
+      title, type: 'flexible',
+      startTime: start, endTime: new Date(start.getTime() + 3600000),
+    });
+    t.history.displacedCount = 2;
+    t.history.carriedCount = 1;
+    t.completion = completion;
+    return t;
+  };
+  const starveHeadlines = () => [...document.querySelectorAll('.rp-sugg-head')]
+    .map((el) => el.textContent)
+    .filter((x) => /keeps getting pushed/.test(x));
+
+  it('does not say finished work keeps getting pushed', () => {
+    const s = new Schedule({ config: defaultConfig });
+    s.tasks.push(pushed('Done in March', new Date(2026, 2, 10, 9, 0), 'done'));
+    s.tasks.push(pushed('Stranded in March', new Date(2026, 2, 11, 9, 0), null));
+    s.tasks.push(pushed('Live this week', at(1, 9), null));
+    persist(s);
+
+    render(<App />);
+    openReport();
+
+    const said = starveHeadlines();
+    // ⚠️ THE LIVE ONE MUST SURVIVE. "No starvation findings" passes just as well
+    // against a detector that has been switched off; the case is that it keeps
+    // the true one and drops the two false ones.
+    expect(said).toHaveLength(1);
+    expect(said[0]).toMatch(/Live this week/);
+  });
+
+  // `displacedCount`/`carriedCount` are lifetime counters with no timestamps, so
+  // "3 times" invited the reader to assume a period the app cannot back.
+  it('names the period of a count it cannot bound', () => {
+    const s = new Schedule({ config: defaultConfig });
+    s.tasks.push(pushed('Live this week', at(1, 9), null));
+    persist(s);
+
+    render(<App />);
+    openReport();
+
+    const detail = [...document.querySelectorAll('.rp-sugg-detail')]
+      .map((el) => el.textContent)
+      .find((x) => /Moved or carried/.test(x));
+    expect(detail).toMatch(/3 times in all/);
+  });
+});
+
 describe('§7.1 — the report measures against what the app actually aims for', () => {
   it('judges "close to the wire" against the plan\'s own target, not a flat day', async () => {
     const { buildWrapReport } = await import('../src/ui/report.js');

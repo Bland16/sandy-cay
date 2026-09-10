@@ -222,14 +222,36 @@ function buildSuggestions(sched, ws, weekLoad, weekTasks) {
     }
 
     // 6D — starvation: this keeps losing to everything else.
+    //
+    // ⚠️ IT FIRED ON WORK THAT WAS ALREADY DONE, AND ON WORK STRANDED IN THE
+    // PAST. The guard excluded `skipped` and nothing else, and the loop above
+    // walks `sched.tasks` — every task ever, not this week's. Measured on an
+    // otherwise empty September report:
+    //
+    //   "Tax forms keeps getting pushed — Moved or carried 3 times.
+    //    Pinning it gives it right of way next week."   ← completed in MARCH
+    //
+    // Two rules, and they are the same rule twice: the sentence is about work
+    // that is STILL WAITING. A resolved task is history — `done` and `partial`
+    // happened, `skipped` was let go — and none of them is waiting for a slot
+    // next week. And a task sitting unresolved in a week months gone is not
+    // this week's news either; `carryOver` is the thing that brings work
+    // forward, and if it has not, a weekly report is the wrong place to nag.
     const st = starvationCheck(task, config);
-    if (st.starving && !task.pinned && !task.chunking && task.completion !== 'skipped') {
+    const live = task.completion == null && task.startTime.getTime() >= ws.getTime();
+    if (st.starving && live && !task.pinned && !task.chunking) {
       out.push({
         id: `starve:${task.id}`,
         kind: 'starvation',
         taskId: task.id,
         headline: `${task.title} keeps getting pushed`,
-        detail: `Moved or carried ${st.count} times. Pinning it gives it right of way next week.`,
+        // ⚠️ "IN ALL", because that is what the number is. `displacedCount` and
+        // `carriedCount` are lifetime counters with no timestamps on them, so
+        // there is no honest way to say "this week" or "recently" — and a bare
+        // "3 times" invites the reader to assume a period the app cannot back.
+        // Bounding it properly needs the counters to record WHEN, which is a
+        // schema change; naming the period correctly costs two words.
+        detail: `Moved or carried ${st.count} times in all. Pinning it gives it right of way next week.`,
         actions: [
           { kind: 'apply', label: 'Pin it next week' },
           { kind: 'letgo', label: 'Let it go' },

@@ -786,8 +786,19 @@ export default function WrapReport({ sched, weekStart, version, onBack, onOpenTa
                   </p>
                 )
               ) : insight.top.length > 0 ? (
+                /* ⚠️ THE DENOMINATOR WAS THE MODEL'S, NOT THE COLUMN'S. This opened
+                   "Across {sampleCount} ratings" — every rating the model was
+                   trained on — and then made a claim about ONE column, which is
+                   supported by only the ratings that touched it. Measured:
+                   "Across 24 ratings, late evenings run about a shell below your
+                   others" where that column had FOUR observations. The reader is
+                   invited to read 24 as the evidence for the late-evening claim,
+                   and 24 is not that number.
+                   `buildInsight` already computes `observations` per column and
+                   this dropped it on the floor. Stated per item now, in the same
+                   "· N rated" idiom the Cabana uses for the same numbers. */
                 <p className="rp-dim">
-                  Across {insight.sampleCount} ratings,{' '}
+                  Your ratings nudge automatic placement:{' '}
                   {insight.top.map((w, i) => (
                     <span key={w.label}>
                       {i > 0 && (i === insight.top.length - 1 ? ', and ' : ', ')}
@@ -797,9 +808,12 @@ export default function WrapReport({ sched, weekStart, version, onBack, onOpenTa
                         {w.shells > 0 ? 'above' : 'below'}
                       </b>{' '}
                       your others
+                      {Number.isFinite(w.observations) && (
+                        <span className="rp-dim"> · {w.observations} rated</span>
+                      )}
                     </span>
                   ))}
-                  . That’s what nudges automatic placement.
+                  .
                 </p>
               ) : null}
 
