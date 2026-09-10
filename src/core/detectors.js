@@ -62,22 +62,43 @@ export function starvationCheck(task, config) {
   return { starving: total >= config.detectors.starvation, count: total };
 }
 
-/** Skip-streak: a recurring task whose occurrences were skipped/unrated for
- *  ≥skipStreak consecutive weeks (SPEC §7.2, 6L).
- *  weekStarts: array of week-start Dates, most-recent-first. */
+/**
+ * Skip-streak: a recurring task EXPLICITLY skipped for ≥skipStreak consecutive
+ * weeks (SPEC §7.2, 6L). weekStarts: week-start Dates, most-recent-first.
+ *
+ * ⚠️ AN UNRATED SESSION IS NOT A SESSION THAT DID NOT HAPPEN. This counted a
+ * week when every occurrence was `skipped` OR CARRIED NO RATING — and the
+ * report prints the result as a statement of fact: "Gym hasn't happened in 3
+ * weeks", with "Let it go" beside it. Rating is optional everywhere else in this
+ * app; here its absence was read as absence of the event, so three sessions the
+ * user went to and simply never opened the panel for produced the identical
+ * sentence to three they skipped. Telling someone their gym has not happened,
+ * when it has, is the plainest P-1 breach available.
+ *
+ * The three states are not two:
+ *
+ *   `skipped`          it did not happen.        Evidence. Extends the streak.
+ *   `done` / `partial` it happened.              Evidence. Ends the streak.
+ *   no record at all   WE DO NOT KNOW.           Not evidence of absence.
+ *
+ * An unknown ends the streak, because a claim needs something behind it and
+ * silence is the honest output when nothing is. That does make the detector
+ * quiet for someone who never marks anything — correctly so: it cannot tell
+ * them what it does not know, and the offer to end a pattern must rest on
+ * something true. SPEC §7.2 asks only for "≥3 weeks"; "unrated counts as
+ * skipped" was a choice made here, not in the plan.
+ */
 export function skipStreakCheck(schedule, task, weekStarts, config) {
   if (!task.recurrence) return { streak: 0, flag: false };
   let streak = 0;
   for (const ws of weekStarts) {
     const occs = expandFor(schedule, task, ws);
     if (occs.length === 0) break; // no occurrence that week — streak stops
-    const allSkippedOrUnrated = occs.every((occ) => {
+    const allSkipped = occs.every((occ) => {
       const od = task.occurrenceData[occ.occurrenceDate];
-      if (od && od.completion === 'skipped') return true;
-      if (!od || !od.satisfaction) return true; // unrated
-      return false;
+      return !!od && od.completion === 'skipped';
     });
-    if (allSkippedOrUnrated) streak += 1;
+    if (allSkipped) streak += 1;
     else break;
   }
   return { streak, flag: streak >= config.detectors.skipStreak };

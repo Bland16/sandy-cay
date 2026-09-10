@@ -39,7 +39,7 @@ describe('§7.2/7.3 detectors', () => {
     expect(starvationCheck(t, defaultConfig).count).toBe(3);
   });
 
-  it('skip-streak: ≥3 consecutive weeks skipped/unrated', () => {
+  it('skip-streak: ≥3 consecutive weeks EXPLICITLY skipped', () => {
     const s = new Schedule({ config: defaultConfig });
     const t = new Task({
       title: 'Gym',
@@ -61,6 +61,65 @@ describe('§7.2/7.3 detectors', () => {
     const res = skipStreakCheck(s, t, weekStarts, defaultConfig);
     expect(res.streak).toBe(3);
     expect(res.flag).toBe(true);
+  });
+
+  /** The same gym, with whatever `occurrenceData` you hand it. */
+  const gym = (data) => {
+    const t = new Task({
+      title: 'Gym', type: 'fixed',
+      startTime: new Date(2026, 6, 13, 8, 0),
+      endTime: new Date(2026, 6, 13, 9, 0),
+      recurrence: {
+        periods: [{ windows: [{ day: 'mon', start: '08:00', end: '09:00' }], interval: 1, effectiveFrom: null, effectiveUntil: null }],
+        anchorDate: W0,
+        exceptions: [],
+      },
+    });
+    for (let i = 0; i < 3; i += 1) {
+      const d = data(i);
+      if (d) t.occurrenceData[dateKey(addDays(W0, i * 7))] = d;
+    }
+    return t;
+  };
+  const weeks = [addDays(W0, 14), addDays(W0, 7), W0]; // most recent first
+  const streakOf = (t) => {
+    const s = new Schedule({ config: defaultConfig });
+    s.tasks.push(t);
+    return skipStreakCheck(s, t, weeks, defaultConfig);
+  };
+
+  // ⚠️ AN UNRATED SESSION IS NOT A SESSION THAT DID NOT HAPPEN. This counted a
+  // week when every occurrence was skipped OR CARRIED NO RATING, and the report
+  // prints the result as fact — "Gym hasn't happened in 3 weeks" — with "Let it
+  // go" beside it. Rating is optional everywhere else in this app; here its
+  // absence was read as absence of the event.
+  it('does not call a session you went to and never rated a session you skipped', () => {
+    const res = streakOf(gym(() => ({ completion: 'done' })));
+    expect(res.streak).toBe(0);
+    expect(res.flag).toBe(false);
+  });
+
+  it('treats a partial the same way — it happened', () => {
+    expect(streakOf(gym(() => ({ completion: 'partial' }))).flag).toBe(false);
+  });
+
+  // The third state, and the one the old rule collapsed into "skipped": no
+  // record at all means WE DO NOT KNOW, which is not evidence of absence. The
+  // detector goes quiet rather than asserting something it cannot support.
+  it('says nothing about weeks it has no record of', () => {
+    const res = streakOf(gym(() => null));
+    expect(res.streak).toBe(0);
+    expect(res.flag).toBe(false);
+  });
+
+  // …and a real skip still counts, or the fix has simply disabled the detector.
+  it('still counts weeks that were actually skipped, and stops at the one that was not', () => {
+    expect(streakOf(gym(() => ({ completion: 'skipped' }))).streak).toBe(3);
+    // most-recent-first: skipped, skipped, then a week you turned up for.
+    const mixed = gym((i) => (i === 0 ? { completion: 'done' } : { completion: 'skipped' }));
+    const res = streakOf(mixed);
+    expect(res.streak).toBe(2);
+    expect(res.flag).toBe(false);
   });
 
   it('pinnedRatio note fires above 0.5', () => {
