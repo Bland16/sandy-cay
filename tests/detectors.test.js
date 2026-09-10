@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Schedule, Task, resetIds } from '../src/core/index.js';
-import { driftCheck, starvationCheck, skipStreakCheck, pinnedRatioNote, overpackCheck } from '../src/core/detectors.js';
+import { driftCheck, starvationCheck, skipStreakCheck, pinnedRatioNote, overpackCheck, durationFitSuggestion } from '../src/core/detectors.js';
 import { defaultConfig } from '../src/core/config.js';
 import { addDays, dateKey } from '../src/core/time.js';
 
@@ -164,6 +164,61 @@ describe('§7.2/7.3 detectors', () => {
     const res = streakOf(mixed);
     expect(res.streak).toBe(2);
     expect(res.flag).toBe(false);
+  });
+
+  // ⚠️ THE THREE SENTENCES THAT SHIPPED AND WERE WRONG. Reported twice from the
+  // real report: "break blocks may want to be shorter — 2 of 3", "exercise — 3
+  // of 4", "social — 3 of 5". The floor was 3 beside a 60% bar, so two out of
+  // three cleared it. The ratio was never the problem; there was almost nothing
+  // behind it.
+  describe('the duration suggestion needs evidence, and does not second-guess', () => {
+    const sess = (fit, overall, i) => {
+      const t = new Task({
+        title: `s${i}`, tags: ['exercise'], type: 'fixed',
+        startTime: new Date(2026, 8, 7, 9, 0), endTime: new Date(2026, 8, 7, 10, 0),
+      });
+      t.completion = 'done';
+      t.satisfaction = { overall, durationFit: fit };
+      return t;
+    };
+    /** `long` said too-long, `right` said just-right, all rated `overall`. */
+    const pool = (long, right, overall) => [
+      ...Array.from({ length: long }, (_, i) => sess(1, overall, i)),
+      ...Array.from({ length: right }, (_, i) => sess(0, overall, 100 + i)),
+    ];
+    const fit = (p) => durationFitSuggestion(p, 'exercise', defaultConfig);
+
+    it('says nothing on the evidence that produced the complaints', () => {
+      expect(fit(pool(2, 1, 3)).suggest).toBe(false); // break,    2 of 3
+      expect(fit(pool(3, 1, 3)).suggest).toBe(false); // exercise, 3 of 4
+      expect(fit(pool(3, 2, 3)).suggest).toBe(false); // social,   3 of 5
+    });
+
+    // ⚠️ THE CONTROL. Every assertion above is satisfied by a detector that has
+    // been switched off. Real evidence must still get through.
+    it('still speaks when there is enough behind it', () => {
+      const r = fit(pool(6, 2, 2.5));
+      expect(r).toMatchObject({ suggest: true, direction: 'shorter', count: 6, total: 8 });
+      expect(fit(pool(12, 8, 3)).suggest).toBe(true);
+    });
+
+    // The user's own rule, chosen 2026-09-10: three of four exercise sessions
+    // said the block ran long while every one was rated 4–5 shells and usually
+    // energizing. "Ran long" beside a five-shell rating is a note about the
+    // clock, not a complaint about the activity.
+    it('does not tell you to cut short the thing you rate highest', () => {
+      const r = fit(pool(6, 2, 4.5)); // same counts as the control above
+      expect(r.suggest).toBe(false);
+      expect(r.content).toBe(true);
+      expect(r.meanOverall).toBeGreaterThanOrEqual(defaultConfig.detectors.durationFitContentAt);
+    });
+
+    // …and the gate is about SATISFACTION, not about the counts: the identical
+    // pool rated poorly must still fire, or the two rules are entangled.
+    it('is a satisfaction gate, not a second floor', () => {
+      expect(fit(pool(6, 2, 4.5)).suggest).toBe(false);
+      expect(fit(pool(6, 2, 2.0)).suggest).toBe(true);
+    });
   });
 
   it('pinnedRatio note fires above 0.5', () => {

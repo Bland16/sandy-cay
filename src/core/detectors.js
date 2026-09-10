@@ -187,13 +187,38 @@ export function overpackCheck(schedule, weekStartDate, config) {
  * Returns the counts as well, so the sentence can state its own evidence
  * instead of asserting "most sessions said..." and being wrong about it.
  */
-export function durationFitSuggestion(tasks, tag) {
+export function durationFitSuggestion(tasks, tag, config = null) {
+  const det = (config && config.detectors) || {};
+  const floor = det.durationFitMin ?? 6;
+  const contentAt = det.durationFitContentAt ?? 4;
   const answered = tasks.filter(
     (t) => t.tags.includes(tag)
       && t.satisfaction
-      && typeof t.satisfaction.durationFit === 'number',
+      && Number.isFinite(t.satisfaction.durationFit),
   );
-  if (answered.length < 3) return { suggest: false };
+  // ⚠️ THE FLOOR WAS 3, BESIDE A 60% BAR. Two out of three cleared it, and that
+  // is precisely what shipped — "break 2 of 3", "exercise 3 of 4", "social 3 of
+  // 5", every one of them reported as unfounded. The ratio was never the
+  // problem. There was almost nothing behind it.
+  if (answered.length < floor) return { suggest: false };
+
+  // ⚠️ AND IT DOES NOT SECOND-GUESS SOMETHING YOU ARE ENJOYING (user's call,
+  // 2026-09-10). The reported case: three of four exercise sessions said the
+  // block ran long, while every one was rated 4–5 shells and usually energizing.
+  // "Ran long" beside a five-shell rating is an observation about the clock, not
+  // a complaint about the activity — and telling someone to cut short the thing
+  // they rate highest is the shape of advice P-1 exists to prevent.
+  //
+  // Measured over the SESSIONS THAT ANSWERED, not every rating for the tag: the
+  // question is whether the blocks being judged were good ones.
+  const overalls = answered
+    .map((t) => t.satisfaction.overall)
+    .filter((v) => Number.isFinite(v));
+  if (overalls.length) {
+    const mean = overalls.reduce((n, v) => n + v, 0) / overalls.length;
+    if (mean >= contentAt) return { suggest: false, content: true, meanOverall: mean };
+  }
+
   const tooLong = answered.filter((t) => t.satisfaction.durationFit === 1).length;
   const tooShort = answered.filter((t) => t.satisfaction.durationFit === -1).length;
   const total = answered.length;

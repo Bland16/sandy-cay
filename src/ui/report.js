@@ -268,7 +268,7 @@ function buildSuggestions(sched, ws, weekLoad, weekTasks) {
     // rated in February, 139 days earlier, printed beside "Gym hasn't happened
     // in 4 weeks". A sentence about how your blocks are going is a claim about
     // NOW, and "12 of 12" reads as recent and unanimous.
-    const fit = durationFitSuggestion(sched.ratedSamples({ since: evidenceFloor }), tag);
+    const fit = durationFitSuggestion(sched.ratedSamples({ since: evidenceFloor }), tag, config);
     if (fit.suggest) {
       out.push({
         id: `fit:${tag}`,

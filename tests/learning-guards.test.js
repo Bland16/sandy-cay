@@ -700,7 +700,10 @@ describe('a sentence about your life may not be four months old', () => {
         startTime: d, endTime: new Date(d.getTime() + 60 * 60000),
       });
       t.completion = 'done';
-      t.satisfaction = { overall: 4, durationFit: 1, energy: 3 };
+      // ⚠️ RATED 3, NOT 4. The suggestion no longer second-guesses something the
+      // user rates well, so a fixture rated 4 is silenced by THAT rule and stops
+      // testing this one — which is about how far back the evidence may reach.
+      t.satisfaction = { overall: 3, durationFit: 1, energy: 3 };
       s.tasks.push(t);
     }
     // One gym block in the report's own week, so the tag reaches the detector.

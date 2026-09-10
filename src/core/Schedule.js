@@ -494,7 +494,32 @@ export class Schedule {
     const out = [];
     for (const t of this.tasks) {
       if (t.chunking) continue;
-      if (t.satisfaction && inWindow(t.startTime)) out.push(t);
+      // ⚠️ ONE LIVED SESSION MAY ONLY BE ONE SAMPLE. A task rated as a one-off
+      // and LATER turned into a pattern keeps its own `satisfaction` — the panel
+      // does not clear it — while the same evening also lands in
+      // `occurrenceData`. This loop then emitted BOTH, at the same minute,
+      // carrying the same answers:
+      //
+      //   gym-0001              2026-09-08T18:00  durationFit=1
+      //   gym-0001@2026-09-08   2026-09-08T18:00  durationFit=1
+      //
+      // So a single "that ran long" became "2 of 2" — and every count built on
+      // this door inherited the inflation, which is how a report can tell a user
+      // something about their week they never said. Reported from use:
+      // "double check that the boolean values are reporting correctly since I
+      // didn't report 3/4 as long."
+      //
+      // The occurrence wins on collision, per §4.4: a recurring session's lived
+      // data belongs in `occurrenceData`, never on the pattern. The parent's own
+      // rating is kept ONLY when nothing in `occurrenceData` covers the same
+      // moment, so a genuine pre-conversion rating is not silently discarded —
+      // it is real evidence, just stored in the older place.
+      const occAt = new Set();
+      for (const key of Object.keys(t.occurrenceData || {})) {
+        const od = t.occurrenceData[key];
+        if (od && od.satisfaction && od.at) occAt.add(new Date(od.at).getTime());
+      }
+      if (t.satisfaction && inWindow(t.startTime) && !occAt.has(t.startTime.getTime())) out.push(t);
       for (const key of Object.keys(t.occurrenceData || {})) {
         const od = t.occurrenceData[key];
         if (!od || !od.satisfaction || !od.at) continue;

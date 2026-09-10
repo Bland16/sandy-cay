@@ -92,6 +92,21 @@ export const defaultConfig = {
     // The learning model is deliberately NOT bounded by this; see
     // `Schedule#ratedSamples`.
     evidenceWindowDays: 56,
+    // ⚠️ HOW MANY ANSWERS BEFORE THE DURATION SUGGESTION MAY SPEAK. It was 3,
+    // with a 60% bar — so the weakest evidence that could produce a confident
+    // recommendation was TWO OUT OF THREE, and that is exactly what shipped:
+    // "break 2 of 3", "exercise 3 of 4", "social 3 of 5", all three reported as
+    // unfounded. The percentage was never the problem; there was almost nothing
+    // behind it.
+    durationFitMin: 6,
+    // … and it does not second-guess something you are enjoying (user's call,
+    // 2026-09-10). The reported case: three of four exercise sessions said the
+    // block ran long, while every one of them was rated 4–5 shells and usually
+    // energizing. "Ran long" beside a five-shell rating is a note about the
+    // clock, not a complaint about the activity, and telling someone to cut
+    // short the thing they rate highest is the shape of advice P-1 exists to
+    // prevent. At or above this mean overall, the suggestion stays quiet.
+    durationFitContentAt: 4,
     // ⚠️ THIS KEY DID NOT EXIST. `report.js` read
     // `config.detectors.deadlineBufferHours ?? 24` and nothing ever defined it,
     // so every wrap report ever printed judged "close to the wire" against a
