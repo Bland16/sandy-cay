@@ -24,6 +24,13 @@ function suggestCfg(config) {
     varietyPenalty: s.varietyPenalty ?? 0.15,
     priorityPressureHigh: s.priorityPressureHigh ?? 0.15,
     restFlat: s.restFlat ?? 3,
+    // ⚠️ THE COLD-START GATE COUNTS THE WHOLE POOL, NOT THE RESTORATIVE PART OF
+    // IT. Ten recent ratings open the gate; if exactly ONE of them was
+    // restorative and rated 3, "Rest's felt flat lately" follows from that
+    // single rating — and it is the largest bias in this function when it
+    // stacks. A claim about how rest has been landing needs rest to have been
+    // rated more than once.
+    restFlatMin: s.restFlatMin ?? 3,
     coldStart: (config && config.coldStartRatings) ?? 10,
     // ⚠️ ONE NUMBER FOR "LATELY", read from the same place the report reads it.
     // `recentDays` was 14 and `coldStart` is 10 — ten ratings inside a fortnight,
@@ -132,7 +139,8 @@ export function steerBias(schedule, now = new Date()) {
   const restAvg = restorativeOveralls.length
     ? restorativeOveralls.reduce((a, b) => a + b, 0) / restorativeOveralls.length
     : null;
-  const restorativeFlat = restAvg != null && restAvg <= cfg.restFlat;
+  const restorativeFlat = restorativeOveralls.length >= cfg.restFlatMin
+    && restAvg != null && restAvg <= cfg.restFlat;
   const b = cfg.loadBias;
 
   const biasFor = (load) => {

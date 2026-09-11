@@ -312,12 +312,20 @@ function buildSuggestions(sched, ws, weekLoad, weekTasks) {
   // 6I — pinned ratio. An observation with no action attached, deliberately:
   // there is no cap, and "you pinned too much" is not a diagnosis the app gets
   // to make. It just says what's true and stops talking.
+  // ⚠️ A RATIO NEEDS SOMETHING TO BE A RATIO OF, and this had two problems at
+  // once. `pinnedRatio` is pinned minutes over SCHEDULED minutes, so a week
+  // holding one pinned half-hour reported "100% of this week was pinned" — true
+  // of the scheduled time, read by any person as a fact about the week. The
+  // headline names its denominator now, and a week with almost nothing in it
+  // does not produce the observation at all.
   const pin = pinnedRatioNote(weekLoad, config);
-  if (pin.note) {
+  const enoughToRatio = weekLoad.scheduledMin
+    >= (config.detectors.pinnedRatioFloorMin ?? 240);
+  if (pin.note && enoughToRatio) {
     out.push({
       id: `pinned-ratio:${dateKey(ws)}`,
       kind: 'pinned-ratio',
-      headline: `${Math.round(pin.ratio * 100)}% of this week was pinned`,
+      headline: `${Math.round(pin.ratio * 100)}% of your scheduled time was pinned`,
       detail: 'Pinned time is time the scheduler leaves alone — that may be exactly what you wanted.',
       observationOnly: true,
       meta: { ratio: pin.ratio },

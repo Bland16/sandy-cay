@@ -548,11 +548,22 @@ describe('F — occurrence-drop menu (§4C)', () => {
 
 // ---------------------------------------------------------------- G
 describe('G — overpack notice (§7.3)', () => {
-  /** Three days of back-to-back work: avg break 0 ≤ minimum × 1.5. */
+  /**
+   * Three days of back-to-back work: avg break 0 ≤ minimum × 1.5.
+   *
+   * ⚠️ IT USED TO BE TWO BLOCKS A DAY, and two blocks are not a packed day —
+   * they are four hours with ONE gap in them. `dayGaps` measures the space
+   * BETWEEN a day's tasks, so two blocks yield a single zero and the day was
+   * called packed on a one-number average. `overpackMinGaps` now wants several
+   * before it will say so, and these days are genuinely full. The assertions
+   * below are untouched: the intent was always "a packed week raises the
+   * notice", and only the fixture failed to be one.
+   */
   const packed = () => bootWith((s) => {
     for (let d = 0; d < 3; d += 1) {
-      s.addFixed({ title: `Block ${d}a`, startTime: at(d, 9), endTime: at(d, 11) });
-      s.addFixed({ title: `Block ${d}b`, startTime: at(d, 11), endTime: at(d, 13) });
+      for (let h = 9; h < 15; h += 1) {
+        s.addFixed({ title: `Block ${d}-${h}`, startTime: at(d, h), endTime: at(d, h + 1) });
+      }
     }
   });
 
@@ -585,7 +596,7 @@ describe('G — overpack notice (§7.3)', () => {
     expect(notice.style.position).toBe('');
     expect(notice.style.zIndex).toBe('');
     // The grid is still fully usable underneath it.
-    expect(cardFor('Block 0a')).toBeTruthy();
+    expect(cardFor('Block 0-9')).toBeTruthy();
   });
 
   it('is dismissible, and one dismissal is final until the next re-optimize', () => {

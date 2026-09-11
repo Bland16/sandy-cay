@@ -893,6 +893,45 @@ describe('§7.1 — a finding names the evidence that is actually behind it', ()
   });
 });
 
+describe('§7.1 — a ratio names what it is a ratio of', () => {
+  // ⚠️ "100% OF THIS WEEK WAS PINNED", for one pinned half-hour. `pinnedRatio` is
+  // pinned minutes over SCHEDULED minutes — true of the scheduled time, and read
+  // by any person as a fact about the week. Two problems at once: the headline
+  // did not name its denominator, and a week with almost nothing in it produced
+  // the observation at all.
+  const pinnedWeek = (blocks) => {
+    const s = new Schedule({ config: defaultConfig });
+    for (const [day, from, to] of blocks) {
+      const t = new Task({ title: `p${day}`, type: 'fixed', startTime: at(day, from), endTime: at(day, to) });
+      t.pinned = true;
+      s.tasks.push(t);
+    }
+    return s;
+  };
+  const pinFinding = () => [...document.querySelectorAll('.rp-sugg-head')]
+    .map((el) => el.textContent)
+    .filter((x) => /pinned/.test(x));
+
+  it('says nothing about a week with almost nothing in it', () => {
+    persist(pinnedWeek([[0, 9, 9.5]]));
+    render(<App />);
+    openReport();
+    expect(pinFinding()).toHaveLength(0);
+  });
+
+  // ⚠️ THE CONTROL. A week that really is mostly pinned must still say so, and
+  // must name the denominator when it does.
+  it('names the denominator on a week that has one', () => {
+    persist(pinnedWeek([[0, 9, 12], [1, 9, 12], [2, 9, 12], [3, 9, 12]]));
+    render(<App />);
+    openReport();
+    const said = pinFinding();
+    expect(said).toHaveLength(1);
+    expect(said[0]).toMatch(/of your scheduled time was pinned/);
+    expect(said[0]).not.toMatch(/of this week/);
+  });
+});
+
 describe('§7.1 — the report measures against what the app actually aims for', () => {
   it('judges "close to the wire" against the plan\'s own target, not a flat day', async () => {
     const { buildWrapReport } = await import('../src/ui/report.js');

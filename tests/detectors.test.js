@@ -6,6 +6,14 @@ import { addDays, dateKey } from '../src/core/time.js';
 
 const W0 = new Date(2026, 6, 13, 0, 0, 0, 0);
 
+const MON = W0;
+/** A task-start on day `dayOffset` of W0's week, at hour `h`. */
+const D = (dayOffset, h) => {
+  const d = addDays(W0, dayOffset);
+  d.setHours(h, 0, 0, 0);
+  return d;
+};
+
 describe('§7.2/7.3 detectors', () => {
   beforeEach(() => resetIds());
 
@@ -221,6 +229,39 @@ describe('§7.2/7.3 detectors', () => {
     });
   });
 
+  // ⚠️ TWO TASKS TOUCHING IS NOT A PACKED DAY. `dayGaps` measures the space
+  // BETWEEN a day's tasks, so two back-to-back blocks give one gap of zero and
+  // the day read as packed — six hours across a whole week was enough to print
+  // "this week is packed". The average was right; there was one number in it.
+  describe('overpack needs more than one gap to average', () => {
+    const week = (days, perDay, dur) => {
+      const s = new Schedule({ config: defaultConfig });
+      for (const d of days) {
+        for (let k = 0; k < perDay; k += 1) {
+          s.tasks.push(new Task({
+            title: `t${d}-${k}`, type: 'fixed',
+            startTime: D(d, 8 + k * dur), endTime: D(d, 8 + (k + 1) * dur),
+          }));
+        }
+      }
+      return s;
+    };
+
+    it('does not call three days of two touching blocks a packed week', () => {
+      const r = overpackCheck(week([0, 1, 2], 2, 1), MON, defaultConfig);
+      expect(r.packedDays).toBe(0);
+      expect(r.overpacked).toBe(false);
+    });
+
+    // ⚠️ THE CONTROL. "packedDays 0" is what a switched-off detector returns
+    // too; a genuinely saturated week must still be caught.
+    it('still catches a week that really is packed', () => {
+      const r = overpackCheck(week([0, 1, 2], 12, 1), MON, defaultConfig);
+      expect(r.packedDays).toBe(3);
+      expect(r.overpacked).toBe(true);
+    });
+  });
+
   it('pinnedRatio note fires above 0.5', () => {
     expect(pinnedRatioNote({ pinnedRatio: 0.62 }, defaultConfig).note).toBe(true);
     expect(pinnedRatioNote({ pinnedRatio: 0.4 }, defaultConfig).note).toBe(false);
@@ -228,10 +269,21 @@ describe('§7.2/7.3 detectors', () => {
 
   it('overpack: ≥3 days avg break ≤ minimum × 1.5', () => {
     const s = new Schedule({ config: defaultConfig });
-    // Build 3 days each with two back-to-back tasks (0-min break).
+    // ⚠️ THE FIXTURE WAS TWO BACK-TO-BACK TASKS A DAY, and that is not a packed
+    // day — it is four hours with one gap in it. `dayGaps` measures the space
+    // BETWEEN a day's tasks, so two blocks yield a single zero and the average
+    // was a one-number average. The detector now wants `overpackMinGaps` of
+    // them before it will call a day packed, so this case builds days that are
+    // actually full. The assertion is unchanged, because the INTENT was always
+    // "a packed week is detected"; only the fixture was not one.
     for (let d = 0; d < 3; d += 1) {
-      s.addFixed({ title: `a${d}`, startTime: new Date(2026, 6, 13 + d, 9, 0), endTime: new Date(2026, 6, 13 + d, 11, 0) });
-      s.addFixed({ title: `b${d}`, startTime: new Date(2026, 6, 13 + d, 11, 0), endTime: new Date(2026, 6, 13 + d, 13, 0) });
+      for (let h = 9; h < 15; h += 1) {
+        s.addFixed({
+          title: `a${d}-${h}`,
+          startTime: new Date(2026, 6, 13 + d, h, 0),
+          endTime: new Date(2026, 6, 13 + d, h + 1, 0),
+        });
+      }
     }
     const res = overpackCheck(s, W0, defaultConfig);
     expect(res.overpacked).toBe(true);

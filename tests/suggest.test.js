@@ -86,6 +86,56 @@ describe('steerBias', () => {
   });
 });
 
+describe('"rest has felt flat" needs more than one rest', () => {
+  beforeEach(() => resetIds());
+
+  // ⚠️ THE SHARED `rate` HELPER CYCLES DAYS 8–13, so tasks added later are not
+  // necessarily MORE RECENT — and `recentRated` keeps only the newest
+  // `suggest.window` (10). A first draft of these cases added the rest ratings
+  // last, they sorted OLDEST, the window sliced them off, and `restorativeFlat`
+  // came back false because rest was not in the pool at all. The case passed
+  // against the unfixed code. This dates every task explicitly instead.
+  const rated = (s, specs) => {
+    specs.forEach(([tag, overall, daysAgo], i) => {
+      const day = 14 - daysAgo; // NOW is Jul 15
+      const t = s.addFixed({
+        title: `${tag}${i}`, tags: [tag],
+        startTime: D(day, 9), endTime: D(day, 10),
+      });
+      t.completion = 'done';
+      t.satisfaction = { overall, energy: 1 };
+    });
+  };
+
+  it('does not conclude it from a single restorative rating', () => {
+    const s = withBuckets(new Schedule({ config: wideCfg() }));
+    // Exactly ten, so the window keeps all of them and the gate opens on the dot.
+    rated(s, [
+      ...Array.from({ length: 9 }, (_, i) => ['work', 4, i]),
+      ['rest', 3, 9], // the one rest, and it IS in the pool
+    ]);
+    const sb = steerBias(s, NOW);
+    expect(sb.trained).toBe(true); // the gate is open — or this proves nothing
+    const pool = s.ratedSamples().sort((a, b) => b.startTime - a.startTime).slice(0, 10);
+    expect(pool.some((t) => t.tags.includes('rest'))).toBe(true); // …and so is the rest
+    expect(sb.restorativeFlat).toBe(false);
+  });
+
+  // …and it must still conclude it when rest really has been landing flat, or
+  // the floor has simply switched the signal off.
+  it('still concludes it when rest really has been flat', () => {
+    const s = withBuckets(new Schedule({ config: wideCfg() }));
+    rated(s, [
+      ...Array.from({ length: 6 }, (_, i) => ['work', 4, i]),
+      ['rest', 2, 6], ['rest', 2, 7], ['rest', 2, 8], ['rest', 2, 9],
+    ]);
+    const sb = steerBias(s, NOW);
+    expect(sb.trained).toBe(true);
+    expect(sb.restorativeFlat).toBe(true);
+    expect(sb.biasFor(loadOfLabel(s, 'Creative')).reason).toMatch(/creative/i);
+  });
+});
+
 describe('priorityPressure', () => {
   beforeEach(() => resetIds());
   it('counts only incomplete P4–P5 work due within the lookahead', () => {

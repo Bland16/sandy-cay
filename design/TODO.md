@@ -37,17 +37,23 @@ the time bounds below).
       4 observations**. `buildInsight` already computes `observations` per
       column and the JSX drops it — the honest number is in hand at the render
       site.
-- [ ] **T-3 · `pinnedRatioNote` says "100% of this week was pinned"** for one
+- [x] **~~T-3 · `pinnedRatioNote` says "100% of this week was pinned"~~** — done. for one
       pinned half-hour. Denominator is scheduled minutes; the headline says
       "this week".
-- [ ] **T-4 · `overpackCheck` calls three days of two tasks "packed"** — six
+- [x] **~~T-4 · `overpackCheck` calls three days of two tasks "packed"~~** — done. — six
       hours across a whole week. Control that proves it is not merely strict:
       three genuinely saturated **12-hour** days give `packedDays = 0`, because
       `dayGaps` only counts gaps *between* tasks.
-- [ ] **T-5 · `steerBias.restorativeFlat` fires on ONE rating.** "Rest's felt
+- [x] **~~T-5 · `steerBias.restorativeFlat` fires on ONE rating~~** — done. "Rest's felt
       flat lately" off a single restorative 3. The cold-start gate counts the
       whole pool; `restorativeOveralls` has no floor of its own. It is also the
       largest single bias in the function (0.7 when it stacks).
+
+- [ ] **T-4b · The detector cannot see the most packed day there is.** Gaps
+      exist only BETWEEN items, so a single twelve-hour block yields none and a
+      day that could not be fuller never counts. SPEC §7.3 defines overpack as
+      "average break", so measuring fullness instead is a spec change rather
+      than a bug fix — recorded, not done.
 
 ## 2. The evidence pool
 

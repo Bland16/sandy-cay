@@ -153,6 +153,7 @@ export function pinnedRatioNote(weekLoad, config) {
 export function overpackCheck(schedule, weekStartDate, config) {
   const factor = config.detectors.overpackBreakFactor ?? 1.5;
   const threshold = config.breaks.minimum * factor;
+  const minGaps = config.detectors.overpackMinGaps ?? 3;
   let packedDays = 0;
   const perDay = [];
   for (let i = 0; i < 7; i += 1) {
@@ -161,8 +162,20 @@ export function overpackCheck(schedule, weekStartDate, config) {
     // notice and the report can never disagree about the same day.
     const gaps = dayGaps(schedule, date, weekStartDate);
     const avgBreak = gaps.length > 0 ? gaps.reduce((a, b) => a + b, 0) / gaps.length : null;
-    perDay.push({ date: dayKeyOf(date), avgBreak });
-    if (avgBreak !== null && avgBreak <= threshold) packedDays += 1;
+    perDay.push({ date: dayKeyOf(date), avgBreak, gaps: gaps.length });
+    // ⚠️ ONE GAP IS NOT EVIDENCE ABOUT A DAY. `dayGaps` measures the space
+    // BETWEEN a day's tasks, so two back-to-back blocks produce a single gap of
+    // zero and the day read as packed — six hours across a whole week was enough
+    // to print "this week is packed". The average was right; there was one
+    // number in it.
+    //
+    // ⚠️ AND THE DETECTOR IS BLIND TO THE MOST PACKED DAY THERE IS. Gaps exist
+    // only between items, so a single twelve-hour block yields NO gaps, `null`,
+    // and a day that could not be fuller never counts. That is a limit of
+    // measuring breaks rather than fullness — SPEC §7.3 defines the detector as
+    // "average break", so widening it is a spec change, not a bug fix. Recorded
+    // as design/TODO.md T-4b rather than quietly redefined here.
+    if (avgBreak !== null && gaps.length >= minGaps && avgBreak <= threshold) packedDays += 1;
   }
   return { overpacked: packedDays >= config.detectors.overpackDays, packedDays, perDay, threshold };
 }

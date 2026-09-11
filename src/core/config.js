@@ -107,6 +107,17 @@ export const defaultConfig = {
     // short the thing they rate highest is the shape of advice P-1 exists to
     // prevent. At or above this mean overall, the suggestion stays quiet.
     durationFitContentAt: 4,
+    // ⚠️ A DAY WITH TWO TASKS TOUCHING IS NOT A PACKED DAY. `overpackCheck`
+    // averages the gaps BETWEEN a day's tasks, so two back-to-back blocks give
+    // one gap of zero and the day reads as packed — six hours across a whole
+    // week was enough to print "this week is packed". One gap is not evidence
+    // about a day, the same way two ratings are not evidence about a habit.
+    overpackMinGaps: 3,
+    // ⚠️ AND A RATIO NEEDS SOMETHING TO BE A RATIO OF. `pinnedRatio` is pinned
+    // minutes over SCHEDULED minutes, so a week holding one pinned half-hour is
+    // "100% pinned". True, and useless, and it reads as a fact about the week.
+    // Below this much scheduled time the observation says nothing.
+    pinnedRatioFloorMin: 240,
     // ⚠️ THIS KEY DID NOT EXIST. `report.js` read
     // `config.detectors.deadlineBufferHours ?? 24` and nothing ever defined it,
     // so every wrap report ever printed judged "close to the wire" against a
