@@ -232,13 +232,48 @@ calibration; several are measuring the wrong quantity.
   at all, no tag above 5. At floor 3 it reproduces the exact findings the user
   already reported as unfounded. **Q-1 is answered; close it.**
 
-### E-8 · Commitment generation
+### E-8 · Commitment generation — **raised in rank; this is the feature's purpose failing**
 
-Seven commitments ask ~1,335 min/week; the schedule carries **15 sittings
-totalling ~1,660 min across five weeks**. One generated nothing at all before it
-expired; three generated 20–35 min against asks of 135–240. Whether this is
-"no openings found" or "generation never ran" is not answerable from an export —
-it needs a live reproduction.
+**Scope, decided by the user 2026-09-18:** *"The purpose of the commitment button
+is to make sure I'm studying. It isn't helpful for extraneous things — those can
+be tasks."* So **commitments are recurring study time; anything with a deadline
+is a task.** No deferral or extension state is to be built — an extension belongs
+to a deliverable, not to "study four hours a week". A week spent ill did not get
+studied, and the hours are not owed later; the engine's existing `passed` state
+already says exactly that (*"a shortfall must never be manufactured by the
+passage of time"*).
+
+**The defect.** Seven commitments ask ~1,335 min/week; the schedule carries
+**15 sittings totalling ~1,660 min across five weeks** — roughly a quarter of the
+ask. One generated nothing at all before it expired; three generated 20–35 min
+against asks of 135–240. Given the stated purpose, this is not a rough edge, it
+is the feature not doing its job, and it ranks above the picker work.
+
+Whether this is "no openings found" or "generation never ran" is not answerable
+from an export — **it needs a live reproduction with the user driving.**
+
+### E-9 · Where commitments land in the week — noted, not yet a task
+
+**The user's guidance, 2026-09-18:** *"I don't want commitments to over-burden my
+week. I'm usually able to do things on the weekends but classes can really tire
+me out. I don't think it is scheduled that poor right now, but it is something to
+think about."*
+
+**The data already half-agrees**, so this is not speculative:
+
+- **Classes are the most draining bucket in the file** — mean energy facet −0.62
+  (n=8; six of eight are −1). Only the gym is net-positive.
+- **Sunday is already the heaviest day** (mean 10.8 h, n=3; its *minimum* exceeds
+  the overall median). The weekend is being used.
+- **Saturday is where the room actually is** — median 4.5 h against Sunday's
+  10.8, and all three Saturdays carry zero mental load.
+
+**No new mechanism is needed.** `w.energy` in slot scoring already exists to push
+work off days the user will arrive at depleted; it is running on a ceiling set by
+one day per axis, from a bad-day-weighted sample, and it saturates the moment
+they cross it. **E-1 and E-2 are this problem.** Revisit only after those settle,
+and only if the placement is still wrong — the user's own read is that it is not
+currently bad.
 
 ---
 
