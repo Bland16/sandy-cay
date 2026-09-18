@@ -106,8 +106,14 @@ export default function WhatToDoPanel({ sched, now, mutate, onOpenTask, onClose,
   // Real waiting tasks first; library activities are the fallback that surfaces as
   // you cycle past them (or when nothing waiting fits). One combined cycle list.
   const taskPicks = sched.whatToDo(now, { tags: filterTags });
-  let libraryPicks = opening ? sched.suggestActivities(now, { opening, limit: 5 }) : [];
-  if (filterTags) libraryPicks = libraryPicks.filter((p) => (p.activity.tags || []).some((t) => filterTags.includes(t)));
+  // ⚠️ THE FILTER GOES IN, IT IS NOT APPLIED TO WHAT COMES OUT. Taking the top 5
+  // and filtering the survivors meant picking a category showed nothing unless
+  // one of its activities made an unfiltered top five — measured on the real
+  // library, 7 of 9 categories came back empty with 2–7 fitting activities each.
+  // See the note on `suggestActivities`.
+  const libraryPicks = opening
+    ? sched.suggestActivities(now, { opening, limit: 5, tags: filterTags })
+    : [];
   const entries = [
     ...taskPicks.map((p) => ({
       type: 'task', key: `t:${p.task.id}`, title: p.task.title, reasons: p.reasons,

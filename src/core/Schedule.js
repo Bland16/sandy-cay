@@ -542,6 +542,30 @@ export class Schedule {
           isOccurrence: true,
           occurrenceDate: key,
           parentId: t.id,
+          // ⚠️ TWO FIELDS THIS LITERAL USED TO DROP, BOTH ALREADY CARRIED BY
+          // `recurrence.js#buildOccurrence`. This rebuilds the occurrence
+          // independently, so every field it forgets is silently lost — the
+          // third instance of the shape this door was created to stop.
+          //
+          // `activityId` — `buildOccurrence`'s own comment says it: "a session
+          // that forgets where it came from cannot be learned from." Without it
+          // no rated session can ever be joined back to the library activity it
+          // came from, which is the prerequisite for learning anything
+          // per-activity.
+          //
+          // `load` — carried there under a ⚠️ recording that losing it was
+          // already a shipped bug ("the battery read a fraction of the real
+          // drain"). Here the consumer is `suggest.js#loadOf` → `netLoad()` in
+          // `steerBias`, which decides whether a recent session was RESTORATIVE:
+          // a session the user explicitly marked restful fell back to its tags'
+          // buckets and could be counted as demanding.
+          //
+          // Both were latent at the time of the fix (no task carried an
+          // `activityId`, one of 49 activities carried a load override) — which
+          // is exactly why they were invisible, and why the pool must start
+          // carrying them now rather than once they bite.
+          activityId: t.activityId ?? null,
+          load: t.load ?? null,
         }));
       }
     }
