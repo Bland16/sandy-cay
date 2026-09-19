@@ -503,17 +503,43 @@ function buildDeadlineBuffer(sched, ws, weekTasks) {
   if (rows.length === 0) return { count: 0 };
 
   const tightest = rows.reduce((m, r) => (r.bufferHours < m.bufferHours ? r : m));
-  const close = rows.filter((r) => r.targetHours != null && r.bufferHours < r.targetHours);
+
+  // ⚠️ LATE AND TIGHT ARE TWO DIFFERENT FACTS, AND MERGING THEM PRINTED A FALSE
+  // SENTENCE. `closeCount` was every row under its target, and the view called
+  // all of them "came in later than the plan aims for" — so a task finished 23
+  // HOURS EARLY, under a 24-hour target, was reported as having come in late.
+  //
+  // Meanwhile genuinely late work was EXCLUDED. `targetHoursFor` returns null
+  // when the deadline sits at or before the week's start (no runway to take a
+  // fifth of), and the filter dropped null targets — so on a real week two tasks
+  // finished 16 and 19 hours PAST their deadline did not appear, and the report
+  // said "2 came in later" when the true answer was 3.
+  //
+  // Finishing after a deadline needs no target to be judged against: a negative
+  // buffer IS late, whatever the runway was. So the two are counted apart.
+  const late = rows.filter((r) => r.bufferHours < 0);
+  const close = rows.filter((r) => r.bufferHours >= 0 && r.targetHours != null && r.bufferHours < r.targetHours);
+
+  // ⚠️ INDEX THE ARRAY YOU ACTUALLY SORTED. This filtered to non-null targets
+  // and then indexed by `rows.length / 2` — the UNFILTERED count. On a week with
+  // 7 rows and 5 targets it took element 3 of a 5-element array instead of
+  // element 2, printing a median of 24h where the true median was 19.2h.
+  const targets = rows.map((r) => r.targetHours).filter((h) => h != null).sort((a, b) => a - b);
+  const median = targets.length === 0
+    ? null
+    // A real median, so an even count is the mean of the two middle values
+    // rather than whichever one the index happened to land on.
+    : targets.length % 2
+      ? targets[(targets.length - 1) / 2]
+      : (targets[targets.length / 2 - 1] + targets[targets.length / 2]) / 2;
 
   return {
     count: rows.length,
+    lateCount: late.length,
     closeCount: close.length,
     // The median target across the week's deadlined work, so the sentence can
     // name the denominator instead of implying one.
-    medianTargetHours: rows.length
-      ? [...rows.map((r) => r.targetHours).filter((h) => h != null)]
-        .sort((a, b) => a - b)[Math.floor(rows.length / 2)] ?? null
-      : null,
+    medianTargetHours: median,
     tightest: { title: tightest.title, bufferHours: tightest.bufferHours },
   };
 }

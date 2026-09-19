@@ -750,11 +750,22 @@ export default function WrapReport({ sched, weekStart, version, onBack, onOpenTa
                       could be most wrong. "All finished with room to spare" is
                       also praise, and praise is a verdict whose absence next
                       week is a demerit — so it states the range instead. */}
+                  {/* ⚠️ LATE AND TIGHT ARE SAID SEPARATELY, because merging them
+                      printed something false: every row under its target was
+                      called "later than the plan aims for", so a task finished
+                      23 hours EARLY under a 24-hour target was reported as late,
+                      while work genuinely finished past its deadline was missing
+                      from the count entirely. "After the deadline" is a fact
+                      about the deadline; "tighter than aimed for" is a fact
+                      about the target. Two facts, two clauses. */}
                   <p className="rp-line">
                     {stats.deadlines.count} deadlined{' '}
                     {stats.deadlines.count === 1 ? 'task was' : 'tasks were'} finished this week
+                    {stats.deadlines.lateCount > 0
+                      ? `; ${stats.deadlines.lateCount} finished after the deadline`
+                      : ''}
                     {stats.deadlines.closeCount > 0 && stats.deadlines.medianTargetHours != null
-                      ? `; ${stats.deadlines.closeCount} ${stats.deadlines.closeCount === 1 ? 'came' : 'came'} in later than the plan aims for — about ${fmtBuf(stats.deadlines.medianTargetHours)} clear of the deadline.`
+                      ? `${stats.deadlines.lateCount > 0 ? ', and' : ';'} ${stats.deadlines.closeCount} came in tighter than the plan aims for — about ${fmtBuf(stats.deadlines.medianTargetHours)} clear of the deadline.`
                       : '.'}
                   </p>
                   {stats.deadlines.tightest && (
