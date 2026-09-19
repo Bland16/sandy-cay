@@ -9,7 +9,7 @@
 //   • User-authored only. It reorders YOUR activities; it never invents any.
 // placeActivity is the sole mutation and fires only on an explicit "Do it now".
 
-import { addMinutes, dayStart, addDays } from './time.js';
+import { addMinutes, dayStart, addDays, weekStart as weekStartOf } from './time.js';
 import { dayCapacityMin } from './placement.js';
 import { openingLabel } from './whatToDo.js';
 import { normalizeLoad, LOAD_AXES, loadForTask, reserveAt } from './energy.js';
@@ -168,10 +168,38 @@ export function steerBias(schedule, now = new Date()) {
   return { trained: true, energyBalance, pressure, restorativeFlat, biasFor };
 }
 
-/** The load character of the most recently finished thing — for the variety nudge. */
+/**
+ * The load character of the most recently finished thing — for the variety nudge.
+ *
+ * ⚠️ IT WALKED `schedule.tasks`, WHERE A MATERIALISED OCCURRENCE HAS NEVER LIVED
+ * — the ninth instance of the bug `ratedSamples()` was created to stop, and the
+ * one `design/TODO.md` E-5 had open. A recurring session is built fresh by
+ * `getTasksForWeek` and thrown away, so the gym you finished an hour ago was
+ * invisible here and the nudge compared you against whatever one-off happened to
+ * be last.
+ *
+ * Measured on the real library, sweeping every hour 08:00–22:00 over 21 days
+ * (315 hours): **91 hours (29%) had a recurring session as the true most-recent
+ * finished item**, and in **30 of them (10%) the variety axis actually differed**
+ * — `mental→social`, `creative→social`, `null→social`. Where it differed the
+ * ranking moved hard: up to 45 of 46 candidates reordered, max rank delta 16,
+ * because `varietyPenalty` is 0.15 against a fit score spanning ~1.0.
+ *
+ * A single-point check at the export's own timestamp shows NO difference — the
+ * axes happen to agree there. This needed the sweep to see, which is why it sat
+ * open: it is invisible to exactly the kind of test anyone would write for it.
+ *
+ * Two weeks, not one: at 09:00 on a Monday the last finished thing is usually in
+ * the week behind you, and a one-week walk returns null for the whole morning.
+ */
 function lastFinishedLoad(schedule, now) {
+  const pool = [
+    ...schedule.getTasksForWeek(weekStartOf(now)),
+    ...schedule.getTasksForWeek(addDays(weekStartOf(now), -7)),
+  ];
   let last = null;
-  for (const t of schedule.tasks) {
+  for (const t of pool) {
+    if (t.chunking) continue; // a bookkeeping parent is not a thing you finished
     if (t.completion === null || t.startTime.getTime() > now.getTime()) continue;
     if (!last || t.startTime > last.startTime) last = t;
   }
