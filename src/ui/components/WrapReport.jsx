@@ -270,6 +270,21 @@ function DayStrips({ strips }) {
             each step is {strips.shadeStep} load-hours not yet recovered, and the
             darkest is {strips.shadeStep * strips.shadeSteps} or more.</>
         )}
+        {/* ⚠️ THE TWO CHARTS ON THIS PAGE DISAGREE, AND THE PAGE HAS TO SAY SO.
+            The sand bars count what was SCHEDULED (a let-go block still occupied
+            the grid, and placement's balance term needs it); this section draws
+            what RAN. Measured on a real week, Saturday appeared as 13h above and
+            4h 30m here, an inch apart, with nothing explaining the gap. Both are
+            right. The denominator rule is that a reader must be able to name
+            what a quantity is out of — so it is named. A count and a quantity,
+            never a list of what was not done (§7.1, P-1), and the sentence is
+            about the two drawings rather than about the reader. */}
+        {strips.skipped > 0 && (
+          <> {strips.skipped === 1 ? 'One session' : `${strips.skipped} sessions`} marked
+            skipped {strips.skipped === 1 ? 'is' : 'are'} not drawn here
+            ({fmtDur(strips.skippedMin)}); the bars above count the hours they were
+            scheduled for.</>
+        )}
       </p>
     </div>
   );

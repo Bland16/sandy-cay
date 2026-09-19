@@ -884,10 +884,36 @@ function buildDayStrips(sched, ws) {
   }
   const legend = [...byBucket.values()].sort((a, b) => b.minutes - a.minutes);
 
+  // ⚠️ THE TWO CHARTS DISAGREE ON EVERY WEEK THAT SKIPPED ANYTHING, not only on
+  // a week that skipped everything. The `nothingRan` branch below already
+  // explains the disagreement — and only fires when the ENTIRE week was skipped,
+  // which is the rarest case. Measured on a real week: the sand bars drew
+  // Saturday at 13h while the strips drew it at 4h 30m, an inch apart on one
+  // page, because 510 minutes of that day were let go. Both numbers are right;
+  // neither was labelled. Two more weeks in the same export showed the same gap
+  // at 2h and 1h.
+  //
+  // So the count and the minutes travel with the normal return too, and the view
+  // names them whenever they are non-zero. A COUNT AND A QUANTITY, never a list
+  // — §7.1 is explicit, and the sentence is about the two drawings rather than
+  // about the reader.
+  let skipped = 0;
+  let skippedMin = 0;
+  for (let i = 0; i < 7; i += 1) {
+    for (const t of sched.getTasksForDay(addDays(ws, i))) {
+      if (t.chunking || t.completion !== 'skipped') continue;
+      skipped += 1;
+      skippedMin += t.getDuration();
+    }
+  }
+
   const any = days.some((d) => d.items.length > 0);
   const anyShade = days.some((d) => d.shade.some((g) => g.depth > 0));
   if (any) {
-    return { axisFrom, axisTo, days, legend, shadeStep: SHADE_STEP, shadeSteps: SHADE_STEPS, anyShade };
+    return {
+      axisFrom, axisTo, days, legend, shadeStep: SHADE_STEP, shadeSteps: SHADE_STEPS, anyShade,
+      skipped, skippedMin,
+    };
   }
 
   // ⚠️ A SECTION THAT VANISHES IS NOT A SECTION THAT SAID NOTHING. On a week
@@ -903,12 +929,7 @@ function buildDayStrips(sched, ws) {
   // list — §7.1 is explicit, and P-1 forbids the verdict that an itemised
   // "what you didn't do" amounts to. The sentence is about the two drawings, not
   // about the reader.
-  let skipped = 0;
-  for (let i = 0; i < 7; i += 1) {
-    skipped += sched.getTasksForDay(addDays(ws, i))
-      .filter((t) => !t.chunking && t.completion === 'skipped').length;
-  }
-  return skipped > 0 ? { nothingRan: true, skipped } : null;
+  return skipped > 0 ? { nothingRan: true, skipped, skippedMin } : null;
 }
 
 /**
