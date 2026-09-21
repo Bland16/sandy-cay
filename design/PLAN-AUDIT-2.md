@@ -185,8 +185,31 @@ counts, not one:
 quantile puts it at 2.5–3.9. And `max of ALL rated days` flags only 4% of days,
 which shows `max` is the wrong statistic whatever filter is applied to it.
 
-**Still the user's call.** A single subjective "most days" is consistent with
-anything from 52% to 70%, so the quantile is a judgement and should be theirs.
+**RESOLVED 2026-09-20 — the user chose p70 over all rated days.** Their words:
+*"P70, no idea what that means but go for it."* — so it was explained back before
+building: line up every measured day lightest to heaviest, p70 is the one 70% of
+the way along, and `max` takes the single heaviest day you ever tolerated, which
+is why one unusual day was setting the whole physical ceiling at 7.31 against
+2.5–3.9 on every other observation.
+
+### E-1.1 — it is COUPLED to rule (e), and must ship with it
+
+⚠️ **The measured numbers above assume elapsed-unmarked work is not charged.**
+The probe applied rule (e) by hand; `energy.js` does not implement it — five
+charge sites still count elapsed unmarked work in full. Shipping p70 alone would
+produce a capacity vector that does not match anything measured here, so the two
+land together:
+
+1. **Rule (e) at every charge site**, through one shared predicate rather than
+   five copies of a filter — `isCharged(task, now)`. This repo's recurring bug is
+   the walk that got forgotten, and there are five of them here.
+2. **p70 over all rated days** in `learnedCapacity`, replacing `max` over
+   tolerated days.
+
+**`now` has to be threaded** into `energyTrajectory`, `dipIfPlaced`,
+`energyBudget` and `spendRestore`, which currently take none. Defaulting to
+`new Date()` follows `learnedCapacity`'s existing convention in the same file;
+tests inject a fixed clock (sharp edge #8).
 
 ---
 

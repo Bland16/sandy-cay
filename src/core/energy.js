@@ -104,6 +104,61 @@ export function energyCalibration(schedule, now = new Date()) {
   return { calibrated: weeks.size >= need, weeksRated: weeks.size, weeksNeeded: need };
 }
 
+/**
+ * Does this task's load reach the battery, as of `now`?
+ *
+ * ⚠️ ONE PREDICATE, FIVE CALL SITES. `energy.js` held five copies of
+ * `!t.chunking && t.completion !== 'skipped'`, and this repo's recurring defect
+ * is the walk somebody forgot to update — `ratedSamples()` exists because two
+ * readers of one idea drifted. Every charge site now asks this and nothing else.
+ *
+ * ⚠️ RULE (e) — AN ELAPSED, UNMARKED TASK IS NOT EVIDENCE. The user's decision
+ * (design/AUDIT-UNMARKED-WORK.md §6): *"Unmarked = didn't do it probably."*
+ * Work that has finished without ever being marked did not happen, so it must
+ * not drain a battery that claims to describe a lived day. Measured before this:
+ * a single unmarked 75-minute block was setting two of the four learned
+ * ceilings, and the sick week reported 92.8 load-hours spent against 48.2 lived.
+ *
+ * ⚠️ THE BOUNDARY IS THE DAY, NOT THE MOMENT — the user's correction, and it is
+ * the load-bearing detail. *"I do batch rate so it would need to read unmarked
+ * tasks. Consider anything unmarked on the current day as having been done and
+ * assumed to will be done."*
+ *
+ * So TODAY is charged in full, marked or not: this morning's unticked block was
+ * done, this evening's is a plan. Only on a day BEFORE today does unmarked mean
+ * it did not happen.
+ *
+ * A first attempt keyed this on `endTime <= now` — "elapsed and unmarked" — and
+ * it was wrong for exactly this user. They batch-rate, so mid-afternoon their
+ * morning work is unmarked because they have not sat down to rate yet, not
+ * because they skipped it. Under that version `arrivalDepletionFor` dropped the
+ * morning, decided they were fresh at 14:00 and piled more work on — the
+ * opposite of the term's purpose. It failed a named regression guard, *"it must
+ * not recommend the day you have already wrecked"*, which is how it was caught.
+ *
+ * ⚠️ AND NEVER KEY IT ON `startTime <= now` EITHER. Of 299 unmarked instances in
+ * the real save only 17 are in the past; the rest is future planned work, which
+ * is still a plan. Dropping it zeroes every forward-looking number — `reserveAt`
+ * returns all zeros, a future day's `energyBudget` reports `low = 0`, `w.energy`
+ * silently dies, and the app stops noticing that Wednesday is already full.
+ * Measured: a future slot's depletion went 0.865 → 0 under that version.
+ *
+ * Where this actually bites is the EVIDENCE POOL: `learnedCapacity` draws on
+ * past days, and a past day that was never marked is not evidence of what you
+ * tolerate. Measured before this, a single unmarked 75-minute block was setting
+ * two of the four learned ceilings.
+ *
+ * A hypothetical draft (`dipIfPlaced`) carries no `completion` at all and is
+ * added after this filter runs, so it is never judged here.
+ */
+export function isCharged(task, now = new Date()) {
+  if (!task || task.chunking) return false;
+  if (task.completion === 'skipped') return false;
+  // Unmarked, on a day already behind us → it did not happen.
+  if (task.completion === null && task.startTime && dateKey(task.startTime) < dateKey(now)) return false;
+  return true;
+}
+
 /** Walk a set of tasks in time order → `{ net, low, reserve, points }`. The reserve
  *  starts full (0), can't bank credit above full, drains on spend and repays on
  *  restore; `low` (≤ 0) is the deepest dip, `net` the signed total, `reserve` the
@@ -147,11 +202,11 @@ function reserveWalk(schedule, tasks) {
  *
  * @returns {{ axes: Object, totals: {spend,restore,net}, any: boolean }}
  */
-export function spendRestore(schedule, tasks) {
+export function spendRestore(schedule, tasks, now = new Date()) {
   const axes = {};
   for (const a of LOAD_AXES) axes[a] = { spend: 0, restore: 0, net: 0 };
   for (const t of tasks || []) {
-    if (!t || t.chunking || t.completion === 'skipped') continue;
+    if (!isCharged(t, now)) continue;
     const l = loadForTask(schedule, t);
     const h = durationHours(t);
     for (const a of LOAD_AXES) {
@@ -200,8 +255,8 @@ export function spendRestore(schedule, tasks) {
  * against −25). A second walk written to look equivalent would differ exactly
  * there, on the days the wash matters most.
  */
-export function energyTrajectory(schedule, date) {
-  const tasks = schedule.getTasksForDay(date).filter((t) => !t.chunking && t.completion !== 'skipped');
+export function energyTrajectory(schedule, date, now = new Date()) {
+  const tasks = schedule.getTasksForDay(date).filter((t) => isCharged(t, now));
   const { low } = reserveWalk(schedule, tasks);
   const ends = [...new Set(tasks.map((t) => t.endTime.getTime()))].sort((a, b) => a - b);
   const points = ends.map((ms) => ({
@@ -231,9 +286,9 @@ export function energyTrajectory(schedule, date) {
  * further that axis bottoms out because of this; `total` sums them, so LOWER IS
  * BETTER and zero means it costs the day nothing.
  */
-export function dipIfPlaced(schedule, slot, draft) {
+export function dipIfPlaced(schedule, slot, draft, now = new Date()) {
   const day = schedule.getTasksForDay(slot.start)
-    .filter((t) => !t.chunking && t.completion !== 'skipped');
+    .filter((t) => isCharged(t, now));
   const hypothetical = {
     startTime: slot.start,
     endTime: slot.end,
@@ -327,7 +382,7 @@ export function arrivalDepletion(schedule, at, load) {
 
 export function reserveAt(schedule, now = new Date(), { excludeId = null } = {}) {
   const tasks = schedule.getTasksForDay(now)
-    .filter((t) => !t.chunking && t.completion !== 'skipped'
+    .filter((t) => isCharged(t, now)
       && t.startTime.getTime() <= now.getTime()
       // ⚠️ THE TASK BEING PLACED IS NOT ALREADY SPENT. `findBestSlot` scores
       // candidates for a task that is ALREADY in `schedule.tasks`, so without
@@ -339,6 +394,23 @@ export function reserveAt(schedule, now = new Date(), { excludeId = null } = {})
       // wherever this already is" force that outvoted proximity and stability.
       && !(excludeId && t.id === excludeId));
   return reserveWalk(schedule, tasks).reserve;
+}
+
+/**
+ * The 70th percentile of the observed daily dips is the learned ceiling
+ * (design/PLAN-AUDIT-2.md E-1, chosen by the user 2026-09-20). Seven days in ten
+ * sat at or below it.
+ */
+const CAPACITY_QUANTILE = 0.70;
+
+/** Linear-interpolated quantile of a numeric array. `p` in [0, 1]. */
+function quantile(values, p) {
+  if (!values || values.length === 0) return null;
+  const v = [...values].sort((a, b) => a - b);
+  const i = (v.length - 1) * p;
+  const lo = Math.floor(i);
+  const hi = Math.ceil(i);
+  return lo === hi ? v[lo] : v[lo] + (v[hi] - v[lo]) * (i - lo);
 }
 
 /**
@@ -375,18 +447,47 @@ export function learnedCapacity(schedule, now = new Date()) {
     ratedDays.get(k).energies.push(s.energy);
   }
 
-  const okDips = { mental: [], physical: [], social: [], creative: [] };
+  // TWO GATES, both the user's (2026-09-20), and they are different questions.
+  //
+  // ⚠️ GATE 1 — A DAY YOU RATED BADLY MAY NOT RAISE THE CEILING. *"A day I
+  // marked bad shouldn't be allowed to positively affect capacity. It was
+  // probably too much."* So a day whose mean energy facet is negative is not
+  // evidence of tolerance and is dropped.
+  //
+  // This gate IS circular in a way worth writing down rather than hiding: the
+  // ceiling becomes "the worst day you were fine on", so a day you rated
+  // non-negative can never be reported over its own ceiling, and "over" only
+  // ever fires on days you did not rate or rated badly. The user was told and
+  // chose it anyway, on the reasoning above, which is sound — a day that felt
+  // like too much is not an observation of what you tolerate.
+  //
+  // ⚠️ GATE 2 — ONLY DAYS YOU ACTUALLY TRACKED. *"Only draw on days where
+  // everything but one task was marked or everything was marked."* A day you
+  // half-recorded is not a day you can learn a ceiling from: under rule (e) its
+  // unmarked work is uncharged, so its dip understates what the day held, and a
+  // shallow dip from a badly-tracked day would drag the quantile down.
+  //
+  // One unmarked task is forgiven deliberately — the user's own allowance, and
+  // it keeps a single forgotten tick from discarding an otherwise clean day.
+  //
+  // Measured on the real save: gate 2 changes NOTHING on this data — every day
+  // passing gate 1 already had at most one unmarked task, and the only two days
+  // with more were both rated negative. It is a guard against a case that has
+  // not happened yet, kept for that reason rather than for present effect.
+  const dips = { mental: [], physical: [], social: [], creative: [] };
   for (const { date, energies } of ratedDays.values()) {
-    const meanEnergy = energies.reduce((s, e) => s + e, 0) / energies.length;
-    if (meanEnergy < 0) continue; // a drained day — its dip is beyond capacity, not evidence of tolerance
+    const meanEnergy = energies.reduce((sum, e) => sum + e, 0) / energies.length;
+    if (meanEnergy < 0) continue; // gate 1
+    const onDay = schedule.getTasksForDay(date).filter((t) => !t.chunking);
+    const unmarked = onDay.filter((t) => t.completion === null).length;
+    if (unmarked > 1) continue; // gate 2
     // The DAY's real load, not just its rated items: `getTasksForDay`
     // materializes occurrences, so the walk sees what the day actually held.
     // This is the same source `energyBudget` walks, which is the consumer that
     // compares its dip against the number returned here.
-    const tasks = schedule.getTasksForDay(date)
-      .filter((t) => !t.chunking && t.completion !== 'skipped');
+    const tasks = schedule.getTasksForDay(date).filter((t) => isCharged(t, now));
     const { low } = reserveWalk(schedule, tasks);
-    for (const a of LOAD_AXES) if (-low[a] > 0) okDips[a].push(-low[a]);
+    for (const a of LOAD_AXES) if (-low[a] > 0) dips[a].push(-low[a]);
   }
 
   // ⚠️ PER-AXIS, AND null WHERE UNEARNED — never the configured prior.
@@ -400,12 +501,24 @@ export function learnedCapacity(schedule, now = new Date()) {
   // remaining null), which is the honest "still learning" state for that axis.
   const out = {};
   for (const a of LOAD_AXES) {
-    // NOTE: `Math.max` is the highest-variance order statistic and is monotone
-    // in n, so a learned ceiling can only ever ratchet UPWARD and can never
-    // contract when tolerance drops. A high quantile with a larger evidence
-    // floor is the better estimator; it changes user-visible numbers, so it is
-    // left for the evaluation harness (design/ML-HEURISTICS-RECOMMENDATIONS.md).
-    out[a] = okDips[a].length >= 2 ? Math.max(...okDips[a]) : null;
+    // ⚠️ A QUANTILE, NOT `Math.max` — the note that used to sit here called for
+    // exactly this and deferred it to an evaluation harness. The harness ran
+    // (design/PLAN-AUDIT-2.md E-1), eight estimators against the real save, and
+    // the user chose the 70th percentile over all rated days.
+    //
+    // `Math.max` is the highest-variance order statistic and is monotone in n,
+    // so a learned ceiling could only ratchet UPWARD and could never contract
+    // when tolerance dropped. The physical axis is the clearest case: `max` over
+    // tolerated days published 7.31 on the strength of ONE outlier, while every
+    // other observation sat between 2.50 and 3.13 and every quantile put it at
+    // 2.5–3.9.
+    //
+    // p70 also matches the only calibration evidence that exists — the user's
+    // own report of being at or above their ceiling most days. Measured: `max`
+    // flagged 41% of their days, p70 flags 63%. A single subjective "most days"
+    // cannot pin the quantile more precisely than that, so this is a judgement
+    // they made rather than a number the data forced.
+    out[a] = dips[a].length >= 2 ? quantile(dips[a], CAPACITY_QUANTILE) : null;
   }
   return out;
 }
@@ -421,9 +534,9 @@ export function learnedCapacity(schedule, now = new Date()) {
  * `capacity` is LEARNED (learnedCapacity) and stays null until calibrated — never a
  * fabricated ceiling (P-2). Per axis: `{ net, low, capacity, over, remaining }`.
  */
-export function energyBudget(schedule, date) {
-  const cap = learnedCapacity(schedule); // null until calibrated
-  const tasks = schedule.getTasksForDay(date).filter((t) => !t.chunking && t.completion !== 'skipped');
+export function energyBudget(schedule, date, now = new Date()) {
+  const cap = learnedCapacity(schedule, now); // null until calibrated
+  const tasks = schedule.getTasksForDay(date).filter((t) => isCharged(t, now));
   const { net, low } = reserveWalk(schedule, tasks);
   const out = {};
   for (const a of LOAD_AXES) {

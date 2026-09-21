@@ -16,6 +16,17 @@ import { Schedule, Task, DayNote, RoutineInstance, defaultConfig, weekStart as w
 import { STORAGE_KEY } from '../src/ui/useEngine.js';
 
 beforeEach(() => {
+  // ⚠️ THE CLOCK IS PINNED, and without it these fixtures rot. `ws()` reads the
+  // REAL `new Date()`, so `at(0, h)` meant "this week's Monday" — which is in
+  // the past for most of any given week. Under the user's rule that unmarked
+  // work on a PAST day did not happen (design/AUDIT-UNMARKED-WORK.md §6), those
+  // fixtures described days on which nothing occurred and every energy wash
+  // correctly went blank. Pinning `now` to the Monday the fixtures build on
+  // makes them a day being lived rather than a day never recorded.
+  //
+  // `shouldAdvanceTime` so React's scheduler still runs.
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  vi.setSystemTime(new Date(2026, 8, 14, 0, 0, 0));
   window.localStorage.clear();
   window.matchMedia = (q) => ({
     matches: !/max-width/.test(q), media: q,

@@ -5,12 +5,21 @@
 // be correct at every individual step and still put the wrong slot first. The
 // deliverable is `design/probes/probe-rank-openings.mjs`, which PRINTS a real
 // afternoon; this locks what that probe established, plus the panel's own words.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, fireEvent } from '@testing-library/react';
 import {
   Schedule, defaultConfig, addDays, rankOpenings, modelCanSpeak, dipIfPlaced, draftFor,
 } from '../src/core/index.js';
 import FindPanel from '../src/ui/components/panels/FindPanel.jsx';
+
+// ⚠️ THE CLOCK IS PINNED to the Monday these fixtures are built on. Without it
+// the whole file dated itself into the past and stayed there — and under the
+// user's rule that unmarked work on a PAST day did not happen
+// (design/AUDIT-UNMARKED-WORK.md §6), a day built from unmarked tasks has no
+// load at all, so "the day you have already wrecked" was not wrecked and the
+// ranking had nothing to rank. The fixtures describe a week being lived.
+beforeEach(() => { vi.useFakeTimers({ shouldAdvanceTime: true }); vi.setSystemTime(new Date(2026, 8, 7, 0, 0, 0)); });
+afterEach(() => { vi.useRealTimers(); });
 
 const MON = new Date(2026, 8, 7);
 const at = (h, m = 0) => new Date(2026, 8, 7, h, m, 0, 0);

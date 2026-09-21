@@ -12,6 +12,15 @@ import { defaultConfig } from '../src/core/config.js';
 // began failing on the day the gap passed 56 — 59 days, three too many. Same
 // remedy as learning-guards and placement-range-floor, which went off before it.
 const D = (d, h) => new Date(2026, 6, d, h, 0, 0, 0);
+
+// ⚠️ A DAY IN THE PAST ONLY HAS A LOAD IF IT WAS MARKED. The user's rule is that
+// unmarked work on a past day did not happen (design/AUDIT-UNMARKED-WORK.md §6),
+// and a day carrying more than one unmarked task is not capacity evidence at all
+// (gate 2). So a fixture that builds a past day out of unmarked tasks describes a
+// day on which nothing occurred, and its dip is correctly zero. Tests that assert
+// a dip are about the battery's ARITHMETIC and mean a day that happened — they
+// say so with this.
+const did = (t) => { t.completion = 'done'; return t; };
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 6, 20, 6, 0, 0)); });
 afterEach(() => { vi.useRealTimers(); });
 const wide = () => ({ ...defaultConfig, windows: { ...defaultConfig.windows, monFri: { start: '06:00', end: '23:00' } } });
@@ -73,7 +82,14 @@ describe('energy battery (order-aware reserve)', () => {
   const calibrateOnMental = (s) => {
     for (const d of [1, 8, 15]) {
       for (let i = 0; i < 3; i += 1) {
-        s.addFixed({ title: `W${d}-${i}`, tags: ['work'], startTime: D(d, 7 + i), endTime: D(d, 8 + i) });
+        // ⚠️ MARKED DONE, and it is not decoration. These are EVIDENCE days for
+        // `learnedCapacity`, and the user's rule is that unmarked work on a past
+        // day did not happen (design/AUDIT-UNMARKED-WORK.md §6) while a day
+        // carrying more than one unmarked task is not evidence at all (gate 2).
+        // Left unmarked, this fixture describes three days on which nothing was
+        // done — which is not what its own comment above claims it is.
+        const w = s.addFixed({ title: `W${d}-${i}`, tags: ['work'], startTime: D(d, 7 + i), endTime: D(d, 8 + i) });
+        w.completion = 'done';
       }
       const t = s.addFixed({ title: `r${d}`, tags: ['x'], startTime: D(d, 12), endTime: D(d, 13) });
       t.completion = 'done'; t.satisfaction = { overall: 3, energy: 0 };
@@ -100,7 +116,7 @@ describe('energy battery (order-aware reserve)', () => {
   // is the fabricated ceiling P-2 forbids, and P-1 forbids the colour.
   it('never substitutes the configured prior for an axis with no evidence', () => {
     const s = workRestSched();
-    for (let i = 0; i < 5; i += 1) s.addFixed({ title: `W${i}`, tags: ['work'], startTime: D(15, 7 + i), endTime: D(15, 8 + i) });
+    for (let i = 0; i < 5; i += 1) did(s.addFixed({ title: `W${i}`, tags: ['work'], startTime: D(15, 7 + i), endTime: D(15, 8 + i) }));
     calibrateWithoutLoad(s); // opens the global gate, earns nothing
 
     expect(s.energyCalibration().calibrated).toBe(true);
@@ -128,12 +144,12 @@ describe('energy battery (order-aware reserve)', () => {
   it('rest BETWEEN blocks keeps the reserve shallow; rest AFTER does not (the point of the battery)', () => {
     // Same totals (4h work, 2h rest), different order.
     const inter = workRestSched();
-    inter.addFixed({ title: 'W1', tags: ['work'], startTime: D(15, 8), endTime: D(15, 10) }); // −4
-    inter.addFixed({ title: 'R', tags: ['rest'], startTime: D(15, 10), endTime: D(15, 12) }); // repays → 0
-    inter.addFixed({ title: 'W2', tags: ['work'], startTime: D(15, 12), endTime: D(15, 14) }); // −4
+    did(inter.addFixed({ title: 'W1', tags: ['work'], startTime: D(15, 8), endTime: D(15, 10) })); // −4
+    did(inter.addFixed({ title: 'R', tags: ['rest'], startTime: D(15, 10), endTime: D(15, 12) })); // repays → 0
+    did(inter.addFixed({ title: 'W2', tags: ['work'], startTime: D(15, 12), endTime: D(15, 14) })); // −4
     const back = workRestSched();
-    back.addFixed({ title: 'W', tags: ['work'], startTime: D(15, 8), endTime: D(15, 12) }); // −8
-    back.addFixed({ title: 'R', tags: ['rest'], startTime: D(15, 12), endTime: D(15, 14) }); // too late
+    did(back.addFixed({ title: 'W', tags: ['work'], startTime: D(15, 8), endTime: D(15, 12) })); // −8
+    did(back.addFixed({ title: 'R', tags: ['rest'], startTime: D(15, 12), endTime: D(15, 14) })); // too late
 
     const a = inter.energyBudget(D(15, 15)).mental;
     const c = back.energyBudget(D(15, 15)).mental;
@@ -209,8 +225,8 @@ describe('reserve trajectory & reserveAt (the time-points)', () => {
 
   it('energyTrajectory records a point per task with the running reserve', () => {
     const s = s0();
-    s.addFixed({ title: 'W1', tags: ['work'], startTime: D(15, 9), endTime: D(15, 10) });
-    s.addFixed({ title: 'W2', tags: ['work'], startTime: D(15, 10), endTime: D(15, 11) });
+    did(s.addFixed({ title: 'W1', tags: ['work'], startTime: D(15, 9), endTime: D(15, 10) }));
+    did(s.addFixed({ title: 'W2', tags: ['work'], startTime: D(15, 10), endTime: D(15, 11) }));
     const { points } = energyTrajectory(s, D(15, 12));
     expect(points).toHaveLength(2);
     expect(points[0].reserve.mental).toBe(-2);
@@ -265,6 +281,7 @@ describe('per-activity load override', () => {
     s.addBucket({ label: 'Work', tags: ['work'], load: { mental: 2 } }); // bucket default: mental +2, creative 0
     const a = s.addActivity({ bucketId: s.buckets[0].id, label: 'Design', tags: ['work'], durationMin: 60, durationMax: 60, load: { mental: 1, creative: 2 } });
     const { task } = s.placeActivity(a, D(15, 10), 60);
+    did(task); // a past day only carries a load if it was marked
 
     expect(task.load).toEqual({ mental: 1, physical: 0, social: 0, creative: 2 });
     const b = s.energyBudget(D(15, 12));
@@ -278,6 +295,7 @@ describe('per-activity load override', () => {
     const a = s.addActivity({ bucketId: s.buckets[0].id, label: 'Email', tags: ['work'], durationMin: 30, durationMax: 30 });
     expect(a.load).toBeNull();
     const { task } = s.placeActivity(a, D(15, 10), 30);
+    did(task); // a past day only carries a load if it was marked
     expect(task.load).toBeNull(); // not pinned — the placed task derives from its tags
     const b = s.energyBudget(D(15, 12));
     expect(b.mental.net).toBe(1); // 30 min × +2/hr, derived from the 'work' bucket

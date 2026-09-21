@@ -397,7 +397,14 @@ describe('L-1 energy UI', () => {
   const calibrate = (s) => {
     for (const d of [1, 8, 15]) {
       for (let i = 0; i < 3; i += 1) {
-        s.addFixed({ title: `cal${d}-${i}`, tags: ['work'], startTime: D(d, 7 + i), endTime: D(d, 8 + i) });
+        // ⚠️ MARKED DONE. These are EVIDENCE days for `learnedCapacity`, and the
+        // user's rule is that unmarked work on a past day did not happen
+        // (design/AUDIT-UNMARKED-WORK.md §6) while a day carrying more than one
+        // unmarked task is not evidence at all (gate 2). Unmarked, this helper
+        // described three days on which nothing was done, so nothing was learned
+        // and the card correctly drew no ceiling.
+        const w = s.addFixed({ title: `cal${d}-${i}`, tags: ['work'], startTime: D(d, 7 + i), endTime: D(d, 8 + i) });
+        w.completion = 'done';
       }
       const r = s.addFixed({ title: `rate${d}`, tags: ['x'], startTime: D(d, 5), endTime: D(d, 6) });
       r.completion = 'done'; r.satisfaction = { overall: 3, energy: 0 };
