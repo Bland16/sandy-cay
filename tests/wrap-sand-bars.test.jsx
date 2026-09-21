@@ -1043,7 +1043,18 @@ describe('§7.1 — the pattern, and the week', () => {
     const p = buildWrapReport(s, ws()).stats.pattern;
     expect(p).toBeTruthy();
     expect(p.scheduled).toBe(1);
-    expect(p.ranAsWritten).toBe(p.scheduled - p.moved - p.skipped);
+    // ⚠️ THE IDENTITY CHANGED WITH F-8, and it changed because the old one was
+    // the defect. `ranAsWritten` was `scheduled − moved − skipped`, which never
+    // consulted completion and therefore reported every unrecorded session as
+    // having run. What holds now is the FULL accounting: every session the
+    // pattern put on the week is in exactly one of five states.
+    expect(p.ranAsWritten + p.noRecord + p.upcoming + p.moved + p.skipped)
+      .toBe(p.scheduled);
+    // This fixture marks nothing, and the pinned clock puts the session on
+    // TODAY — so it is still to come, not missing, and certainly not "ran".
+    expect(p.ranAsWritten).toBe(0);
+    expect(p.noRecord).toBe(0);
+    expect(p.upcoming).toBe(1);
   });
 
   // ⚠️ A SKIPPED OCCURRENCE IS NOT MATERIALISED, so it is absent from the
@@ -1063,7 +1074,15 @@ describe('§7.1 — the pattern, and the week', () => {
 
     expect(after.scheduled).toBe(before.scheduled); // the pattern still put N on
     expect(after.skipped).toBe(1);
-    expect(after.ranAsWritten).toBe(before.ranAsWritten - 1);
+    // ⚠️ The skip moves the session out of whichever unrecorded bucket it was in
+    // — here `upcoming` — and NOT out of `ranAsWritten` (F-8). It was never
+    // counted as having run, because nothing marked it. The old assertion was
+    // measuring the bug: it required an unrecorded session to sit in the "ran"
+    // bucket first, so that skipping it could take it back out.
+    expect(after.upcoming).toBe(before.upcoming - 1);
+    expect(after.ranAsWritten).toBe(before.ranAsWritten);
+    expect(after.ranAsWritten + after.noRecord + after.upcoming + after.moved + after.skipped)
+      .toBe(after.scheduled);
   });
 
   // §7.1 forbids listing what you did not do. "3 skipped" as a standalone

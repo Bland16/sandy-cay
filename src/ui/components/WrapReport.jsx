@@ -716,9 +716,26 @@ export default function WrapReport({ sched, weekStart, version, onBack, onOpenTa
                     Your {stats.pattern.patterns === 1 ? 'pattern' : 'patterns'} put{' '}
                     <b>{stats.pattern.scheduled}</b>{' '}
                     {stats.pattern.scheduled === 1 ? 'session' : 'sessions'} on this week.{' '}
+                    {/* ⚠️ THREE STATES, NOT TWO, AND THE THIRD IS THE HONEST ONE.
+                        "Ran as written" was `scheduled − moved − skipped` and
+                        never consulted completion, so any session the app had NO
+                        RECORD of was reported as having run. Measured on the
+                        user's real sick week: "9 ran as written" when 6 carried a
+                        completion — two were the day they were too ill to get up
+                        and one was a Saturday that had not happened yet.
+
+                        `noRecord` is the app saying it does not know, which is
+                        what `skipStreakCheck` already says in its own comment
+                        ("no record at all — WE DO NOT KNOW. Not evidence of
+                        absence"). `upcoming` is not a finding at all, so it is
+                        phrased as what is left rather than as a shortfall. */}
                     {stats.pattern.ranAsWritten} ran as written
                     {stats.pattern.moved > 0 && `, ${stats.pattern.moved} you moved`}
                     {stats.pattern.skipped > 0 && `, ${stats.pattern.skipped} you skipped`}
+                    {stats.pattern.noRecord > 0
+                      && `, ${stats.pattern.noRecord} ${stats.pattern.noRecord === 1 ? 'has' : 'have'} no record either way`}
+                    {stats.pattern.upcoming > 0
+                      && `, and ${stats.pattern.upcoming} ${stats.pattern.upcoming === 1 ? 'is' : 'are'} still to come`}
                     {stats.pattern.added > 0
                       && `, and you added ${stats.pattern.added} that ${stats.pattern.added === 1 ? 'is not' : 'are not'} in the pattern`}.
                   </p>

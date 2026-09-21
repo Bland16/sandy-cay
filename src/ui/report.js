@@ -950,9 +950,10 @@ function buildDayStrips(sched, ws) {
  * describe a PATTERN's fit — and the natural response is "the pattern may be
  * wrong", which §7.2's suggestions already offer.
  */
-function buildPatternDiff(sched, ws) {
+function buildPatternDiff(sched, ws, now = new Date()) {
   const first = dateKey(ws);
   const last = dateKey(addDays(ws, 6));
+  const todayKey = dateKey(now);
   const inWeek = (k) => {
     // Occurrence keys can carry a session suffix (`YYYY-MM-DD#2`), so compare
     // the calendar part only.
@@ -965,6 +966,9 @@ function buildPatternDiff(sched, ws) {
   let skipped = 0;
   let added = 0;
   let patterns = 0;
+  let ran = 0;       // carries a completion record
+  let noRecord = 0;  // elapsed, never marked — the app does not know
+  let upcoming = 0;  // today or later; not yet a fact about anything
 
   for (const t of sched.tasks) {
     if (!t.recurrence || t.chunking) continue;
@@ -978,6 +982,33 @@ function buildPatternDiff(sched, ws) {
     const addedIn = weekEx.filter((e) => e.action === 'add').length;
     if (occurrences === 0 && movedIn + skippedIn + addedIn === 0) continue;
     patterns += 1;
+
+    // ⚠️ "RAN AS WRITTEN" USED TO BE ARITHMETIC AND NEVER CONSULTED COMPLETION.
+    // It was `scheduled - moved - skipped`, so any session the app had NO RECORD
+    // of was counted as having run. Measured on the user's real sick week, the
+    // sheet said "9 ran as written" when only 6 carried a completion: two were
+    // the Tuesday they were too ill to get up, and one was a SATURDAY THAT HAD
+    // NOT HAPPENED YET when the report was generated.
+    //
+    // The app's whole vocabulary for an unrecorded session was "ran as written"
+    // or "you skipped", and it chose the first. So there is now a third state,
+    // and it is split by the same day boundary the battery uses
+    // (design/AUDIT-UNMARKED-WORK.md §6): a past day with no mark is
+    // `noRecord` — the app does not know, and says so; today or later is
+    // `upcoming` — it has not happened yet, which is not a finding at all.
+    //
+    // A moved session is counted under `moved` and never here; running at a
+    // different time is precisely not running as written.
+    const movedDays = new Set(
+      weekEx.filter((e) => e.action === 'move').map((e) => String(e.date).slice(0, 10)),
+    );
+    for (const o of sched.getTasksForWeek(ws)) {
+      if (!o.isOccurrence || o.parentId !== t.id) continue;
+      if (movedDays.has(String(o.occurrenceDate || '').slice(0, 10))) continue;
+      if (o.completion === 'done' || o.completion === 'partial') ran += 1;
+      else if (dateKey(o.startTime) < todayKey) noRecord += 1;
+      else upcoming += 1;
+    }
     // A skipped occurrence is not materialised, so it is not in `occurrences` —
     // the pattern's own count has to add it back or the denominator shrinks by
     // exactly the thing being reported.
@@ -991,7 +1022,9 @@ function buildPatternDiff(sched, ws) {
   return {
     patterns,
     scheduled: Math.max(0, scheduled),
-    ranAsWritten: Math.max(0, scheduled - moved - skipped),
+    ranAsWritten: ran,
+    noRecord,
+    upcoming,
     moved,
     skipped,
     added,
@@ -1048,7 +1081,7 @@ function buildRoutines(sched, ws) {
   return rows.length > 0 ? rows.sort((a, b) => b.spanMin - a.spanMin) : null;
 }
 
-export function buildWrapReport(sched, weekStartDate) {
+export function buildWrapReport(sched, weekStartDate, now = new Date()) {
   const ws = weekStartOf(weekStartDate);
   const weekTasks = sched.getTasksForWeek(ws);
   // Built once: the ledger feeds both the section and the "empty" test below,
@@ -1083,7 +1116,7 @@ export function buildWrapReport(sched, weekStartDate) {
       // WHEN it happened — seven rows on one shared clock (A3).
       strips: buildDayStrips(sched, ws),
       // The pattern you set, against the week you ran (A9).
-      pattern: buildPatternDiff(sched, ws),
+      pattern: buildPatternDiff(sched, ws, now),
       // What a routine cost in elapsed time vs attention (A10).
       routines: buildRoutines(sched, ws),
     },
