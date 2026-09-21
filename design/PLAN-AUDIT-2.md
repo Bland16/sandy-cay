@@ -41,13 +41,20 @@ All figures anonymised; the export stays gitignored.
   `overpackCheck` structurally cannot fire (needs 7.5-min gaps; the tightest full
   day averages 19). `skipStreakCheck` is blind to all 21 skips. `starvation`,
   `drift`, `pinnedRatio` all dead.
-- **`unmarked` means "I did it and didn't tick it"** — the user's decision,
-  2026-09-18. They will delete what they did not do.
+- **`unmarked` means "didn't do it"** — the user's decision 2026-09-20, which
+  **REVERSED** their 2026-09-18 answer of "I did it and didn't tick it". Recorded
+  as a reversal in `AUDIT-UNMARKED-WORK.md` §6 rather than swapped quietly,
+  because work had already been queued against the first reading.
+- **⚠️ And the boundary is the DAY, not the moment.** *"I do batch rate so it
+  would need to read unmarked tasks. Consider anything unmarked on the current
+  day as having been done and assumed to will be done."* So today is charged in
+  full; only a day BEFORE today treats unmarked as "did not happen". A first
+  implementation keyed on `endTime <= now` dropped this user's unticked morning
+  work mid-afternoon, decided they were fresh and piled more on — it failed the
+  regression guard *"it must not recommend the day you have already wrecked"*.
 
-**Consequences of that last decision, both now urgent:** `buildAccomplished`
-counts only `done`/`partial`, so the report **undercounts the user by roughly
-half** (1145 min stated against 2300 charged); and `carryOver` would **resurrect
-finished work**, since it carries unmarked past tasks forward.
+**Consequence of the reversal:** F-5 and F-6 were **withdrawn** (§2.1b) — both
+would have broken code that was already right.
 
 ---
 
@@ -55,17 +62,35 @@ finished work**, since it carries unmarked past tasks forward.
 
 These are wrong under any model. They should not wait for the second audit.
 
-| # | Fix | Evidence |
-|---|---|---|
-| **F-1** | Filter by category **before** the limit in `suggestActivities` | 7/9 categories empty → 9/9 |
-| **F-2** | `ratedSamples()` carries `activityId` **and** `load` | both dropped in one object literal; `load` loss makes a session the user marked restful count as demanding |
-| **F-3** | `lastFinishedLoad` reads the door, not `schedule.tasks` | 29% of hours see the wrong last item; 10% get the wrong axis; up to 45 of 46 candidates reorder |
-| **F-4** | `buildOccurrence` reads `od.at`/`od.endAt` when present | a session recorded 20:15/90m prints as 18:15/60m; the "when it happened" strip draws it two hours early |
-| **F-5** | `buildAccomplished` counts unmarked past work | user's semantics; currently halves their week |
-| **F-6** | `carryOver` must not carry unmarked past work | user's semantics; currently resurrects done work |
-| **F-7** | `buildDeadlineBuffer` — drop the `runwayH = 0` exclusion and fix the median index | "2 came in late" when 3 did; median indexes a filtered array |
-| **F-8** | `ranAsWritten` must consult completion | claims 3 sessions "ran" that have no record, one of them on a future Saturday |
-| **F-9** | **Show future days; exclude them from every reading** — see §2.2 | 630 future minutes inside the sick week's bars, strips, tag table and denominator |
+| # | Fix | Evidence | status |
+|---|---|---|---|
+| **F-1** | Filter by category **before** the limit in `suggestActivities` | 7/9 categories empty → 9/9 | ✅ SHIPPED be4573f |
+| **F-2** | `ratedSamples()` carries `activityId` **and** `load` | both dropped in one object literal; `load` loss makes a session the user marked restful count as demanding | ✅ SHIPPED be4573f |
+| **F-3** | `lastFinishedLoad` reads the door, not `schedule.tasks` | 29% of hours see the wrong last item; 10% get the wrong axis; up to 45 of 46 candidates reorder | ✅ SHIPPED 994f0ef |
+| **F-4** | `buildOccurrence` reads `od.at`/`od.endAt` when present | a session recorded 20:15/90m prints as 18:15/60m; the "when it happened" strip draws it two hours early | open — needs a product call (which time does the report mean?) |
+| ~~F-5~~ | ~~`buildAccomplished` counts unmarked past work~~ | — | **WITHDRAWN** — §2.1b |
+| ~~F-6~~ | ~~`carryOver` must not carry unmarked past work~~ | — | **WITHDRAWN** — §2.1b |
+| **F-7** | `buildDeadlineBuffer` — drop the `runwayH = 0` exclusion and fix the median index | "2 came in late" when 3 did; median indexes a filtered array | ✅ SHIPPED 83f37ad |
+| **F-8** | `ranAsWritten` must consult completion | claims 3 sessions "ran" that have no record, one of them on a future Saturday | unblocked by the reversal — NEXT |
+| **F-9** | **Show future days; exclude them from every reading** — see §2.2 | 630 future minutes inside the sick week's bars, strips, tag table and denominator | open — needs `now` threaded through `buildWrapReport` |
+| **F-10** | Label the two charts that disagree | sand bars 13h vs day strips 4h30m, same page, same day | ✅ SHIPPED f88334b |
+| **F-11** | **Surface unsorted tags in the Tag manager** — see §2.1 | 10% of the user's hours carry an all-zero load vector | ✅ SHIPPED fcfe8ef |
+
+### 2.1b F-5 and F-6 — WITHDRAWN 2026-09-20, and this is why
+
+Both were queued as fixes and **both would have broken working code.** They were
+written when "unmarked = I did it" was the standing answer; the user reversed it
+to "unmarked = didn't do it" (`AUDIT-UNMARKED-WORK.md` §6), and under that reading:
+
+- **`buildAccomplished` is already correct** — counting only `done`/`partial` is
+  right, and "make it count unmarked work" would have inflated the sick week to
+  ~2,300 minutes accomplished.
+- **`carryOver` is already correct** — carrying unmarked past work forward IS
+  carrying the unfinished work.
+
+Recorded rather than deleted, because a reversed decision leaves plausible-looking
+work items behind it and the next person needs to know they were considered and
+dropped on purpose.
 
 ### 2.2 F-9, decided 2026-09-20
 
@@ -100,8 +125,6 @@ one-liner.
 are excluded from the numbers is honest only if the reader can tell. A line
 naming it ("2 days still to come") is the obvious answer and is a copy decision,
 not an arithmetic one. **Needs the user.**
-| **F-10** | Label the two charts that disagree | sand bars 13h vs day strips 4h30m, same page, same day |
-| **F-11** | **Surface unsorted tags in the Tag manager** — see §2.1 | 10% of the user's hours carry an all-zero load vector |
 
 ### 2.1 F-11, as the user actually asked for it
 
@@ -149,7 +172,7 @@ here.** v1 surfaces; assignment waits for a decision.
 Each is stated as a question with candidates, a **decision criterion**, and the
 measurement that would settle it. Ranked by how much rests on the answer.
 
-### E-1 · The capacity estimator — **MEASURED 2026-09-20; awaiting the user's pick**
+### E-1 · The capacity estimator — ✅ **SHIPPED b9bcc54** (p70, both gates, with rule (e))
 
 Run under rule (e) (elapsed unmarked work not charged — `AUDIT-UNMARKED-WORK.md`
 §6). `evid` is how many rated days the estimator draws on; `over` is the share of
@@ -236,6 +259,29 @@ than `Math.max`.
 **Watch for:** the structural bias — a day rated non-negative can *never* be
 reported over its ceiling under (a)–(c), so "over" fires only on unrated or
 badly-rated days.
+
+### E-1.2 · An unplanned benefit, found by the adversary AFTER shipping
+
+The E-3a adversarial review (`design/E3A-LATE-WORKOUT.md` §3b) found a feedback
+loop nobody on this feature was watching, and it runs through **`learnedCapacity`
+— not the preference model** everyone assumed was gating it (`modelMaySpeak()` is
+false, so the ML loop is shut; this one is not).
+
+Measured: planting one 90-minute demanding block at 21:30 into each rated day
+moves capacity from `{4.354, 3.075, 8.438, 1.575}` to
+`{5.500, 3.330, 9.368, 1.575}` — **mental +26%**. The chain closes: heavier days →
+higher ceiling → `spent/capacity` falls → heavy looks cheaper → more of it. And
+`energyBudget().over` stops firing, so the one surface that would say "this is a
+lot" goes quiet exactly when it should not.
+
+**p70 is what makes that recoverable rather than a ratchet**, because a quantile
+can move DOWN and `Math.max` structurally could not. The estimator change was
+made for thinness and for the user's lived experience; it turns out to also be
+the only brake on a loop that was never considered. Recorded so nobody
+"simplifies" it back.
+
+**Still open:** the loop is damped, not closed. Any future term that shapes which
+days get scheduled must not then feed the ceiling it divides by.
 
 ### E-2 · The saturation function — **decides whether sick days do anything**
 

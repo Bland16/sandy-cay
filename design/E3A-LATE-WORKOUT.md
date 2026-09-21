@@ -154,6 +154,43 @@ cliff.** It still needs a defensible evening boundary, which §4 says does not e
 
 ---
 
+## 2b. Candidate B — "how much day REMAINS after the block": **REJECTED as stated**
+
+Its author's own headline: *the framing is sound but most of its natural
+implementations are a "do it last" machine, and the one that is safe buys much
+less than hoped.*
+
+**Any clock-based measure fails catastrophically.** With day-remaining measured
+as `(windowEnd − slotEnd)/windowLength`, **22:00 becomes the unique strict best
+hour on 27 of 27 days for a study block** and 25 of 27 for a workout — not a tie
+broken by earliest-first, a strict monotone preference for lateness. The 07:00
+study slot falls from mean rank 1.9 to **13.4 of 16**.
+
+**And the thing it moves is study, not workouts** — which is the opposite of what
+the user asked for, and collides with a preference they have stated elsewhere
+(that the app should push them to finish work *earlier*).
+
+Three findings from it worth keeping regardless of the verdict:
+
+- **⚠️ E-3's recommended picker score is time-of-day-BLIND for spending work.**
+  For a spender `r'[x] = min(0, r[x] − L[x]h)` never clamps, so `Δ` is
+  independent of the reserve — measured, the top exercise activity's Δ is
+  **−0.3534 at 08:00, 12:00 and 21:00 alike**. So the premise "every term ranks a
+  late block badly" is true of `w.energy` and **false of the picker**. E-3a is a
+  *placement* question, not a picker one. This belongs in `PLAN-AUDIT-2.md` E-3.
+- **The 02:00 problem is already answered, for free.** `currentOpening` returns
+  null past 23:00, and at 00:30–02:00 the midnight-anchored day treats the small
+  hours as the *start* of a full day, so a demanding block there is maximally
+  expensive. ⚠️ **This only holds because `dayStart` is midnight-anchored.** If
+  any day-remaining measure were ever computed on *grid* minutes (5am-anchored),
+  01:00 would read as 25:00, past the close, and **02:00 would become the best
+  slot in the schedule.** Written down because it is a one-line trap.
+- **An axis restriction to physical is justified by measurement, for a reason
+  the user did not have in mind:** it is the containment boundary that stops a
+  term built for one stated preference from silently granting the opposite one.
+  Restricted to physical, a pure-mental block is byte-identical to today on every
+  statistic. Un-gated, it promotes late study on 14 of 27 days.
+
 ## 3. Candidate C — the day boundary as a modelled event: **REJECTED**
 
 Verdict from its own author: *the surgery does not earn itself.*
@@ -177,6 +214,85 @@ engine version, for comparison: twelve files and five of the most re-derived
 arithmetic sites in the codebase, for zero measured change.
 
 ---
+
+## 3b. The adversarial review — what no formulation escapes
+
+Commissioned separately, to be answered rather than admired. The failures it
+ranks as **inherent to the whole idea** are the ones that matter:
+
+- **⚠️ THE WITHIN-DAY SCORE BUDGET IS 0.048, AND ANY [0,1] TERM IS TWICE
+  EVERYTHING ELSE COMBINED.** `findBestSlot` computes `dayFillAfter` ONCE per
+  day, outside the slot loop, so `balance` is constant across every slot on that
+  day. `stability` is nonzero only at the task's own current start, `buffer`
+  saturates, `preference` is 0. **The only term that discriminates between 08:00
+  and 22:00 today is `proximity`, and its whole swing is 0.048.** Measured, a
+  remaining-day term moves 0.080 and a proximity term 0.085 — each **1.7× as
+  much score as every other term put together.** They do not contribute to the
+  time-of-day decision, they *become* it.
+  **Immunity: no design ships without printing its own measured within-day
+  spread beside 0.0484.**
+- **The exemption being asked for already exists TWICE.** `reserveWalk` restarts
+  each day at zero, so a 20:00–23:00 block changes the next day by *exactly*
+  `0.000` on all four axes — the engine already grants "nothing left to protect"
+  in full at the day boundary. Anything new pays for it a second time.
+- **⚠️ THE FEEDBACK LOOP RUNS THROUGH `learnedCapacity`, NOT THE PREFERENCE
+  MODEL.** Everyone assumed `modelMaySpeak() === false` blocked it. It does not.
+  Measured: planting one 90-minute demanding block at 21:30 into each rated day
+  moves capacity from `{4.354, 3.075, 8.438, 1.575}` to
+  `{5.500, 3.330, 9.368, 1.575}` — **mental +26%, social +11%.** The chain closes:
+  late work → deeper days → higher ceiling → `spent/capacity` falls → late work
+  looks cheaper. And `energyBudget().over` stops firing, so the surface that
+  would say "this is a lot" goes quiet exactly when it shouldn't.
+  **The p70 quantile is what makes this recoverable rather than a ratchet,
+  because it can move down — a property `Math.max` did not have.** That is an
+  unplanned benefit of the E-1 change already shipped.
+  **Immunity: days whose shape the term chose must not be evidence for the
+  ceiling the term divides by.**
+- **Leakage into automatic movers is the DEFAULT, not a risk.** There is one
+  `scoring.js#score`, and `placeTask` is called from eight places —
+  `autoSchedule`, `carryOver`, `conflicts`, `evacuate`, **`generate`** (commitment
+  sittings), `projects`, `ripple`, `Schedule`. Anything in `w.energy` is in all
+  of them on the commit that adds it, including displacement: dragging one task
+  onto another would silently re-place the evicted one through a lateness term.
+  **Immunity: the term lives in a function only the picker calls, with a test
+  asserting `findBestSlot`'s output is byte-identical before and after.**
+- **It becomes health advice the moment it produces a sentence.** And there is a
+  live example of the defect already: `rankOpenings` prints
+  *"costs your day nothing"* whenever `impact === 0` **regardless of rank** —
+  measured on the real save, that praise lands on the **last** row of six. A
+  lateness term promotes exactly those rows to first and makes the sentence the
+  headline. *"Costs your day nothing"* on a 22:30 hard workout is a sleep claim
+  the app is not entitled to make.
+  **Immunity: every string the term can cause is attributable to something the
+  user typed. The app may repeat their claim; it may not generate one.**
+- **⚠️ The picker already half-recommends the gym late at night, by
+  misclassification.** `suggest.js#isRestful` tests `L.mental < 0`, and the
+  exercise vector is `{mental −1, physical +2}` — so the gym counts as *restful*.
+  Measured: `suggestActivities` at 22:00 returns it under the reason *"You've been
+  running down — something restful?"*. A lateness bonus would double an effect
+  that is already there for the wrong reason.
+- **The sick-day tail cannot restrain a lateness term and makes it STRONGER.** B
+  and C read no capacity at all, so a 60% ceiling changes them by zero — while
+  the term beside them goes blind (saturated axes: 18 → 26 → 38 of 80 axis-days
+  at 100% → 80% → 60%). The lateness term's *share* of the decision grows on
+  exactly the days the feature exists to protect.
+  **Immunity: `SICK-DAYS.md` §4's "one scalar, one place" rule must reach it.**
+- **Both gates are cliffs.** A duration gate at 60 minutes produces a **0.039
+  score jump for one extra minute** — 81% of `proximity`'s entire 15-hour swing.
+  That is the knife-edge E-3 exists to remove, reintroduced by the gate rather
+  than the term. **Immunity: every gate is continuous — a ramp, or an axis
+  *weight*, never a predicate.**
+- **⚠️ `tests/sleep-guard.test.js` is not the backstop it looks like.** It binds
+  on **1 of 27** real nights, and its last test is written
+  `if (endsMonday) expect(…)` — **vacuous whenever the task lands on another
+  day**, which is precisely what a term reshuffling days would cause. It would
+  stay green through the whole failure. A test asserting the chosen *slot* rather
+  than the legal *window* belongs in that file before any term ships.
+
+**Verdict across the four:** proximity-to-rest (A) is the only one with a
+defensible shape, and only its evening arm, un-gated from physical, outside the
+picker — **provided the boundary is not user-authored.** B is a do-it-last
+machine. C reverses its own sign or invents a refused constant.
 
 ## 4. ⚠️ The blocker under all of it: there is no honest evening boundary
 
