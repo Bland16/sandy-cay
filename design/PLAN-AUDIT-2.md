@@ -72,7 +72,7 @@ These are wrong under any model. They should not wait for the second audit.
 | ~~F-6~~ | ~~`carryOver` must not carry unmarked past work~~ | — | **WITHDRAWN** — §2.1b |
 | **F-7** | `buildDeadlineBuffer` — drop the `runwayH = 0` exclusion and fix the median index | "2 came in late" when 3 did; median indexes a filtered array | ✅ SHIPPED 83f37ad |
 | **F-8** | `ranAsWritten` must consult completion | claims 3 sessions "ran" that have no record, one of them on a future Saturday | ✅ SHIPPED 2803b58 |
-| **F-9** | **Show future days; exclude them from every reading** — see §2.2 | 630 future minutes inside the sick week's bars, strips, tag table and denominator | open — needs `now` threaded through `buildWrapReport` |
+| **F-9** | **Exclude future days; add a horizon section** — see §2.2b | 630 future minutes inside the sick week's bars, strips, tag table and denominator | ✅ SHIPPED |
 | **F-10** | Label the two charts that disagree | sand bars 13h vs day strips 4h30m, same page, same day | ✅ SHIPPED f88334b |
 | **F-11** | **Surface unsorted tags in the Tag manager** — see §2.1 | 10% of the user's hours carry an all-zero load vector | ✅ SHIPPED fcfe8ef |
 
@@ -167,9 +167,20 @@ open question. Splitting the tense into its own section removes the need for one
 **D-2 is therefore closed** — the page does not need to say "2 days still to
 come" inline, because the horizon section is that sentence.
 
-**Still to decide when built: what the horizon section says.** A count, the days,
-the named commitments? It must stay a fact and not become a to-do list the report
-nags with (P-1). Not invented here.
+**Built 2026-09-20.** The section states the day count, the item count, the total
+minutes, and then each remaining day with its own count and minutes — **in date
+order**. Nothing else.
+
+⚠️ **Chronological ordering is load-bearing, not cosmetic.** Sorting by size
+would make it a ranking, and a ranking of work you have not done yet is a verdict
+waiting to happen (§7.1, P-1). There is a test for the ordering. The busiest day
+is deliberately not picked out, and the section is **absent** once the week is
+over rather than printing "0 days to come".
+
+⚠️ **The exclusion is report-only, and expressed by what `buildWrapReport`
+passes** — never by changing `queries.js`. `getWeekLoad` also drives the grid's
+load bar, which must see the whole week: a planner that stops counting Thursday
+on Wednesday is useless.
 
 ### 2.1 F-11, as the user actually asked for it
 

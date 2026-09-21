@@ -1081,9 +1081,72 @@ function buildRoutines(sched, ws) {
   return rows.length > 0 ? rows.sort((a, b) => b.spanMin - a.spanMin) : null;
 }
 
+/**
+ * What is still ahead in this week — F-9's "what's on the horizon", the user's
+ * own framing (2026-09-20).
+ *
+ * ⚠️ A FACT, NOT A TO-DO LIST. §7.1 forbids the report listing what you have not
+ * done, and a section headed "still to come" is one bad edit away from being
+ * exactly that. So it states DAYS and COUNTS and stops: how many days are still
+ * ahead, how much is on them, and the named days. No verdict, no "make sure you",
+ * no ranking, and no highlighting of the busiest one.
+ *
+ * It returns null once the week is over, which is the ordinary case for a report
+ * read at the weekend — the section simply is not there rather than printing
+ * "0 days to come".
+ */
+function buildHorizon(sched, ws, allWeekTasks, now) {
+  const todayKey = dateKey(now);
+  const ahead = allWeekTasks.filter((t) => !t.chunking && dateKey(t.startTime) > todayKey);
+  if (ahead.length === 0) return null;
+
+  const byDay = new Map();
+  for (const t of ahead) {
+    const k = dateKey(t.startTime);
+    const cur = byDay.get(k) || { key: k, date: t.startTime, count: 0, minutes: 0 };
+    cur.count += 1;
+    cur.minutes += t.getDuration();
+    byDay.set(k, cur);
+  }
+  // Chronological, because that is the only ordering a horizon can honestly
+  // have. Sorting by size would make it a ranking, and a ranking of work you
+  // have not done yet is a verdict waiting to happen.
+  const days = [...byDay.values()].sort((a, b) => a.key.localeCompare(b.key));
+  return {
+    dayCount: days.length,
+    itemCount: ahead.length,
+    minutes: ahead.reduce((n, t) => n + t.getDuration(), 0),
+    days: days.map((d) => ({ key: d.key, weekday: d.date.getDay(), count: d.count, minutes: d.minutes })),
+  };
+}
+
 export function buildWrapReport(sched, weekStartDate, now = new Date()) {
   const ws = weekStartOf(weekStartDate);
-  const weekTasks = sched.getTasksForWeek(ws);
+  const allWeekTasks = sched.getTasksForWeek(ws);
+
+  // ⚠️ THE REPORT DOES NOT READ FROM DAYS THAT HAVE NOT HAPPENED (F-9). The
+  // user's rule: *"don't project readings from things which haven't occurred
+  // yet."*
+  //
+  // Measured on their real sick week, which was generated on the Friday: the
+  // sheet reported *"how it felt: 4.7 out of 5 (12 rated)"* — the HIGHEST
+  // average of all four weeks, on the week they were ill — and carried 630
+  // scheduled minutes of Saturday and Sunday inside its energy figures for days
+  // that had not arrived. Nothing on the page said the week was unfinished.
+  //
+  // ⚠️ REPORT-ONLY, and that is why this is a filter here rather than a change
+  // in `queries.js`. `getWeekLoad` also drives the grid's load bar, which MUST
+  // see the whole week — a planner that stops counting Thursday on Wednesday is
+  // useless. So the exclusion is expressed by what this function passes, never
+  // by changing what the queries do by default.
+  //
+  // The boundary is the DAY, matching `isCharged` and F-8 rather than inventing
+  // a third notion of "elapsed": today counts in full, tomorrow does not count
+  // at all.
+  const todayKey = dateKey(now);
+  const elapsed = (t) => dateKey(t.startTime) <= todayKey;
+  const weekTasks = allWeekTasks.filter(elapsed);
+
   // Built once: the ledger feeds both the section and the "empty" test below,
   // and a week that owes hours is not an empty week.
   const commitments = buildCommitments(sched, ws);
@@ -1092,6 +1155,12 @@ export function buildWrapReport(sched, weekStartDate, now = new Date()) {
 
   const accomplished = buildAccomplished(sched, ws, weekTasks);
   const real = weekTasks.filter((t) => !t.chunking);
+
+  // What is still ahead — its own section, in its own tense (F-9, revised).
+  // The user's call: *"Does it matter? I think I know the day of week. You can
+  // do a what's on the horizon."* Splitting the tense out is what removes the
+  // need for a caption explaining why a chart draws days it will not total.
+  const horizon = buildHorizon(sched, ws, allWeekTasks, now);
 
   return {
     weekStart: ws,
@@ -1108,7 +1177,7 @@ export function buildWrapReport(sched, weekStartDate, now = new Date()) {
       // Spend and restore kept APART. `capacity` is null until ratings earn it
       // (P-2), and the chart must draw no ceiling while it is — a ring that
       // appears later would mean the earlier weeks' charts were lying.
-      energy: { ...spendRestore(sched, weekTasks), capacity: learnedCapacity(sched) },
+      energy: { ...spendRestore(sched, weekTasks, now), capacity: learnedCapacity(sched, now) },
       // What the week held that was not a task (A1 / DAY-NOTES D-4).
       context: buildWeekContext(sched, ws),
       // What the week owed, against a number the user typed (A2).
@@ -1119,6 +1188,8 @@ export function buildWrapReport(sched, weekStartDate, now = new Date()) {
       pattern: buildPatternDiff(sched, ws, now),
       // What a routine cost in elapsed time vs attention (A10).
       routines: buildRoutines(sched, ws),
+      // What is still to come. A fact, never a to-do list (P-1).
+      horizon,
     },
     insight: buildInsight(sched),
     suggestions: buildSuggestions(sched, ws, weekLoad, weekTasks),

@@ -24,7 +24,20 @@ const readSaved = () => {
   act(() => { vi.advanceTimersByTime(2500); });
   return JSON.parse(window.localStorage.getItem(STORAGE_KEY));
 };
-const thisWeek = () => weekStartOf(new Date());
+// ⚠️ PINNED TO THE END OF THE FIXTURE WEEK, and it has to be. `thisWeek()` reads
+// the REAL clock, so `at(1, …)` was Tuesday-of-whatever-week-it-is — which is in
+// the FUTURE whenever the suite runs early in a week. F-9 stops the report
+// reading from days that have not happened, so those fixtures silently left the
+// numbers and every week-wide assertion became a function of which weekday CI
+// happened to run on. Sunday 23:00 of a fixed week makes the week finished.
+const PINNED_WEEK = new Date(2026, 8, 14, 0, 0, 0); // Mon 14 Sep 2026
+beforeEach(() => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  vi.setSystemTime(new Date(2026, 8, 20, 23, 0, 0)); // Sun 20 Sep, week over
+});
+afterEach(() => { vi.useRealTimers(); });
+
+const thisWeek = () => weekStartOf(PINNED_WEEK);
 const at = (offset, h, m = 0) => {
   const d = addDays(thisWeek(), offset);
   d.setHours(h, m, 0, 0);

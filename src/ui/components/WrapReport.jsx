@@ -608,6 +608,41 @@ export default function WrapReport({ sched, weekStart, version, onBack, onOpenTa
                   routine is working — the machine ran while you did something
                   else. So this states two durations and draws no conclusion.
                   Deliberately no ratio and no "efficiency". */}
+              {/* What is still ahead — F-9, the user's own framing: "you can do a
+                  what's on the horizon". It exists so the rest of the sheet can
+                  stop drawing days it refuses to count, which is what made the
+                  sick week report its best-ever satisfaction score off two days
+                  that had not happened.
+
+                  ⚠️ A FACT, NOT A TO-DO LIST. §7.1 forbids the report listing
+                  what you have not done, and a section headed "still to come" is
+                  one bad edit away from being precisely that. Days and counts,
+                  in date order, and nothing else: no verdict, no "make sure
+                  you", no ranking, and the busiest day is not picked out.
+                  Chronological ordering is load-bearing — sorting by size would
+                  make it a ranking, and a ranking of work you have not done yet
+                  is a verdict waiting to happen. */}
+              {stats.horizon && (
+                <div className="rp-sub">
+                  <h3>Still to come this week</h3>
+                  <p className="rp-line">
+                    <b>{stats.horizon.dayCount}</b>{' '}
+                    {stats.horizon.dayCount === 1 ? 'day' : 'days'} still ahead, carrying{' '}
+                    <b>{stats.horizon.itemCount}</b>{' '}
+                    {stats.horizon.itemCount === 1 ? 'thing' : 'things'} and{' '}
+                    <b>{fmtDur(stats.horizon.minutes)}</b>. Nothing above counts them.
+                  </p>
+                  <ul className="rp-strip-legend">
+                    {stats.horizon.days.map((d) => (
+                      <li key={d.key}>
+                        {DAY_NAMES[d.weekday]} <b>{fmtDur(d.minutes)}</b>
+                        {' '}· {d.count} {d.count === 1 ? 'thing' : 'things'}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               {stats.routines && (
                 <div className="rp-sub">
                   <h3>What your routines actually cost</h3>

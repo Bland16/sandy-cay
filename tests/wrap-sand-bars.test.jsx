@@ -26,7 +26,12 @@ beforeEach(() => {
   //
   // `shouldAdvanceTime` so React's scheduler still runs.
   vi.useFakeTimers({ shouldAdvanceTime: true });
-  vi.setSystemTime(new Date(2026, 8, 14, 0, 0, 0));
+  // ⚠️ THE END OF THE FIXTURE WEEK, NOT THE START. F-9 stops the report reading
+  // from days that have not happened, so a clock at Monday 00:00 left Tue–Sun
+  // out of every week-wide number. Sunday 23:00 makes the week finished — and
+  // because unmarked work on a PAST day is not charged, the fixtures that assert
+  // an energy wash now have to say the work happened (see `did`).
+  vi.setSystemTime(new Date(2026, 8, 20, 23, 0, 0));
   window.localStorage.clear();
   window.matchMedia = (q) => ({
     matches: !/max-width/.test(q), media: q,
@@ -38,6 +43,13 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
 const ws = () => weekStartOf(new Date());
 const at = (o, h, m = 0) => { const d = addDays(ws(), o); d.setHours(h, m, 0, 0); return d; };
+
+// ⚠️ A PAST DAY ONLY CARRIES A LOAD IF IT WAS MARKED (rule (e),
+// design/AUDIT-UNMARKED-WORK.md §6). With the clock at the week's end every
+// fixture day is past, so a fixture that asserts an energy wash or a week total
+// must say its work happened — otherwise it is describing a week in which
+// nothing occurred, and the wash is correctly blank.
+const did = (t) => { t.completion = 'done'; return t; };
 
 const persist = (s) => {
   window.localStorage.setItem('sandycay.session', 'guest');
@@ -473,10 +485,10 @@ describe('§7.1 — when it happened, on one shared clock', () => {
     s.addBucket({ label: 'Study', tags: ['study'], load: { mental: 2 } });
     // A heavy block late in the evening: the reserve it leaves behind must still
     // be drawn after the window has closed.
-    s.addFixed({
+    did(s.addFixed({
       title: 'Late slog', tags: ['study'],
       startTime: at(0, 21), endTime: at(0, 23),
-    });
+    }));
     persist(s);
 
     render(<App />);
@@ -529,7 +541,7 @@ describe('§7.1 — when it happened, on one shared clock', () => {
     const s = new Schedule({ config: defaultConfig });
     s.addBucket({ label: 'Study', tags: ['study'], load: { mental: 2 } });
     for (let h = 8; h < 13; h += 1) {
-      s.addFixed({ title: `AM${h}`, tags: ['study'], startTime: at(0, h), endTime: at(0, h + 1) });
+      did(s.addFixed({ title: `AM${h}`, tags: ['study'], startTime: at(0, h), endTime: at(0, h + 1) }));
     }
     persist(s);
 
@@ -569,9 +581,9 @@ describe('§7.1 — when it happened, on one shared clock', () => {
   it('never paints two washes over the same hour', () => {
     const s = new Schedule({ config: defaultConfig });
     s.addBucket({ label: 'Study', tags: ['study'], load: { mental: 3, creative: 1 } });
-    s.addFixed({ title: 'Morning', tags: ['study'], startTime: at(0, 9), endTime: at(0, 11) });
-    s.addFixed({ title: 'Long lab', tags: ['study'], startTime: at(0, 11), endTime: at(0, 20) });
-    s.addFixed({ title: 'Nested call', tags: ['study'], startTime: at(0, 12), endTime: at(0, 17) });
+    did(s.addFixed({ title: 'Morning', tags: ['study'], startTime: at(0, 9), endTime: at(0, 11) }));
+    did(s.addFixed({ title: 'Long lab', tags: ['study'], startTime: at(0, 11), endTime: at(0, 20) }));
+    did(s.addFixed({ title: 'Nested call', tags: ['study'], startTime: at(0, 12), endTime: at(0, 17) }));
     persist(s);
 
     render(<App />);
@@ -604,8 +616,8 @@ describe('§7.1 — when it happened, on one shared clock', () => {
   it('deepens at each hour work finished, and never lightens while spending', () => {
     const s = new Schedule({ config: defaultConfig });
     s.addBucket({ label: 'Study', tags: ['study'], load: { mental: 3, creative: 1 } });
-    s.addFixed({ title: 'Long lab', tags: ['study'], startTime: at(0, 11), endTime: at(0, 20) });
-    s.addFixed({ title: 'Nested call', tags: ['study'], startTime: at(0, 12), endTime: at(0, 17) });
+    did(s.addFixed({ title: 'Long lab', tags: ['study'], startTime: at(0, 11), endTime: at(0, 20) }));
+    did(s.addFixed({ title: 'Nested call', tags: ['study'], startTime: at(0, 12), endTime: at(0, 17) }));
     persist(s);
 
     render(<App />);
@@ -636,7 +648,7 @@ describe('§7.1 — when it happened, on one shared clock', () => {
   it('never runs the wash off the end of the track', () => {
     const s = new Schedule({ config: defaultConfig });
     s.addBucket({ label: 'Study', tags: ['study'], load: { mental: 3, creative: 1 } });
-    s.addFixed({ title: 'Evening', tags: ['study'], startTime: at(0, 18), endTime: at(0, 21) });
+    did(s.addFixed({ title: 'Evening', tags: ['study'], startTime: at(0, 18), endTime: at(0, 21) }));
     persist(s);
 
     render(<App />);
@@ -669,11 +681,11 @@ describe('§7.1 — when it happened, on one shared clock', () => {
     s.addBucket({ label: 'Study', tags: ['study'], load: { mental: 3, creative: 1 } });
     s.addBucket({ label: 'Class', tags: ['class'], load: { mental: 2, social: 1 } });
     // Mon: one lecture. Tue: a five-hour day. Wed: a nine-and-a-half hour one.
-    s.addFixed({ title: 'Lecture', tags: ['class'], startTime: at(0, 10), endTime: at(0, 11, 30) });
-    s.addFixed({ title: 'Gym-ish', tags: ['class'], startTime: at(1, 9), endTime: at(1, 11) });
-    s.addFixed({ title: 'Thesis', tags: ['study'], startTime: at(1, 11), endTime: at(1, 14) });
-    s.addFixed({ title: 'Seminar', tags: ['class'], startTime: at(2, 9), endTime: at(2, 13) });
-    s.addFixed({ title: 'Problem set', tags: ['study'], startTime: at(2, 14), endTime: at(2, 19) });
+    did(s.addFixed({ title: 'Lecture', tags: ['class'], startTime: at(0, 10), endTime: at(0, 11, 30) }));
+    did(s.addFixed({ title: 'Gym-ish', tags: ['class'], startTime: at(1, 9), endTime: at(1, 11) }));
+    did(s.addFixed({ title: 'Thesis', tags: ['study'], startTime: at(1, 11), endTime: at(1, 14) }));
+    did(s.addFixed({ title: 'Seminar', tags: ['class'], startTime: at(2, 9), endTime: at(2, 13) }));
+    did(s.addFixed({ title: 'Problem set', tags: ['study'], startTime: at(2, 14), endTime: at(2, 19) }));
     persist(s);
 
     render(<App />);
@@ -702,9 +714,9 @@ describe('§7.1 — when it happened, on one shared clock', () => {
       // vacuously against a strip that renders no lane at all.
       s.addBucket({ label: 'Deep work', tags: ['study'], color: '#457b9d', load: { mental: 3, creative: 1 } });
       s.addBucket({ label: 'Exercise', tags: ['gym'], color: '#e07a5f', load: { physical: 2 } });
-      s.addFixed({ title: 'Thesis', tags: ['study'], startTime: at(0, 9), endTime: at(0, 12) });
-      s.addFixed({ title: 'Reading', tags: ['study'], startTime: at(1, 9), endTime: at(1, 11) });
-      s.addFixed({ title: 'Gym', tags: ['gym'], startTime: at(2, 7), endTime: at(2, 8) });
+      did(s.addFixed({ title: 'Thesis', tags: ['study'], startTime: at(0, 9), endTime: at(0, 12) }));
+      did(s.addFixed({ title: 'Reading', tags: ['study'], startTime: at(1, 9), endTime: at(1, 11) }));
+      did(s.addFixed({ title: 'Gym', tags: ['gym'], startTime: at(2, 7), endTime: at(2, 8) }));
       // Untagged work belongs to no bucket and must not be given one.
       s.addFixed({ title: 'Errand', startTime: at(3, 15), endTime: at(3, 16) });
       return s;
@@ -1050,11 +1062,12 @@ describe('§7.1 — the pattern, and the week', () => {
     // pattern put on the week is in exactly one of five states.
     expect(p.ranAsWritten + p.noRecord + p.upcoming + p.moved + p.skipped)
       .toBe(p.scheduled);
-    // This fixture marks nothing, and the pinned clock puts the session on
-    // TODAY — so it is still to come, not missing, and certainly not "ran".
+    // This fixture marks nothing and the clock now sits at the week's END, so
+    // the session is in the past with no record — the app does not know, and
+    // says so rather than claiming it ran.
     expect(p.ranAsWritten).toBe(0);
-    expect(p.noRecord).toBe(0);
-    expect(p.upcoming).toBe(1);
+    expect(p.noRecord).toBe(1);
+    expect(p.upcoming).toBe(0);
   });
 
   // ⚠️ A SKIPPED OCCURRENCE IS NOT MATERIALISED, so it is absent from the
@@ -1075,11 +1088,11 @@ describe('§7.1 — the pattern, and the week', () => {
     expect(after.scheduled).toBe(before.scheduled); // the pattern still put N on
     expect(after.skipped).toBe(1);
     // ⚠️ The skip moves the session out of whichever unrecorded bucket it was in
-    // — here `upcoming` — and NOT out of `ranAsWritten` (F-8). It was never
+    // — here `noRecord` — and NOT out of `ranAsWritten` (F-8). It was never
     // counted as having run, because nothing marked it. The old assertion was
     // measuring the bug: it required an unrecorded session to sit in the "ran"
     // bucket first, so that skipping it could take it back out.
-    expect(after.upcoming).toBe(before.upcoming - 1);
+    expect(after.noRecord).toBe(before.noRecord - 1);
     expect(after.ranAsWritten).toBe(before.ranAsWritten);
     expect(after.ranAsWritten + after.noRecord + after.upcoming + after.moved + after.skipped)
       .toBe(after.scheduled);
