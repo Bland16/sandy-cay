@@ -67,11 +67,11 @@ These are wrong under any model. They should not wait for the second audit.
 | **F-1** | Filter by category **before** the limit in `suggestActivities` | 7/9 categories empty → 9/9 | ✅ SHIPPED be4573f |
 | **F-2** | `ratedSamples()` carries `activityId` **and** `load` | both dropped in one object literal; `load` loss makes a session the user marked restful count as demanding | ✅ SHIPPED be4573f |
 | **F-3** | `lastFinishedLoad` reads the door, not `schedule.tasks` | 29% of hours see the wrong last item; 10% get the wrong axis; up to 45 of 46 candidates reorder | ✅ SHIPPED 994f0ef |
-| **F-4** | `buildOccurrence` reads `od.at`/`od.endAt` when present | a session recorded 20:15/90m prints as 18:15/60m; the "when it happened" strip draws it two hours early | open — needs a product call (which time does the report mean?) |
+| **F-4** | `buildOccurrence` reads `od.at`/`od.endAt` when present | a session recorded 20:15/90m prints as 18:15/60m; the "when it happened" strip draws it two hours early | ✅ SHIPPED — see §2.3 |
 | ~~F-5~~ | ~~`buildAccomplished` counts unmarked past work~~ | — | **WITHDRAWN** — §2.1b |
 | ~~F-6~~ | ~~`carryOver` must not carry unmarked past work~~ | — | **WITHDRAWN** — §2.1b |
 | **F-7** | `buildDeadlineBuffer` — drop the `runwayH = 0` exclusion and fix the median index | "2 came in late" when 3 did; median indexes a filtered array | ✅ SHIPPED 83f37ad |
-| **F-8** | `ranAsWritten` must consult completion | claims 3 sessions "ran" that have no record, one of them on a future Saturday | unblocked by the reversal — NEXT |
+| **F-8** | `ranAsWritten` must consult completion | claims 3 sessions "ran" that have no record, one of them on a future Saturday | ✅ SHIPPED 2803b58 |
 | **F-9** | **Show future days; exclude them from every reading** — see §2.2 | 630 future minutes inside the sick week's bars, strips, tag table and denominator | open — needs `now` threaded through `buildWrapReport` |
 | **F-10** | Label the two charts that disagree | sand bars 13h vs day strips 4h30m, same page, same day | ✅ SHIPPED f88334b |
 | **F-11** | **Surface unsorted tags in the Tag manager** — see §2.1 | 10% of the user's hours carry an all-zero load vector | ✅ SHIPPED fcfe8ef |
@@ -91,6 +91,28 @@ to "unmarked = didn't do it" (`AUDIT-UNMARKED-WORK.md` §6), and under that read
 Recorded rather than deleted, because a reversed decision leaves plausible-looking
 work items behind it and the next person needs to know they were considered and
 dropped on purpose.
+
+### 2.3 F-4, decided 2026-09-20 — the lived time wins, the type does not change
+
+> *"What do you mean like a moved one-off? It should record it at the time it was
+> moved at in that instance, but as an instance of that type."*
+
+So the clock comes from the record and the identity stays the pattern's.
+`rateOccurrence` already stamps `at`/`endAt` as the record of when a session
+really ran; `buildOccurrence` rebuilt the occurrence field by field and ignored
+them.
+
+**⚠️ One guard the user's answer does not cover, added deliberately: SAME
+CALENDAR DAY ONLY.** `expandRecurrence` decides week and day membership by the
+DECLARED start (`if (!inWeek(start)) return`), so honouring a lived time on
+another day would leave an occurrence sitting inside a day it no longer occupies
+— the "select by overlap, not by start" trap `DAY-NOTES.md` §8.2 already records,
+arriving from the other direction. Moving a session across days is what a `move`
+exception is for; this only ever adjusts the clock within the day the pattern
+already chose.
+
+**⚠️ The whole suite passed before the regression test existed** — 1385 tests,
+none covering it. That is why the defect survived.
 
 ### 2.2 F-9, decided 2026-09-20
 
@@ -121,10 +143,33 @@ threaded, defaulting to `new Date()`, and every builder that computes a reading
 has to honour it. That is the real cost of this item and the reason it is not a
 one-liner.
 
-**Unresolved — D-2: does the page SAY the week is unfinished?** Drawing days that
-are excluded from the numbers is honest only if the reader can tell. A line
-naming it ("2 days still to come") is the obvious answer and is a copy decision,
-not an arithmetic one. **Needs the user.**
+### 2.2b ⚠️ F-9 REVISED 2026-09-20 — exclude future days entirely, and add a horizon
+
+The decision above ("show them, exclude them from readings") was **superseded the
+same day** once the reason for showing them was examined:
+
+> *"Does it matter? I think I know the day of week. You can do a what's on the
+> horizon."*
+
+The only argument for drawing future days inline was so the user could see what
+was coming — and they already know. So:
+
+| | future days |
+|---|---|
+| every computed reading — averages, denominators, energy, satisfaction, capacity | **excluded** (unchanged) |
+| the week's charts and counts | **excluded too** — this is the change |
+| a separate **"on the horizon"** section naming what is still ahead | **new** |
+
+This is simpler than the first design *and* more honest: a chart that draws days
+it does not count needs a caption explaining itself, and the caption was the
+open question. Splitting the tense into its own section removes the need for one.
+
+**D-2 is therefore closed** — the page does not need to say "2 days still to
+come" inline, because the horizon section is that sentence.
+
+**Still to decide when built: what the horizon section says.** A count, the days,
+the named commitments? It must stay a fact and not become a to-do list the report
+nags with (P-1). Not invented here.
 
 ### 2.1 F-11, as the user actually asked for it
 

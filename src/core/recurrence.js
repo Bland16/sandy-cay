@@ -341,6 +341,39 @@ export function expandRecurrence(task, weekStartDate) {
  * generated, never placed, so the parent's verdict would be a lie about it).
  */
 function buildOccurrence(task, identity, key, start, end, od) {
+  // ⚠️ THE LIVED TIME WINS OVER THE PATTERN'S TIME (F-4, the user's call
+  // 2026-09-20: *"it should record it at the time it was moved at in that
+  // instance, but as an instance of that type"*).
+  //
+  // `rateOccurrence` stamps `at`/`endAt` as the record of when the session
+  // ACTUALLY sat, and this function ignored them — so a session recorded at
+  // 20:15 for 90 minutes was rebuilt at the pattern's 18:15 for 60. Measured on
+  // the user's real week: the focused total printed 48h 38m against 49h 8m
+  // true, one tag read 2h 35m against 3h 5m, and the "When it happened" strip —
+  // the section that exists to answer *"it put the tasks at 11pm"* — drew the
+  // block TWO HOURS EARLY.
+  //
+  // It stays an instance of the pattern: same identity, same `occurrenceDate`
+  // key, same `parentId`. Only the clock comes from the record. That is the
+  // user's distinction exactly — the time is the instance's, the type is the
+  // pattern's — and it is why this is not the same thing as a `move` exception,
+  // which changes what the pattern SAYS rather than recording what happened.
+  const livedStart = od.at ? new Date(od.at) : null;
+  const livedEnd = od.endAt ? new Date(od.endAt) : null;
+  // ⚠️ SAME CALENDAR DAY ONLY, and this guard is load-bearing. `expandRecurrence`
+  // decides membership by the DECLARED start (`if (!inWeek(start)) return`), so a
+  // lived time on another day would leave an occurrence sitting inside a week it
+  // no longer belongs to — and `getTasksForDay` would look for it on the wrong
+  // day. That is the "select by overlap, not by start" trap DAY-NOTES.md §8.2
+  // already records, arriving from the other direction.
+  //
+  // Moving a session to a DIFFERENT DAY is what a `move` exception is for; it
+  // changes the declared time and membership follows. This only ever adjusts the
+  // clock within the day the pattern already put the session on.
+  const usable = livedStart && !Number.isNaN(livedStart.getTime())
+    && livedEnd && !Number.isNaN(livedEnd.getTime())
+    && livedEnd.getTime() > livedStart.getTime()
+    && dateKey(livedStart) === dateKey(start);
   return new Task({
     id: identity,
     title: task.title,
@@ -349,8 +382,8 @@ function buildOccurrence(task, identity, key, start, end, od) {
     type: 'fixed', // occurrences behave as fixed anchors
     pinned: task.pinned,
     priority: task.priority,
-    startTime: start,
-    endTime: end,
+    startTime: usable ? livedStart : start,
+    endTime: usable ? livedEnd : end,
     deadline: null,
     placedBy: 'auto',
     completion: od.completion ?? null,
