@@ -8,11 +8,12 @@
 // No `role` enum — a bucket's character is its load vector (design/RECONCILIATION.md).
 import { useState, useMemo } from 'react';
 import { seedStarterBuckets, activityUsage, activityPage, activityCfg, parseBulkBlock, dedupeBulk, SORTS, SORT_LABELS } from '../../core/index.js';
-import TagEditor, { tagsInUse } from './TagEditor.jsx';
+import TagEditor, { tagsInUse, unsortedTags } from './TagEditor.jsx';
 import EnergyControl from './EnergyControl.jsx';
 import ActivityEditor from './ActivityEditor.jsx';
 import { DrillRow, Field } from './Drill.jsx';
 import Icon from '../Icon.jsx';
+import { fmtDur } from '../format.js';
 
 const ORPHANS = '__orphans__';
 const countActs = (n) => `${n} activit${n === 1 ? 'y' : 'ies'}`;
@@ -65,6 +66,9 @@ export default function TagManager({ sched, mutate }) {
   const [editingActivityId, setEditingActivityId] = useState(null);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkText, setBulkText] = useState('');
+  // F-11 — the unsorted-tags strip, closed by default. Opening it is something
+  // you reach for while tidying, never something the app raises at you (P-1).
+  const [unsortedOpen, setUnsortedOpen] = useState(false);
   // Activity list ergonomics (EDITOR-REDESIGN §7.1)
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('az');
@@ -77,6 +81,11 @@ export default function TagManager({ sched, mutate }) {
 
   const inBucket = (id) => activities.filter((a) => a.bucketId === id);
   const orphans = activities.filter((a) => !a.bucketId || !buckets.some((b) => b.id === a.bucketId));
+  // ⚠️ NOT THE SAME THING AS `orphans` ABOVE, and the names have to stay apart.
+  // `orphans` is ACTIVITIES with no bucket — a library-tidiness matter. This is
+  // TAGS ON REAL TASKS that no bucket holds, which is an energy-model matter:
+  // those tasks derive an all-zero load and are invisible to the battery.
+  const unsorted = useMemo(() => unsortedTags(sched), [sched, sched.rev]);
 
   // Enter/leave a bucket (or the orphans view). Always resets the paste-many sheet
   // so a half-open bulk box never leaks from one bucket into the next — and the
@@ -324,6 +333,51 @@ export default function TagManager({ sched, mutate }) {
           {buckets.length === 0 && (
             <button className="btn2" onClick={seed} aria-label="Seed starter buckets">＋ starter buckets</button>
           )}
+          {/* ⚠️ ABSENT WHEN THERE ARE NONE, rather than present and reporting
+              zero. A control that exists only to tell you there is nothing wrong
+              is a nag with extra steps (P-1), and this card is not a warning
+              surface. */}
+          {unsorted.length > 0 && (
+            <button
+              className="btn2 ghost"
+              onClick={() => setUnsortedOpen((v) => !v)}
+              aria-expanded={unsortedOpen}
+              aria-label={`${unsortedOpen ? 'Hide' : 'Show'} ${unsorted.length} unsorted tag${unsorted.length === 1 ? '' : 's'}`}
+            >
+              ⚑ unsorted tags ({unsorted.length})
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* F-11 — tags on real tasks that no bucket holds. They matter because
+          `loadForTask` derives a task's energy from its tags' buckets, so a task
+          matching none gets an all-zero vector and is silently invisible to the
+          battery, the budget card and the report. Measured on a real library:
+          a tenth of the record.
+
+          ⚠️ THE COPY STATES A FACT ABOUT THE DATA AND NO VERDICT ABOUT THE USER
+          (P-1). "These hours carry no energy" is physics; "you forgot to tag
+          things" is bookkeeping about a person.
+
+          Ordered by HOURS, not alphabetically — one stray tag on a three-hour
+          block deserves more attention than six on fifteen-minute ones, and the
+          ordering is the finding. */}
+      {unsortedOpen && unsorted.length > 0 && (
+        <div className="retiredstrip">
+          <div className="subhead">Unsorted tags</div>
+          <p className="psub-note" style={{ marginTop: 0 }}>
+            In no bucket, so the time on them counts as no energy — the battery
+            and the report can{'’'}t see it. Add a tag to a bucket to bring it in.
+          </p>
+          <div className="tagrow">
+            {unsorted.map(({ tag, minutes }) => (
+              <span key={tag} className="w cabtag">
+                {tag}
+                <span className="zmeta" style={{ marginLeft: 6 }}>{fmtDur(minutes)}</span>
+              </span>
+            ))}
+          </div>
         </div>
       )}
 

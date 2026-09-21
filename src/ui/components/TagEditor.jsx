@@ -14,6 +14,42 @@ export const tagsInUse = (sched) =>
   Array.from(new Set((sched?.tasks || []).flatMap((t) => t.tags || []))).sort();
 
 /**
+ * Tags you are actually using that belong to NO bucket — and the hours riding on
+ * them. Pure, so the arithmetic is testable without a DOM.
+ *
+ * ⚠️ A TAG IN NO BUCKET CARRIES NO ENERGY, SILENTLY. `loadForTask` derives a
+ * task's load from the buckets its tags belong to, and a task matching none gets
+ * an all-zero vector — so it is invisible to the battery, to `learnedCapacity`,
+ * to the budget card and to the report's spend/restore. Measured on a real
+ * library: **17 of 159 items, 19.2 of 192.7 hours — a tenth of the record** —
+ * were derived as zero-energy this way, 15 of them carrying no tags at all and
+ * 2 carrying a tag that exists on no bucket.
+ *
+ * Nothing in the app said so. This is what the Tag manager's button surfaces.
+ *
+ * `minutes` is hours-on-the-tag, not a count, because that is the quantity that
+ * tells you whether a stray tag matters — one mistyped tag on a 3-hour block is
+ * worth more attention than six on 15-minute ones.
+ */
+export function unsortedTags(sched) {
+  const buckets = sched?.buckets || [];
+  const bucketed = new Set(buckets.flatMap((b) => b.tags || []));
+  const minutes = new Map();
+  for (const t of sched?.tasks || []) {
+    if (t.chunking) continue; // a bookkeeping parent holds no real hours
+    for (const tag of t.tags || []) {
+      if (bucketed.has(tag)) continue;
+      minutes.set(tag, (minutes.get(tag) || 0) + (t.getDuration ? t.getDuration() : 0));
+    }
+  }
+  return [...minutes.entries()]
+    .map(([tag, min]) => ({ tag, minutes: min }))
+    // Most hours first — the ordering IS the finding, same rule the strip legend
+    // follows. Ties by name so the list is stable between renders.
+    .sort((a, b) => b.minutes - a.minutes || a.tag.localeCompare(b.tag));
+}
+
+/**
  * onRetire (optional) turns on the retire affordance — only the bucket editor
  * passes it (EDITOR-REDESIGN §8). The two verbs are deliberately distinct:
  *   ×      remove from this bucket — the tag itself is untouched
