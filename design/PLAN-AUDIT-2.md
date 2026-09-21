@@ -65,9 +65,82 @@ These are wrong under any model. They should not wait for the second audit.
 | **F-6** | `carryOver` must not carry unmarked past work | user's semantics; currently resurrects done work |
 | **F-7** | `buildDeadlineBuffer` — drop the `runwayH = 0` exclusion and fix the median index | "2 came in late" when 3 did; median indexes a filtered array |
 | **F-8** | `ranAsWritten` must consult completion | claims 3 sessions "ran" that have no record, one of them on a future Saturday |
-| **F-9** | The report must not include days that have not happened | 630 future minutes inside the sick week's bars, strips, tag table and denominator |
+| **F-9** | **Show future days; exclude them from every reading** — see §2.2 | 630 future minutes inside the sick week's bars, strips, tag table and denominator |
+
+### 2.2 F-9, decided 2026-09-20
+
+> *"I think show them in the report, exclude them from readings. Like don't
+> project readings from things which haven't occurred yet."*
+
+**The split is between what the page DRAWS and what the page CONCLUDES.**
+
+| | future days |
+|---|---|
+| sand bars, day strips, the plan — **what is on the calendar** | **shown** |
+| every computed reading — averages, denominators, energy, satisfaction, capacity, detector inputs | **excluded** |
+
+So a mid-week report still shows you Saturday and Sunday sitting there, and
+never counts them. The concrete failures this fixes, all measured on the sick
+week, which was generated on the Friday:
+
+- *"how it felt: 4.7 out of 5 (12 rated)"* — the **highest average of all four
+  weeks**, on the week the user was ill, with two days still to come.
+- *"18 sessions"* as a denominator, including a Saturday that had not arrived.
+- 630 scheduled minutes inside the energy figures for days that had not happened.
+
+**The boundary is `endTime <= now`**, the same test rule (e) uses for unmarked
+work (`AUDIT-UNMARKED-WORK.md` §6) — one notion of "elapsed", not two.
+
+⚠️ **`buildWrapReport(sched, weekStartDate)` takes no `now`.** It must be
+threaded, defaulting to `new Date()`, and every builder that computes a reading
+has to honour it. That is the real cost of this item and the reason it is not a
+one-liner.
+
+**Unresolved — D-2: does the page SAY the week is unfinished?** Drawing days that
+are excluded from the numbers is honest only if the reader can tell. A line
+naming it ("2 days still to come") is the obvious answer and is a copy decision,
+not an arithmetic one. **Needs the user.**
 | **F-10** | Label the two charts that disagree | sand bars 13h vs day strips 4h30m, same page, same day |
-| **F-11** | Warn at authoring when a tag matches no bucket | 10% of the user's hours carry an all-zero load vector |
+| **F-11** | **Surface unsorted tags in the Tag manager** — see §2.1 | 10% of the user's hours carry an all-zero load vector |
+
+### 2.1 F-11, as the user actually asked for it
+
+**Decided 2026-09-20.** *"Add a button to the tag manager which is just sort
+unsorted tags."*
+
+⚠️ **This supersedes F-11's original line**, which said "warn at authoring". An
+authoring-time warning interrupts you while you are typing a task; a button in
+the Tag manager is something you reach for when you are already tidying. The
+second is what was asked for and it is the better shape — it puts the repair in
+the place that repairs things.
+
+**An unsorted tag is one in use on a task that belongs to no bucket.** It matters
+because `loadForTask` derives a task's energy from the buckets its tags belong
+to, so a task matching none gets an all-zero vector and is **silently invisible**
+to the battery, `learnedCapacity`, the budget card and the report's
+spend/restore. Measured: **17 of 159 items, 19.2 of 192.7 hours — a tenth of the
+record** — 15 carrying no tags at all and 2 carrying a tag no bucket holds.
+
+**The design:**
+
+- A button in the Tag manager's bucket list, beside `＋ bucket` and `⤓ paste
+  many`, carrying the count. Absent entirely when there are none — a button that
+  reports zero is a nag.
+- It toggles a strip in the idiom the **Retired tags** strip already uses, so it
+  costs no new vocabulary.
+- **Ordered by hours on the tag, not alphabetically.** One mistyped tag on a
+  three-hour block deserves more attention than six on fifteen-minute ones, and
+  the ordering is the finding.
+- The strip states the consequence plainly — these hours carry no energy — and
+  **states no verdict about the user**. It is a fact about the data (P-1).
+
+**OPEN — D-1: does a chip do anything?** Surfacing is unambiguous and is what was
+asked for. *Sorting* them into buckets is the obvious next move and is a second
+design (drag to a bucket? a picker on the chip? assign-many?). **Not invented
+here.** v1 surfaces; assignment waits for a decision.
+
+**Pure helper, testable without a DOM:** `unsortedTags(sched)` →
+`[{ tag, minutes }]`, beside `tagsInUse` in `TagEditor.jsx`.
 
 ---
 
@@ -76,7 +149,48 @@ These are wrong under any model. They should not wait for the second audit.
 Each is stated as a question with candidates, a **decision criterion**, and the
 measurement that would settle it. Ranked by how much rests on the answer.
 
-### E-1 · The capacity estimator — **the highest-value test**
+### E-1 · The capacity estimator — **MEASURED 2026-09-20; awaiting the user's pick**
+
+Run under rule (e) (elapsed unmarked work not charged — `AUDIT-UNMARKED-WORK.md`
+§6). `evid` is how many rated days the estimator draws on; `over` is the share of
+the user's 27 working days it calls over capacity on at least one axis.
+
+```
+estimator                     mental physical  social creative  evid  over
+max of tolerated (SHIPPED)      4.48     7.31   11.84     1.88    4d   41%
+p80 of tolerated                4.40     3.96    9.20     1.68    4d   52%
+median of tolerated             4.08     2.87    8.04     1.32    4d   67%
+max of ALL rated days           9.08     7.31   20.19     3.57   15d    4%
+p90 of ALL rated days           7.57     3.88   14.39     2.29   15d   37%
+p80 of ALL rated days           5.97     3.26   11.41     1.87   15d   44%
+p70 of ALL rated days           5.19     2.83    8.77     1.75   15d   63%  <- RECOMMENDED
+median of ALL rated days        4.34     2.50    6.95     1.03   15d   70%
+```
+
+**Recommendation: the 70th percentile over ALL rated days.** It wins on three
+counts, not one:
+
+1. **63% matches the only calibration evidence that exists** — the user's own
+   report of being at or above their ceiling most days.
+2. **15 days of evidence rather than 4.** Every "of tolerated" row rests on four
+   days; that thinness is the estimator's worst property.
+3. **It breaks the circularity.** Filtering to days rated non-negative means a
+   day you tolerated can *never* be reported over its ceiling — the ceiling is
+   *defined* as the worst day you were fine on. Drawing from all rated days
+   removes that, and unlike `Math.max` a quantile can move **down** when
+   tolerance drops.
+
+**The physical axis is the clearest evidence against the shipped estimator:**
+`max of tolerated` says 7.31 on the strength of one outlier day, while every
+quantile puts it at 2.5–3.9. And `max of ALL rated days` flags only 4% of days,
+which shows `max` is the wrong statistic whatever filter is applied to it.
+
+**Still the user's call.** A single subjective "most days" is consistent with
+anything from 52% to 70%, so the quantile is a judgement and should be theirs.
+
+---
+
+### E-1 (original brief, retained for the reasoning)
 
 **Question.** `Math.max` over tolerated days publishes a ceiling supported by one
 observation per axis, and can only ratchet upward.
@@ -182,7 +296,54 @@ scores are a 5, variance 1.30. A near-constant target limits what any estimator
 can do. That is a conversation with the user about rating habits, not a code
 change.
 
-### E-5 · The bucket vectors — **a prerequisite, not an equation**
+### E-3a · When a demanding activity is the RIGHT answer — decided 2026-09-20
+
+The bake-off flagged one place its recommendation read wrong: with `dir = +1` the
+scorer ranks the **shortest** demanding activity first when the user is fresh,
+i.e. "do the short workout on a rested morning". Put to the user:
+
+> *"I like working out either early in the morning or last thing at night, so
+> yes. Do the workout while rested is accurate since I am rested in the morning —
+> but it also applies to at the end of the day prior to resting."*
+
+**So the flagged behaviour is CORRECT and the note comes off E-3.** But the
+second half is a new requirement and it is not the same thing:
+
+**A demanding block at the END of the day is not about arriving rested.** At
+22:00 the reserve is deep, so any scorer keyed on arrival depletion will rank a
+workout badly — exactly when the user wants it. What makes it fine is that
+**nothing follows it**: the cost of going deeper only matters if there is
+something left to protect, and at the end of the day there is not.
+
+**Nothing in the engine expresses this.** `arrivalDepletionFor` asks how spent
+you are when you sit down and never asks what comes after; `dipIfPlaced` asks
+what placing this costs the rest of the day, which is nearer but still measures
+the wrong end. The quantity that matters is **how much day remains after the
+block** — small or zero means a spend is nearly free.
+
+**To test in the second session**, and note it interacts with the sick-day tail:
+a recovery day's reduced ceiling should not push a late workout out, because the
+late workout was never the thing overloading the day.
+
+### E-5 · The bucket vectors — **RESOLVED 2026-09-20: they are correct**
+
+> *"A lecture costs more social energy for me since my classes tend to be seminar
+> style and I need to put effort into how I'm acting."*
+
+**The coursework bucket's `social 1.49 > mental 1.24` is right, and no
+re-authoring is needed.** This closes the largest open question hanging over the
+axis work, and it closes it in the direction that vindicates the model: the
++196 social load-hours against mental's +35 are not a parameterisation error.
+
+⚠️ **This changes how the separability analysis must be read.** That report
+proposed the bucket vectors as the likeliest confound — that the engine was
+disagreeing with its own user on 22 of 102 samples and that the disagreement,
+not physiology, was what the axis tests were measuring. **It was not.** The axis
+assignment matches how the user experiences their classes, so C1's null is a
+genuine null about the data rather than an artefact of mis-authoring, and the
+prerequisite E-6 was waiting on is already satisfied.
+
+### E-5b · The original bucket-vector brief, now closed
 
 **Question.** The coursework bucket carries `social 1.49 > mental 1.24`, so
 **every class, reading and lab in the history has `social` as its dominant spend

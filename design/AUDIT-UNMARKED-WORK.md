@@ -146,24 +146,54 @@ consequences, not a softening**, and it must ship as one.
 
 ---
 
-## 6. The decision — the user's, not the engine's
+## 6. RESOLVED 2026-09-20 — unmarked means "didn't do it"
 
-An unmarked task admits three readings, and the code currently picks **different
-ones in different modules**:
+The user's answer, in full: *"Unmarked = didn't do it probably."*
 
-| reading | rule | sick week reads |
-|---|---|---|
-| "I did it and didn't tick it" | (a) — today, in the energy module | 92.8 load-hours |
-| "I don't know" | (e) | 48.2 |
-| "probably partly" | (f) | 70.5 |
+**This REVERSED an answer given two days earlier** (*"Let's have it be I did it
+just didn't tick it and I will simply delete things I don't do"*), and the
+reversal is recorded rather than quietly swapped because work was already
+committed against the first reading. The second answer also fits the evidence
+better: the sick week is **40% unmarked against a 1.5% baseline**, an anomaly
+that "I did it and didn't tick it" cannot explain.
 
-Whichever is chosen, **several call sites must change to match**, because the
-energy walks read `null` as *happened* while `carryOver`, `autoSchedule`,
-`projects` and `skipStreakCheck` all read it as *unfinished*. The inconsistency
-is the defect; the reading is a preference.
+| reading | rule | sick week reads | status |
+|---|---|---|---|
+| "I did it and didn't tick it" | (a) — what the energy module does today | 92.8 load-hours | **rejected** |
+| "I didn't do it" | **(e)** | **48.2** | **CHOSEN** |
+| "probably partly" | (f) | 70.5 | the hedge, if "probably" turns out to matter |
 
-**This is not a bug with an obvious fix and must not be resolved by an
-implementer's judgement.**
+**Rule (e), precisely:** an **elapsed** unmarked task is not evidence and is not
+charged; work still ahead of you is still a plan and is charged normally. Keyed
+on `endTime <= now`, never on `startTime` — §1 measures why the start-time
+version fixes nothing and breaks every forward-looking number.
+
+### 6.1 What this changes, and what it does NOT
+
+**No change needed** — these were already right under this reading, and were
+briefly scheduled for "fixes" that would have broken them:
+
+- `buildAccomplished` already counts only `done`/`partial`. It is correct.
+- `carryOver` carrying unmarked past work forward is correct — that IS the
+  unfinished work.
+- `skipStreakCheck`'s refusal to infer from silence (*"no record at all — WE DO
+  NOT KNOW"*) is correct and was always the honest reading.
+
+**Now unblocked:**
+
+- **`ranAsWritten` must consult completion** — it claims sessions "ran" that have
+  no record. (F-8.)
+- **The energy module needs rule (e)** — the battery, `learnedCapacity`,
+  `spendRestore`, `energyTrajectory` and the report's energy section all charge
+  elapsed unmarked work in full today.
+
+**The learned ceilings fall**, because §3's 75-minute block was not done:
+mental **5.37 → 4.48**, creative **2.17 → 1.88**.
+
+### 6.2 U-1 is answered
+
+The 10 Sep block was not done. Two of the four learned ceilings were being set by
+work that did not happen.
 
 ---
 
