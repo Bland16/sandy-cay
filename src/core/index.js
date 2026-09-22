@@ -55,6 +55,7 @@ export { energyBudget, energyCalibration, learnedCapacity, capacityPrior, arriva
 export {
   toICS, parseICS, importEvents, eventToTask, deriveTags,
   toRRULE, fromRRULE, toICSDate, fromICSDate, eventToDayNote, isStoreEvent,
+  matchesTagFilter, parseTagFilter,
 } from './ical.js';
 export {
   driftCheck,

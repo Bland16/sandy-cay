@@ -466,6 +466,30 @@ export function eventToTask(event, { sourceTags = [], calendarId = null, importe
  * @param {object} opts.tagFilter — only keep events carrying one of these tags
  *   ([] / null = keep everything).
  */
+/**
+ * Does this task carry one of the wanted tags? `[]` / null means "everything".
+ *
+ * ⚠️ ONE RULE FOR BOTH DIRECTIONS. The import side has always matched
+ * case-insensitively on ANY of the named tags (`importEvents`, below), and the
+ * export side had no filter at all — so the Cabana's single tag box meant
+ * "narrow what comes in" and was silently ignored on the way out. A second,
+ * subtly different matcher for export would make one box mean two things.
+ *
+ * Exported so the Cabana can use it without importing the whole ICS module's
+ * behaviour, and so it is testable on its own.
+ */
+export function matchesTagFilter(task, tagFilter) {
+  const wanted = (tagFilter || []).map((s) => String(s).toLowerCase()).filter(Boolean);
+  if (!wanted.length) return true;
+  const tags = ((task && task.tags) || []).map((t) => String(t).toLowerCase());
+  return tags.some((t) => wanted.includes(t));
+}
+
+/** Parse the Cabana's comma-separated tag box into the list the filters take. */
+export function parseTagFilter(text) {
+  return String(text || '').split(',').map((s) => s.trim()).filter(Boolean);
+}
+
 export function importEvents(events, {
   sourceTags = [], tagFilter = null, from = null, to = null,
   calendarId = null, importedAt = null,

@@ -9,6 +9,7 @@ import { useRef, useState } from 'react';
 import {
   addDays, toICS, parseICS, importEvents, toRRULE,
   planImport, applyImport, describeImport,
+  matchesTagFilter, parseTagFilter,
 } from '../../core/index.js';
 import {
   getAccessToken, listCalendars, fetchEvents, taskToGoogleEvent, insertEvent, clearRange,
@@ -147,9 +148,18 @@ export default function CalendarCard({ sched, weekStart, mutate, showToast }) {
 
   // ---- .ics ---------------------------------------------------------------
   const exportIcs = () => {
-    const parents = sched.tasks.filter((t) => !t.isOccurrence && !t.chunking);
+    // ⚠️ THE TAG BOX APPLIES IN BOTH DIRECTIONS NOW. It was read by the import
+    // paths only, so typing a tag and pressing Export sent EVERYTHING, silently,
+    // with nothing on screen saying the box had been ignored.
+    const tags = parseTagFilter(tagFilter);
+    const parents = sched.tasks
+      .filter((t) => !t.isOccurrence && !t.chunking)
+      .filter((t) => matchesTagFilter(t, tags));
     download('sandy-cay.ics', toICS(parents), 'text/calendar');
-    showToast(`Exported ${parents.length} events — import it in Google Calendar → Settings → Import`);
+    showToast(
+      `Exported ${parents.length} events${tags.length ? ` tagged ${tags.join(', ')}` : ''}`
+      + ' — import it in Google Calendar → Settings → Import',
+    );
   };
 
   const importIcs = (e) => {
@@ -235,15 +245,38 @@ export default function CalendarCard({ sched, weekStart, mutate, showToast }) {
       // window, on the strength of a comment asserting the target was dedicated
       // to Sandy Cay while the default target was the store calendar itself.
       // Whatever else lives in that week now survives, and is reported.
-      const { removed, kept } = await clearRange(token, target, from, to, isAppWrittenEvent);
-      const tasks = sched.getTasksForWeek(weekStart).filter((t) => !t.isOccurrence);
+      const tags = parseTagFilter(tagFilter);
+      // ⚠️ A FILTERED PUSH CLEARS ONLY WHAT IT IS REPLACING. The deciding case is
+      // the one this feature exists for: push `study` to a calendar on Monday and
+      // `gym` to the same calendar on Tuesday. A full clear would make Tuesday
+      // silently delete Monday, which defeats the point of per-tag exports.
+      //
+      // ⚠️ AN EVENT WITH NO RECORDED TAGS IS KEPT, NOT DELETED. Events pushed
+      // before this shipped carry no `tags` property, and no record of tags is
+      // not evidence of having none — inferring absence from silence is the
+      // mistake `skipStreakCheck` already refuses to make. The cost is honest and
+      // visible: a re-push after upgrading may leave one generation of
+      // duplicates, and the toast reports them under "left N alone".
+      const ours = tags.length
+        ? (ev) => {
+          if (!isAppWrittenEvent(ev)) return false;
+          const p = (ev.extendedProperties && ev.extendedProperties.private) || {};
+          if (p.tags === undefined) return false; // unknown tags — leave it alone
+          return matchesTagFilter({ tags: String(p.tags).split(',') }, tags);
+        }
+        : isAppWrittenEvent;
+      const { removed, kept } = await clearRange(token, target, from, to, ours);
+      const tasks = sched.getTasksForWeek(weekStart)
+        .filter((t) => !t.isOccurrence)
+        .filter((t) => matchesTagFilter(t, tags));
       let n = 0;
       for (const t of tasks) {
         await insertEvent(token, target, taskToGoogleEvent(t, toRRULE(t)));
         n += 1;
       }
       const name = (cals.find((c) => c.id === target) || {}).name || 'calendar';
-      showToast(`Exported ${n} events to "${name}"${removed ? ` · replaced ${removed}` : ''}`
+      showToast(`Exported ${n} events${tags.length ? ` tagged ${tags.join(', ')}` : ''} to "${name}"`
+        + `${removed ? ` · replaced ${removed}` : ''}`
         + `${kept ? ` · left ${kept} event${kept === 1 ? '' : 's'} alone` : ''}`);
     } catch (err) {
       showToast(err.message);
@@ -381,6 +414,10 @@ export default function CalendarCard({ sched, weekStart, mutate, showToast }) {
         </div>
       )}
 
+      {/* ⚠️ THE LABEL SAID "IMPORT" AND THE BOX MEANT IT. Only the import paths
+          read this, so typing a tag and pressing Export sent everything, with
+          nothing on screen admitting the box had been ignored. Both directions
+          honour it now, and the label has to say so or the old reading persists. */}
       <div className="zonewin" style={{ marginTop: 10 }}>
         <span>only tags:</span>
         <input
@@ -388,11 +425,13 @@ export default function CalendarCard({ sched, weekStart, mutate, showToast }) {
           placeholder="study, work — blank = all"
           onChange={(e) => setTagFilter(e.target.value)}
           style={{ flex: 1 }}
-          aria-label="Import tag filter"
+          aria-label="Tag filter, applied to both import and export"
         />
       </div>
       <p className="insight" style={{ opacity: 0.75 }}>
-        Calendars have no tags, so a tag is a <b style={{ color: 'var(--cab-accent)' }}>#hashtag</b> in the title,
+        Applies <b>both ways</b> — what comes in, and what goes out.
+        {' '}Calendars have no tags, so on the way in a tag is a{' '}
+        <b style={{ color: 'var(--cab-accent)' }}>#hashtag</b> in the title,
         or the name of the calendar it came from.
       </p>
 
