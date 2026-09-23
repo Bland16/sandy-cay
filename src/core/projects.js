@@ -5,8 +5,9 @@
 // there is genuinely no capacity (→ parent.schedulingWarning).
 
 import { Task } from './Task.js';
-import { addMinutes } from './time.js';
+import { addMinutes, dayStart } from './time.js';
 import { intervalsOf, placeTask, recurrenceIntervals } from './placement.js';
+import { spreadDays, eachDay } from './generate.js';
 
 /** Slice `total` minutes into chunks each within [min, max], as even as
  *  possible. */
@@ -91,20 +92,54 @@ export function redistribute(schedule, parent, opts = {}) {
     ? now
     : range.from;
   const sizes = sliceChunks(remaining, minChunk, maxChunk);
+
+  // ⚠️ SPREAD THE CHUNKS ACROSS THE RANGE, RATHER THAN HANDING THEM ALL THE SAME
+  // FLOOR (design/PROJECT-SPREAD.md). Reported from the running app: a project
+  // set Friday-to-Thursday put every session on one day.
+  //
+  // The cause was this loop giving every chunk the same `from`, while
+  // `proximity` is the heaviest weight in the scorer (0.5) against `balance`
+  // (0.35) — so proximity wins, chunks crowd the front of the range, and they
+  // only move on when a day physically runs out of room. Reproduced: 600 minutes
+  // over seven days laid four sittings on day one and one on day two.
+  //
+  // This is not the scorer misbehaving. SPEC §3.7 says chunks are "placed by
+  // §2", and §2's balance term was never going to outvote proximity on its own;
+  // spreading has to be asked for. `spreadDays` is the ask, and COMMITMENTS HAVE
+  // ALWAYS CALLED IT — two features laying N sittings over a range, and only one
+  // of them spread. Its docblock carries the finding: "burnout is clustering,
+  // not sitting length."
+  //
+  // ⚠️ THE DAY IS A FLOOR, NOT A FENCE. `to` stays `range.until`, so a chosen
+  // day that turns out to be full lets the chunk fall forward rather than park.
+  // `commitmentWeek` records what the strict version cost: in a 2000-week fuzz,
+  // 68 of 77 parked sittings were a sitting re-homed onto a day without room.
+  const days = eachDay(from, range.until);
+  const spread = spreadDays(days, sizes.length);
+  // More chunks than days has to double up somewhere; round-robin distributes
+  // the extras instead of dropping them all back on day one.
+  const floorFor = (i) => {
+    if (!spread.length) return from;
+    const d = dayStart(spread[i % spread.length]);
+    return d.getTime() > from.getTime() ? d : from;
+  };
+
   const created = [];
   let occupied = intervalsOf(schedule.tasks.filter((t) => !t.chunking && !t.recurrence))
     .concat(recurrenceIntervals(schedule, from, range.until)); // occurrences are anchors (§4.4)
-  for (const size of sizes) {
+  for (let i = 0; i < sizes.length; i += 1) {
+    const size = sizes[i];
+    const chunkFrom = floorFor(i);
     const child = new Task({
       title: parent.title,
       tags: [...parent.tags],
       type: 'flexible',
       parentId: parent.id,
-      startTime: from,
-      endTime: addMinutes(from, size),
+      startTime: chunkFrom,
+      endTime: addMinutes(chunkFrom, size),
       deadline: range.until,
     });
-    const res = placeTask(schedule, child, { from, to: range.until, occupied });
+    const res = placeTask(schedule, child, { from: chunkFrom, to: range.until, occupied });
     child.placedBy = 'auto';
     schedule.tasks.push(child);
     occupied.push({ start: child.startTime, end: child.endTime, task: child });

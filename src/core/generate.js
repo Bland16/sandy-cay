@@ -52,7 +52,11 @@ export function openMinutesFor(schedule, probe, from, to, occupied, after = null
   return total;
 }
 
-function eachDay(from, to) {
+/** Every day from `from` to `to`, inclusive, at day start.
+ *  Exported so `projects.js` spreads over the same day walk rather than growing
+ *  a second one — three copies of a day-walk is how zone bands painted weeks
+ *  the zone did not run in (sharp edge #14). */
+export function eachDay(from, to) {
   const out = [];
   let d = dayStart(from);
   const last = dayStart(to);
