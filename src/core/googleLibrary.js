@@ -25,6 +25,7 @@
 
 import { chunkString, checksum, byteLength, CHUNK_BYTES } from './googleEncode.js';
 import { Schedule } from './Schedule.js';
+import { taskHash } from './syncPlan.js';
 
 const NS = 'sc';
 export const LIBRARY_VERSION = 1;
@@ -244,7 +245,7 @@ export function decodeLibrary(events) {
   if (!Number.isInteger(v) || v > LIBRARY_VERSION) {
     // Same refusal as a task: a partial read would drop what this build does
     // not understand, and writing that back destroys it for the newer client.
-    return { ok: false, error: `library version ${first[`${NS}.v`]} is newer than ${LIBRARY_VERSION}` };
+    return { ok: false, code: 'newer', error: `library version ${first[`${NS}.v`]} is newer than ${LIBRARY_VERSION}` };
   }
 
   const expectedParts = Number(first[`${NS}.lib.parts`]);
@@ -315,7 +316,7 @@ export function libraryFootprint(scheduleJson) {
  * Counts are reported ALONGSIDE, because "config differs" is unactionable while
  * "buckets: 11 here, 4 there" tells you which side is the stale one.
  */
-export function diffLibrary(here = {}, there = {}) {
+export function diffLibrary(here = {}, there = {}, { ignore = [] } = {}) {
   const sizeOf = (v) => {
     if (v == null) return 0;
     if (Array.isArray(v)) return v.length;
@@ -352,13 +353,62 @@ export function diffLibrary(here = {}, there = {}) {
     if (typeof v === 'object') return Object.keys(v).length ? v : null;
     return v;
   };
-  const rows = LIBRARY_KEYS.map((key) => ({
+  const rows = LIBRARY_KEYS.filter((key) => !ignore.includes(key)).map((key) => ({
     key,
     same: JSON.stringify(norm(here[key])) === JSON.stringify(norm(there[key])),
     here: sizeOf(here[key]),
     there: sizeOf(there[key]),
   }));
   return { same: rows.every((r) => r.same), rows, differing: rows.filter((r) => !r.same) };
+}
+
+/**
+ * Collections in the library that are COMPUTED, not authored. The model is
+ * retrained from rated tasks (`learning.js`), so two devices that each close the
+ * week retrain to different numbers without anybody having decided anything.
+ * `snapshots` are each week's planned baseline, taken by whichever device first
+ * auto-schedules that week (`Schedule#autoSchedule`) — two devices doing so is
+ * not a disagreement anyone could answer. Both still ride in the library; they
+ * just cannot be a reason to stop the sync.
+ */
+export const DERIVED_LIBRARY_KEYS = ['model', 'snapshots'];
+
+/**
+ * GS-8's question, answered with what we LAST SYNCED as the third witness.
+ *
+ *   agree     — the two copies match (ignoring derived keys). Carry on.
+ *   adopt     — take the calendar's copy. Either this device is a fresh install,
+ *               or its library still hashes to `libHash`: it has not changed
+ *               since our last sync, so the calendar's difference is somebody
+ *               else's edit and taking it loses nothing.
+ *   keep      — the CALENDAR still hashes to `libHash`: nobody else has
+ *               written since our last sync, so the difference is ours, and the
+ *               pass pushes it as usual.
+ *   conflict  — both sides changed since our last sync. Only now does a human
+ *               have to choose.
+ *
+ * ⚠️ THE GATE USED TO HAVE ONLY "FRESH" AS ITS THIRD CASE, so any library edit
+ * on one device froze the other, and — because rollover retrains the model and
+ * stamps `lastSeenWeek` on mount, before the sync can pull — the first pass of
+ * every week froze even a device used alone. Measured, 2026-10-01: one device,
+ * nothing touched, a Monday reload → `FREEZE model, lastSeenWeek`.
+ *
+ * ⚠️ `libHash` MISSING means "we do not know what we last synced", and that is
+ * answered conservatively: never adopt or keep on the hash — compare the
+ * authored keys, and freeze on a difference there, as before this existed.
+ *
+ * Pure: no network, no clock, no mutation.
+ */
+export function libraryGate({ local, remote, libHash = null, freshHash = null }) {
+  const full = diffLibrary(local, remote);
+  if (full.same) return { action: 'agree', diff: full };
+  const localHash = taskHash(local);
+  if (freshHash && localHash === freshHash) return { action: 'adopt', reason: 'fresh', diff: full };
+  if (libHash && localHash === libHash) return { action: 'adopt', reason: 'unchanged here', diff: full };
+  if (libHash && taskHash(remote) === libHash) return { action: 'keep', reason: 'unchanged there', diff: full };
+  const authored = diffLibrary(local, remote, { ignore: DERIVED_LIBRARY_KEYS });
+  if (authored.same) return { action: 'keep', reason: 'only derived keys differ', diff: full };
+  return { action: 'conflict', diff: authored };
 }
 
 /**

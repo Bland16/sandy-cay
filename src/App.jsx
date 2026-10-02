@@ -65,7 +65,7 @@ function truncationFor(task, at) {
 }
 
 export default function App() {
-  const { sched, version, mutate, replace, reset, persistence, saveState } = useEngine();
+  const { sched, version, mutate, replace, reset, flush, persistence, saveState } = useEngine();
   const now = useRef(new Date()).current;
   const [weekStart, setWeekStart] = useState(() => weekStartOf(now));
   const viewport = useViewport(); // 'phone' | 'tablet' | 'desktop' — SPEC §11
@@ -236,6 +236,8 @@ export default function App() {
     version,
     showToast,
     onAuthLost,
+    // The sync record must never be saved ahead of the schedule it describes.
+    flush,
   });
 
   const closePanel = useCallback(() => setSelection(null), []);

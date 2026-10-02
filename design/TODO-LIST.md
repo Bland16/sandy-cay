@@ -310,3 +310,30 @@ cannot. Day notes were moved out of the library for the same reason (GS-11).
 synced in its own collection, per item, not in `activities`/the library.**
 That also dissolves M-1, M-5's library rows and most of §6 for todos. S-1/S-2
 remain as existing bugs worth fixing on their own. **Awaiting the user.**
+
+### 8.5 Decided 2026-10-02 (the user took every recommendation)
+
+1. **Storage: own sync, per todo.** A todo is an `Activity`-shaped object in
+   its OWN collection, synced per item like day notes, never in the library.
+2. **Existing sync bugs first**, in their own commit: S-1/S-2 (the Monday
+   pause), S-5 (a broken library read skipping the gate), S-6 (write order),
+   S-4 (`libHash` ahead of the saved schedule).
+3. **Overdue:** neutral ("was due 3 Oct", no coral, no nag), and it STAYS in
+   the lifted tier until done or deleted.
+4. **Quick add:** a "+ todo" line in the Right-now panel, beside the todos
+   toggle, as well as the Cabana card.
+
+### 8.6 Step 0 shipped 2026-10-02: the library gate
+
+`libraryGate` (googleLibrary.js): agree / adopt / keep / conflict, with
+`libHash` as the third witness and `model` + `snapshots` as derived keys that
+never freeze. S-1, S-2, S-4, S-5, S-6 fixed. The bug-check then found that a
+session which had settled kept pushing over the calendar without looking, so
+the gate now re-opens whenever the calendar moved since this session last saw
+it (`remoteSeen`, NOT `libHash` — an adopt that does not round-trip would
+otherwise re-adopt every pass). A failed library push no longer blocks tasks;
+"replace the calendar" no longer claims success over copies it could not
+remove, and is withheld over a newer build's library.
+
+**Still open:** a Monday browser check (does the pause still appear?); S-7's
+cross-device task-id collision.

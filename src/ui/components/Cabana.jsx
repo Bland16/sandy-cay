@@ -280,10 +280,21 @@ export default function Cabana({
                     answered. */}
                 {sync.libraryState && sync.libraryState.conflict && (
                   <div className="syncconflict">
-                    <p className="cabwarn">
-                      <b>Sync is paused.</b> This device and the calendar disagree about your
-                      setup, and nothing can be written either way until you say which is right.
-                    </p>
+                    {sync.libraryState.unreadable ? (
+                      <p className="cabwarn">
+                        <b>Sync is paused.</b> The setup stored in the calendar cannot be read
+                        ({sync.libraryState.unreadable}), so nothing can be written until you
+                        say which copy is right.
+                        {sync.libraryState.newer
+                          ? ' Another device saved it with a newer version of Sandy Cay: reload this page first, rather than replacing it.'
+                          : ' If this device is right, replacing the calendar’s copy also clears the unreadable one.'}
+                      </p>
+                    ) : (
+                      <p className="cabwarn">
+                        <b>Sync is paused.</b> This device and the calendar disagree about your
+                        setup, and nothing can be written either way until you say which is right.
+                      </p>
+                    )}
                     <ul className="synclibdiff">
                       {sync.libraryState.rows.map((r) => (
                         <li key={r.key}>
@@ -295,20 +306,26 @@ export default function Cabana({
                     {/* Both are destructive to one side, so both say so plainly
                         and neither is styled as the safe default. */}
                     <div className="chest">
-                      <button
-                        className="btn2"
-                        disabled={sync.status === 'syncing'}
-                        onClick={() => sync.pushLibraryNow().catch((e) => showToast(e.message))}
-                      >
-                        This device is right — replace the calendar
-                      </button>
-                      <button
-                        className="btn2"
-                        disabled={sync.status === 'syncing'}
-                        onClick={() => sync.deriveLibraryFromCalendar().catch((e) => showToast(e.message))}
-                      >
-                        The calendar is right — derive from it
-                      </button>
+                      {/* Not offered over a NEWER build's library: this build
+                          would write back only what it understands. */}
+                      {!sync.libraryState.newer && (
+                        <button
+                          className="btn2"
+                          disabled={sync.status === 'syncing'}
+                          onClick={() => sync.pushLibraryNow().catch((e) => showToast(e.message))}
+                        >
+                          This device is right — replace the calendar
+                        </button>
+                      )}
+                      {!sync.libraryState.unreadable && (
+                        <button
+                          className="btn2"
+                          disabled={sync.status === 'syncing'}
+                          onClick={() => sync.deriveLibraryFromCalendar().catch((e) => showToast(e.message))}
+                        >
+                          The calendar is right — derive from it
+                        </button>
+                      )}
                     </div>
                     <p className="cabhint">
                       Your tasks are untouched by either choice. This is about buckets, zones,

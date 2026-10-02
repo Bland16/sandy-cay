@@ -144,6 +144,8 @@ export async function pull(api, calendarId) {
     incomplete,
     library: lib.ok ? lib.library : null,
     libraryError: lib.ok || lib.empty ? null : lib.error,
+    /** Written by a newer build — replacing it from here would destroy what this build cannot read. */
+    libraryNewer: lib.code === 'newer',
     dropped,
     /** Task ids that exist in Google but could not be read. */
     unreadable: new Set(dropped.map((d) => d.taskId).filter(Boolean)),
@@ -297,8 +299,12 @@ export async function pushLibrary(api, calendarId, scheduleJson, { dayKey } = {}
     written.push(ev && ev.id);
   }
 
+  // ⚠️ COUNTED, not swallowed. A remove that fails leaves two copies, which
+  // the next pull refuses as unreadable — and a "replace the calendar" button
+  // that reported success over that would send the user round in a loop.
+  let failedRemoves = 0;
   for (const old of existing) {
-    await api.remove(calendarId, old.id).catch(() => {});
+    await api.remove(calendarId, old.id).catch(() => { failedRemoves += 1; });
   }
-  return { events: written.length, replaced: existing.length };
+  return { events: written.length, replaced: existing.length - failedRemoves, failedRemoves };
 }

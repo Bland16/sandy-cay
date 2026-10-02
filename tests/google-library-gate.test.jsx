@@ -19,7 +19,9 @@ import { renderHook, act } from '@testing-library/react';
 import { Schedule, defaultConfig, seedStarterBuckets } from '../src/core/index.js';
 import {
   LIBRARY_KEYS, LIBRARY_FIELD, libraryFrom, diffLibrary, applyLibrary,
+  libraryGate, encodeLibrary, decodeLibrary,
 } from '../src/core/googleLibrary.js';
+import { taskHash } from '../src/core/syncPlan.js';
 
 // ⚠️ `cachedAccessToken` matters as much as `getAccessToken` here. `runSync`
 // now refuses to run without a token ALREADY in hand, because every one of its
@@ -487,5 +489,360 @@ describe('⚠️ the bulk-delete guard covers EVERY collection, not just tasks',
 
     expect(sched.blockedDays).toHaveLength(3);
     expect(result.current.lastError).toMatch(/blocked days/);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// THE THIRD WITNESS (design/TODO-LIST.md §8.1 S-1/S-2/S-4/S-5/S-6, 2026-10-02)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// The gate used to know two cases — same, or fresh — and froze on everything
+// else. So an edit on one device froze the other, and the weekly rollover,
+// which changes the library on mount before the sync can pull, froze even a
+// device used alone. `libHash` (what we last synced) tells "only I changed",
+// "only they changed" and "we both did" apart.
+
+const hashOf = (sched) => taskHash(libraryFrom(sched.toJSON()));
+const storeState = (extra) => window.localStorage.setItem(
+  'sandycay.sync.state',
+  JSON.stringify({ lastSyncAt: 1, entries: {}, ...extra }),
+);
+const pullWith = (library, more = {}) => async () => ({
+  tasks: [], library, libraryError: null, dropped: [], unreadable: new Set(), ...more,
+});
+
+describe('libraryGate — pure', () => {
+  const base = () => libraryFrom(usedSchedule().toJSON());
+  const edited = () => {
+    const s = usedSchedule();
+    s.addBucket({ label: 'Choir', tags: ['choir'] });
+    return libraryFrom(s.toJSON());
+  };
+
+  it('agrees when the copies match', () => {
+    expect(libraryGate({ local: base(), remote: base(), libHash: 'zzz' }).action).toBe('agree');
+  });
+
+  it('adopts when only the OTHER side changed since our last sync', () => {
+    const local = base();
+    const g = libraryGate({ local, remote: edited(), libHash: taskHash(local) });
+    expect(g).toMatchObject({ action: 'adopt', reason: 'unchanged here' });
+  });
+
+  it('keeps ours when only THIS side changed', () => {
+    const remote = base();
+    const g = libraryGate({ local: edited(), remote, libHash: taskHash(remote) });
+    expect(g).toMatchObject({ action: 'keep', reason: 'unchanged there' });
+  });
+
+  it('⚠️ freezes when BOTH changed — the only case a human must answer', () => {
+    const other = usedSchedule();
+    other.addBucket({ label: 'Rowing', tags: ['rowing'] });
+    const g = libraryGate({ local: edited(), remote: libraryFrom(other.toJSON()), libHash: taskHash(base()) });
+    expect(g.action).toBe('conflict');
+    expect(g.diff.differing.map((r) => r.key)).toEqual(['buckets']);
+  });
+
+  it('⚠️ with no libHash it is exactly the old gate: compare, freeze on a difference', () => {
+    expect(libraryGate({ local: edited(), remote: base() }).action).toBe('conflict');
+  });
+
+  it('a retrained MODEL alone is never a reason to stop', () => {
+    const a = base();
+    const b = { ...base(), model: { ...(a.model || {}), weights: [9, 9, 9] } };
+    const g = libraryGate({ local: a, remote: b, libHash: 'neither' });
+    expect(g).toMatchObject({ action: 'keep', reason: 'only derived keys differ' });
+  });
+
+  it('the calendar copy, once decoded, hashes to exactly what we pushed', () => {
+    // The `keep` rule compares a hash of the DECODED blob with `libHash`, which
+    // is a hash of `libraryFrom(json)`. If those ever stop matching, `keep`
+    // silently never fires and the Monday freeze is back.
+    const json = usedSchedule().toJSON();
+    const back = decodeLibrary(encodeLibrary(json));
+    expect(back.ok).toBe(true);
+    expect(taskHash(back.library)).toBe(taskHash(libraryFrom(json)));
+  });
+});
+
+describe('the third witness, through the real hook', () => {
+  it('⚠️ MONDAY: rollover changed the library on mount, the calendar did not → push, no freeze', async () => {
+    const sched = usedSchedule();
+    const pushed = libraryFrom(sched.toJSON());
+    storeState({ libHash: taskHash(pushed) });
+    sched.markWeekSeen(new Date(2026, 9, 5)); // what commitRollover does on mount
+    pullMock.mockImplementation(pullWith(pushed));
+
+    const { result } = mount({ sched, mutate: vi.fn((fn) => fn(sched)), showToast: vi.fn() });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(result.current.libraryState).toBeNull();
+    expect(result.current.status).toBe('idle');
+    expect(pushLibraryMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('another device edited the setup, this one did not → take theirs, no freeze', async () => {
+    const sched = usedSchedule();
+    storeState({ libHash: hashOf(sched) });
+    const theirs = usedSchedule();
+    theirs.addBucket({ label: 'Choir', tags: ['choir'] });
+    pullMock.mockImplementation(pullWith(libraryFrom(theirs.toJSON())));
+    const showToast = vi.fn();
+
+    const { result } = mount({ sched, mutate: vi.fn((fn) => fn(sched)), showToast });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(result.current.libraryState).toBeNull();
+    expect(sched.buckets.some((b) => b.label === 'Choir')).toBe(true);
+    expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/another device/));
+    // Adopted, so there is nothing of ours to push back over it.
+    expect(pushLibraryMock).not.toHaveBeenCalled();
+  });
+
+  it('both edited → still frozen, still writes nothing', async () => {
+    const sched = usedSchedule();
+    storeState({ libHash: hashOf(sched) });
+    sched.addBucket({ label: 'Rowing', tags: ['rowing'] });
+    const theirs = usedSchedule();
+    theirs.addBucket({ label: 'Choir', tags: ['choir'] });
+    pullMock.mockImplementation(pullWith(libraryFrom(theirs.toJSON())));
+
+    const { result } = mount({ sched, mutate: vi.fn((fn) => fn(sched)), showToast: vi.fn() });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(result.current.libraryState?.conflict).toBe(true);
+    expect(applyPlanMock).not.toHaveBeenCalled();
+    expect(pushLibraryMock).not.toHaveBeenCalled();
+  });
+
+  it('converges: the pass after a Monday push is quiet', async () => {
+    // HANDOFF: convergence is invisible to a single-pass test.
+    const sched = usedSchedule();
+    let calendar = libraryFrom(sched.toJSON());
+    storeState({ libHash: taskHash(calendar) });
+    sched.markWeekSeen(new Date(2026, 9, 5));
+    pullMock.mockImplementation(async () => ({
+      tasks: [], library: calendar, libraryError: null, dropped: [], unreadable: new Set(),
+    }));
+    pushLibraryMock.mockImplementation(async (api, cal, json) => { calendar = libraryFrom(json); return { events: 1 }; });
+
+    const { result } = mount({ sched, mutate: vi.fn((fn) => fn(sched)), showToast: vi.fn() });
+    await act(async () => { await Promise.resolve(); });
+    expect(pushLibraryMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => { await result.current.syncNow(); });
+    expect(result.current.libraryState).toBeNull();
+    expect(pushLibraryMock).toHaveBeenCalledTimes(1);
+    pushLibraryMock.mockImplementation(async () => ({ events: 1, replaced: 0 }));
+  });
+
+  it('⚠️ a library that is THERE but unreadable pauses the sync — it is not "no library"', async () => {
+    const sched = usedSchedule();
+    pullMock.mockImplementation(pullWith(null, { libraryError: 'expected 1 library event(s), found 2' }));
+
+    const { result } = mount({ sched, mutate: vi.fn((fn) => fn(sched)), showToast: vi.fn() });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(result.current.libraryState).toMatchObject({ conflict: true, unreadable: expect.stringMatching(/found 2/) });
+    expect(applyPlanMock).not.toHaveBeenCalled();
+    expect(pushLibraryMock).not.toHaveBeenCalled();
+  });
+
+  it('an EMPTY calendar (no library yet) is still not a conflict', async () => {
+    const sched = usedSchedule();
+    pullMock.mockImplementation(pullWith(null, { libraryError: null }));
+    const { result } = mount({ sched, mutate: vi.fn((fn) => fn(sched)), showToast: vi.fn() });
+    await act(async () => { await Promise.resolve(); });
+    expect(result.current.libraryState).toBeNull();
+    expect(pushLibraryMock).toHaveBeenCalled();
+  });
+
+  it('the library goes up BEFORE the tasks', async () => {
+    const sched = usedSchedule();
+    const order = [];
+    pushLibraryMock.mockImplementationOnce(async () => { order.push('library'); return { events: 1 }; });
+    applyPlanMock.mockImplementation(async () => { order.push('plan'); return { synced: [], forgotten: [], failed: [] }; });
+
+    mount({ sched, mutate: vi.fn((fn) => fn(sched)), showToast: vi.fn() });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(order[0]).toBe('library');
+    expect(order).toContain('plan');
+    applyPlanMock.mockImplementation(async () => ({ synced: [], forgotten: [], failed: [] }));
+  });
+
+  it('⚠️ the schedule is saved BEFORE the sync record that describes it', async () => {
+    const sched = usedSchedule();
+    const before = hashOf(sched);
+    storeState({ libHash: before });
+    const theirs = usedSchedule();
+    theirs.addBucket({ label: 'Choir', tags: ['choir'] });
+    pullMock.mockImplementation(pullWith(libraryFrom(theirs.toJSON())));
+    const recordAtFlush = [];
+    const flush = vi.fn(() => {
+      recordAtFlush.push(JSON.parse(window.localStorage.getItem('sandycay.sync.state')).libHash);
+    });
+
+    mount({ sched, mutate: vi.fn((fn) => fn(sched)), showToast: vi.fn(), flush });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(flush).toHaveBeenCalled();
+    // When the adopted schedule was flushed, the stored record still named the
+    // OLD library — the record only moves after the schedule has.
+    expect(recordAtFlush[0]).toBe(before);
+    expect(JSON.parse(window.localStorage.getItem('sandycay.sync.state')).libHash).toBe(hashOf(sched));
+  });
+});
+
+describe('⚠️ settled is not the same as "the calendar stopped moving" (bug-check, 2026-10-02)', () => {
+  // A session answered the gate once, then pushed its own library whenever it
+  // changed, never looking at the copy it had just pulled. Another device's
+  // edit in between was overwritten — and that device ADOPTED the loss next
+  // session, because its own copy still matched what it had last synced.
+  const settledSession = async (sched, calendarRef, extra = {}) => {
+    storeState({ libHash: hashOf(sched) });
+    pullMock.mockImplementation(async () => ({
+      tasks: [], library: calendarRef.lib, libraryError: null, dropped: [], unreadable: new Set(),
+    }));
+    pushLibraryMock.mockImplementation(async (api, cal, json) => { calendarRef.lib = libraryFrom(json); return { events: 1 }; });
+    const mutate = vi.fn((fn) => fn(sched));
+    const hook = mount({ sched, mutate, showToast: vi.fn(), ...extra });
+    await act(async () => { await Promise.resolve(); });
+    expect(hook.result.current.libraryState).toBeNull();
+    pushLibraryMock.mockClear();
+    return { ...hook, mutate };
+  };
+  afterEach(() => { pushLibraryMock.mockImplementation(async () => ({ events: 1, replaced: 0 })); });
+
+  it('the other device wrote AND this one changed → freeze, do not push over it', async () => {
+    const sched = usedSchedule();
+    const cal = { lib: libraryFrom(sched.toJSON()) };
+    const { result } = await settledSession(sched, cal);
+
+    const phone = usedSchedule();
+    phone.addBucket({ label: 'Choir', tags: ['choir'] });
+    cal.lib = libraryFrom(phone.toJSON());         // the phone pushed
+    sched.addBucket({ label: 'Rowing', tags: ['rowing'] }); // and so did we
+
+    await act(async () => { await result.current.syncNow(); });
+
+    expect(result.current.libraryState?.conflict).toBe(true);
+    expect(pushLibraryMock).not.toHaveBeenCalled();
+    expect(cal.lib.buckets.some((b) => b.label === 'Choir')).toBe(true);
+  });
+
+  it('the other device wrote, this one did not → take theirs mid-session', async () => {
+    const sched = usedSchedule();
+    const cal = { lib: libraryFrom(sched.toJSON()) };
+    const { result } = await settledSession(sched, cal);
+
+    const phone = usedSchedule();
+    phone.addBucket({ label: 'Choir', tags: ['choir'] });
+    cal.lib = libraryFrom(phone.toJSON());
+
+    await act(async () => { await result.current.syncNow(); });
+
+    expect(result.current.libraryState).toBeNull();
+    expect(sched.buckets.some((b) => b.label === 'Choir')).toBe(true);
+    expect(pushLibraryMock).not.toHaveBeenCalled();
+  });
+
+  it('⚠️ an adopt that does not round-trip byte for byte does not re-adopt every pass', async () => {
+    // The loop "asked once per session" was written to end. Re-asking on
+    // "the calendar moved" must not bring it back when the only movement is
+    // our own revival adding a default the stored copy lacked.
+    const sched = usedSchedule();
+    const cal = { lib: libraryFrom(sched.toJSON()) };
+    const { result, mutate } = await settledSession(sched, cal);
+
+    const phone = usedSchedule();
+    phone.addBucket({ label: 'Choir', tags: ['choir'] });
+    const lib = libraryFrom(phone.toJSON());
+    const key = Object.keys(lib.config)[0];
+    delete lib.config[key];                          // revival will put it back
+    cal.lib = lib;
+
+    await act(async () => { await result.current.syncNow(); });
+    const adopts = mutate.mock.calls.length;
+    expect(sched.buckets.some((b) => b.label === 'Choir')).toBe(true);
+    // Precondition: this really is a non-round-tripping adopt.
+    expect(hashOf(sched)).not.toBe(taskHash(lib));
+
+    await act(async () => { await result.current.syncNow(); });
+    await act(async () => { await result.current.syncNow(); });
+    expect(mutate.mock.calls.length).toBe(adopts);
+    expect(result.current.libraryState).toBeNull();
+  });
+});
+
+describe('the library push, failing', () => {
+  it('a library that cannot be written does not stop the TASKS, and it is said', async () => {
+    const sched = usedSchedule();
+    pushLibraryMock.mockImplementationOnce(async () => { throw new Error('quota exceeded'); });
+    const { result } = mount({ sched, mutate: vi.fn((fn) => fn(sched)), showToast: vi.fn() });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(applyPlanMock).toHaveBeenCalled();
+    expect(result.current.status).toBe('error');
+    expect(result.current.lastError).toMatch(/setup could not be saved.*quota/);
+    // Not recorded as synced, so the next pass tries again.
+    const stored = JSON.parse(window.localStorage.getItem('sandycay.sync.state'));
+    expect(stored.libHash).not.toBe(hashOf(sched));
+  });
+
+  it('"replace the calendar" does not claim success over copies it could not remove', async () => {
+    const sched = usedSchedule();
+    pullMock.mockImplementation(pullWith(null, { libraryError: 'expected 1 library event(s), found 2' }));
+    const { result } = mount({ sched, mutate: vi.fn((fn) => fn(sched)), showToast: vi.fn() });
+    await act(async () => { await Promise.resolve(); });
+    expect(result.current.libraryState?.conflict).toBe(true);
+
+    pushLibraryMock.mockImplementationOnce(async () => ({ events: 1, replaced: 0, failedRemoves: 1 }));
+    let err = null;
+    await act(async () => { await result.current.pushLibraryNow().catch((e) => { err = e; }); });
+
+    expect(err?.message).toMatch(/could not be removed/);
+    expect(result.current.libraryState?.conflict).toBe(true);
+  });
+
+  it('a NEWER build\'s library is flagged, so the Cabana can withhold "replace"', async () => {
+    const sched = usedSchedule();
+    pullMock.mockImplementation(pullWith(null, { libraryError: 'library version 2 is newer than 1', libraryNewer: true }));
+    const { result } = mount({ sched, mutate: vi.fn((fn) => fn(sched)), showToast: vi.fn() });
+    await act(async () => { await Promise.resolve(); });
+    expect(result.current.libraryState).toMatchObject({ conflict: true, newer: true });
+    expect(pushLibraryMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('⚠️ the record never lands ahead of the schedule — measured on storage, not call order', () => {
+  it('when the sync record says "adopted", the saved schedule already holds it', async () => {
+    const sched = usedSchedule();
+    storeState({ libHash: hashOf(sched) });
+    const theirs = usedSchedule();
+    theirs.addBucket({ label: 'Choir', tags: ['choir'] });
+    pullMock.mockImplementation(pullWith(libraryFrom(theirs.toJSON())));
+    // A flush that really saves, like useEngine's, so the order is observable
+    // in what storage HOLDS at each write of the sync record.
+    const flush = () => window.localStorage.setItem('test.schedule', JSON.stringify(sched.toJSON()));
+    const seenAtRecordWrite = [];
+    const real = Storage.prototype.setItem;
+    const spy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (k, v) {
+      if (k === 'sandycay.sync.state') {
+        const saved = JSON.parse(window.localStorage.getItem('test.schedule') || 'null');
+        seenAtRecordWrite.push({
+          libHash: JSON.parse(v).libHash,
+          savedHash: saved ? taskHash(libraryFrom(saved)) : null,
+        });
+      }
+      return real.call(this, k, v);
+    });
+
+    mount({ sched, mutate: vi.fn((fn) => fn(sched)), showToast: vi.fn(), flush });
+    await act(async () => { await Promise.resolve(); });
+    spy.mockRestore();
+
+    expect(seenAtRecordWrite.length).toBeGreaterThan(0);
+    for (const w of seenAtRecordWrite) expect(w.savedHash).toBe(w.libHash);
   });
 });

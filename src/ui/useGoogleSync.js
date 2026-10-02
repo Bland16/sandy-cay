@@ -26,7 +26,7 @@ import {
   planSync, markDirty, advanceState, emptyState, describePlan, taskHash, isBulkDelete,
   outsideEdits, seedBaseline, baselineAfterPass, forcePushPlan,
 } from '../core/syncPlan.js';
-import { libraryFrom, diffLibrary, applyLibrary } from '../core/googleLibrary.js';
+import { libraryFrom, libraryGate, applyLibrary } from '../core/googleLibrary.js';
 import { Schedule, defaultConfig, seedStarterBuckets, dateFromKey } from '../core/index.js';
 import {
   makeApi, pull, applyPlan, pushLibrary, inspectCalendar, encodeNoteParts, encodeBlockedParts,
@@ -179,14 +179,29 @@ export function isAuthFailure(message) {
  * planner directly and passed regardless.
  */
 const wallClock = () => Date.now();
+// Module-level for the same reason as `wallClock`: a default rebuilt per render
+// changes every callback that closes over it.
+const noFlush = () => {};
 
-export function useGoogleSync({ enabled, sched, mutate, version, showToast, onAuthLost, now = wallClock }) {
+export function useGoogleSync({
+  enabled, sched, mutate, version, showToast, onAuthLost, now = wallClock, flush = noFlush,
+}) {
   const [calendarId, setCalendarId] = useState(loadCalendarId);
   const [status, setStatus] = useState('idle'); // idle | syncing | error | off
   const [lastError, setLastError] = useState(null);
   // GS-8. null = the two libraries agree, or the calendar has none yet.
   const [libraryState, setLibraryState] = useState(null);
   const stateRef = useRef(loadSyncState());
+  /**
+   * Save the sync record — AFTER the schedule it describes.
+   *
+   * ⚠️ The record is written at once and the schedule 1.5s later (useEngine's
+   * debounce). Close the tab in between and the record says "I last synced
+   * library X / task T at hash H" over a schedule that never received X or T.
+   * The next session then reads its own stale copy as a local edit and pushes
+   * it over the one it had just adopted. Flushing first makes the two agree.
+   */
+  const persist = useCallback((st) => { flush(); saveSyncState(st); }, [flush]);
   const runningRef = useRef(false);
   const timerRef = useRef(null);
   // The first render must not be read as "something changed".
@@ -214,6 +229,12 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, onAu
   // exists to stop. Only agreement, adoption, or one of the two Cabana buttons
   // counts as an answer.
   const librarySettled = useRef(false);
+  // The hash of the calendar's library as this session last SAW or WROTE it.
+  // "Has another device written since?" is asked against this, not against
+  // `libHash`: an adopt that does not round-trip byte for byte (a config gaining
+  // a default) leaves `libHash` ≠ the calendar's hash for ever, and asking
+  // against `libHash` would re-open the question — and re-adopt — every pass.
+  const remoteSeen = useRef(null);
   // ═══════════════════════════════════════════════════════════════════════
   // WHAT THE CALENDAR LOOKED LIKE WHEN THIS SESSION STARTED.
   // ═══════════════════════════════════════════════════════════════════════
@@ -338,15 +359,51 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, onAu
       // and nothing in the model can tell them apart.
       //
       // Two libraries disagreeing is the sharpest available signal that this
-      // device is out of step, so it stops everything until that is settled.
+      // device is out of step — but only when BOTH sides moved since we last
+      // synced. `libHash` is that witness; see `libraryGate`.
+      //
+      // ⚠️ A LIBRARY THAT IS THERE BUT CANNOT BE READ IS NOT "NO LIBRARY". A
+      // failed delete in `pushLibrary` leaves two copies, `decodeLibrary` refuses
+      // them, and `remote.library` comes back null — which used to skip this
+      // gate entirely and let the next push overwrite whatever was up there.
+      //
+      // ⚠️ AND NOT ONLY ON THE FIRST PASS. "Settled" means this session answered
+      // the question — not that the calendar stopped moving. If another device
+      // has written since our last sync (the calendar no longer hashes to
+      // `libHash`), the question is open again: pushing our copy over theirs
+      // without looking is how one device's bucket was silently lost, and the
+      // other device then ADOPTED the loss next session, because by then its
+      // own copy matched what it had last synced.
       const localLibrary = libraryFrom(sched.toJSON());
-      if (remote.library && !librarySettled.current) {
-        const diff = diffLibrary(localLibrary, remote.library);
-        if (diff.same) {
+      const remoteHash = remote.library ? taskHash(remote.library) : null;
+      const calendarMoved = !!(remoteHash && remoteSeen.current && remoteHash !== remoteSeen.current);
+      if (!remote.library && remote.libraryError) {
+        const msg = `Sync paused: the setup stored in the calendar cannot be read (${remote.libraryError}). `
+          + 'Nothing has been changed on either side. Open the Cabana and choose which one is right.';
+        librarySettled.current = false;
+        setLibraryState({
+          conflict: true, unreadable: remote.libraryError, newer: !!remote.libraryNewer, rows: [],
+        });
+        setStatus('error');
+        setLastError(msg);
+        logStopped(msg);
+        showToast('Sync paused — the setup in the calendar cannot be read');
+        return null;
+      }
+      if (remote.library && (!librarySettled.current || calendarMoved)) {
+        const gate = libraryGate({
+          local: localLibrary,
+          remote: remote.library,
+          libHash: stateRef.current.libHash || null,
+          freshHash: freshLibraryHash(),
+        });
+        if (gate.action === 'agree' || gate.action === 'keep') {
           librarySettled.current = true;
+          remoteSeen.current = remoteHash;
           setLibraryState(null);
-        } else if (taskHash(localLibrary) === freshLibraryHash()) {
+        } else if (gate.action === 'adopt') {
           librarySettled.current = true;
+          remoteSeen.current = remoteHash;
           mutate((s) => applyLibrary(s, remote.library));
           // Re-read rather than hashing what arrived: `applyLibrary` revives
           // through `Schedule.fromJSON`, so the schedule is the authority on
@@ -354,12 +411,15 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, onAu
           // this device one round-trip out of step with itself.
           stateRef.current = { ...stateRef.current, libHash: taskHash(libraryFrom(sched.toJSON())) };
           setLibraryState(null);
-          showToast('Brought your buckets, zones and settings down from the calendar');
+          showToast(gate.reason === 'fresh'
+            ? 'Brought your buckets, zones and settings down from the calendar'
+            : 'Brought down setup changes made on another device');
         } else {
-          const names = diff.differing.map((r) => r.key).join(', ');
+          const names = gate.diff.differing.map((r) => r.key).join(', ');
           const msg = `Sync paused: this device and the calendar disagree about your setup (${names}). `
             + 'Nothing has been changed on either side. Open the Cabana and choose which one is right.';
-          setLibraryState({ conflict: true, rows: diff.differing });
+          librarySettled.current = false;
+          setLibraryState({ conflict: true, rows: gate.diff.differing });
           setStatus('error');
           setLastError(msg);
           logStopped(msg);
@@ -470,6 +530,39 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, onAu
         return plan;
       }
 
+      // ⚠️ Only when it actually CHANGED. `pushLibrary` deletes and recreates
+      // its events, so doing it every pass meant a delete plus an insert every
+      // five seconds of editing — pure quota burn for a blob that changes when
+      // you add a bucket, not when you drag a card. It also churned the library
+      // event's id constantly, which makes a store harder to inspect by hand.
+      //
+      // ⚠️ BEFORE THE TASKS, not after. A pass that writes a task and then
+      // dies before the library leaves another device seeing the task with
+      // the setup it came out of still unchanged — the two halves of one edit,
+      // published one at a time, in the wrong order.
+      const json = sched.toJSON();
+      const libNow = taskHash(libraryFrom(json));
+      //
+      // ⚠️ A FAILED LIBRARY PUSH DOES NOT STOP THE TASKS. Going first must not
+      // mean a library that cannot be written (quota, size) blocks every task
+      // write behind it; it is reported at the end of the pass instead, and
+      // `libHash` stays where it was, so the next pass tries again.
+      let libPushError = null;
+      if (libNow !== stateRef.current.libHash) {
+        try {
+          await pushLibrary(api, calendarId, json);
+          stateRef.current = { ...stateRef.current, libHash: libNow };
+          remoteSeen.current = libNow;
+          // Saved now, not at the end: a pass that throws after this point
+          // would otherwise leave the record naming a library the calendar no
+          // longer holds, and the next session would freeze over nothing.
+          persist(stateRef.current);
+        } catch (err) {
+          if (isAuthFailure(err?.message || '')) throw err;
+          libPushError = err?.message || String(err);
+        }
+      }
+
       const applied = await applyPlan(api, calendarId, plan, {
         commitmentIds: new Set((sched.commitments || []).map((c) => c.id)),
         timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -513,17 +606,6 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, onAu
         mutate((s) => applyLocal(s, plan));
       }
 
-      // ⚠️ Only when it actually CHANGED. `pushLibrary` deletes and recreates
-      // its events, so doing it every pass meant a delete plus an insert every
-      // five seconds of editing — pure quota burn for a blob that changes when
-      // you add a bucket, not when you drag a card. It also churned the library
-      // event's id constantly, which makes a store harder to inspect by hand.
-      const json = sched.toJSON();
-      const libNow = taskHash(libraryFrom(json));
-      if (libNow !== stateRef.current.libHash) {
-        await pushLibrary(api, calendarId, json);
-        stateRef.current = { ...stateRef.current, libHash: libNow };
-      }
 
       // ⚠️ AFTER the writes, not before. `t` above is when we started, and
       // Google stamps `updated` on everything we just wrote — so recording `t`
@@ -536,13 +618,19 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, onAu
       // same rule: what Google CONFIRMED, never what was planned.
       stateRef.current.noteEntries = advanceState(noteState, noteApplied, now()).entries;
       stateRef.current.blockedEntries = advanceState(blockedState, blockedApplied, now()).entries;
-      stateRef.current.libHash = libNow;
+      if (!libPushError) stateRef.current.libHash = libNow;
       // What this pass saw and wrote, carried to the next SESSION as well as
       // the next pass — the record `seedBaseline` reads on opening.
       baseline.current = baselineAfterPass(remote.tasks, applied.wrote);
       stateRef.current.seen = baseline.current;
-      saveSyncState(stateRef.current);
-      setStatus('idle');
+      persist(stateRef.current);
+      if (libPushError) {
+        setStatus('error');
+        setLastError(`Your tasks synced, but your setup could not be saved to the calendar: ${libPushError}`);
+        showToast('Tasks synced — your setup did not save, will retry');
+      } else {
+        setStatus('idle');
+      }
 
       // ⚠️ A conflict is SAID. The losing version is only recoverable if the
       // user is told which task and which side won.
@@ -576,7 +664,7 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, onAu
     } finally {
       runningRef.current = false;
     }
-  }, [enabled, calendarId, sched, mutate, showToast, token, now, loseAuth]);
+  }, [enabled, calendarId, sched, mutate, showToast, token, now, loseAuth, persist]);
 
   // ⚠️ The effects below must NOT depend on `runSync`'s identity. It is a
   // useCallback over several values, so it changes whenever any of them does —
@@ -638,11 +726,12 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, onAu
     // Carrying "settled" across would let a device adopt from one calendar and
     // then never look at the next one it was pointed at.
     librarySettled.current = false;
+    remoteSeen.current = null;
     // A fresh calendar means nothing has been synced to it yet.
     stateRef.current = emptyState();
-    saveSyncState(stateRef.current);
+    persist(stateRef.current);
     return check;
-  }, [token]);
+  }, [token, persist]);
 
   /**
    * Forget what was last synced, but keep the calendar.
@@ -661,32 +750,38 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, onAu
    */
   const resetState = useCallback(() => {
     stateRef.current = emptyState();
-    saveSyncState(stateRef.current);
-  }, []);
+    persist(stateRef.current);
+  }, [persist]);
 
   /**
    * GS-8, resolved the local way: THIS device is right. Replace the calendar's
    * library with ours and let the sync go again.
    *
-   * Deliberately a button and never automatic. The whole reason the sync is
-   * frozen is that no honest rule can tell which side is newer — the library
-   * has no modification time, and the sync's own `dirtyAt` records when a
-   * difference was NOTICED, which a stale device does last and would therefore
-   * win with. A person looking at both lists can tell; the code cannot.
+   * Deliberately a button and never automatic. When only ONE side changed
+   * since the last sync, `libraryGate` settles it without asking. By the time
+   * this button is showing, BOTH sides changed, and the library has no
+   * modification time to break the tie (`dirtyAt` records when a difference
+   * was NOTICED, which a stale device does last and would therefore win with).
+   * A person looking at both lists can tell; the code cannot.
    */
   const pushLibraryNow = useCallback(async () => {
     const api = makeApi(await token());
     const json = sched.toJSON();
     const r = await pushLibrary(api, calendarId, json);
+    if (r && r.failedRemoves) {
+      throw new Error(`Saved this device's setup, but ${r.failedRemoves} old cop${r.failedRemoves === 1 ? 'y' : 'ies'} `
+        + 'in the calendar could not be removed. Try again in a moment.');
+    }
     stateRef.current = { ...stateRef.current, libHash: taskHash(libraryFrom(json)) };
-    saveSyncState(stateRef.current);
+    persist(stateRef.current);
     // Answered. Stop asking for the rest of this session.
     librarySettled.current = true;
+    remoteSeen.current = stateRef.current.libHash;
     setLibraryState(null);
     setStatus('idle');
     setLastError(null);
     return r;
-  }, [token, sched, calendarId]);
+  }, [token, sched, calendarId, persist]);
 
   /** GS-8, resolved the other way: the CALENDAR is right. Take its library. */
   const deriveLibraryFromCalendar = useCallback(async () => {
@@ -695,13 +790,14 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, onAu
     if (!remote.library) throw new Error('That calendar has no Sandy Cay setup stored in it yet.');
     const r = mutate((s) => applyLibrary(s, remote.library));
     stateRef.current = { ...stateRef.current, libHash: taskHash(libraryFrom(sched.toJSON())) };
-    saveSyncState(stateRef.current);
+    persist(stateRef.current);
     librarySettled.current = true;
+    remoteSeen.current = taskHash(remote.library);
     setLibraryState(null);
     setStatus('idle');
     setLastError(null);
     return r;
-  }, [token, sched, mutate, calendarId]);
+  }, [token, sched, mutate, calendarId, persist]);
 
   /**
    * TEMPORARY (2026-10-01) — "this device is right" for TASKS. Overwrites every
@@ -730,7 +826,7 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, onAu
       stateRef.current = { ...stateRef.current, ...advanceState(stateRef.current, applied, now()) };
       baseline.current = baselineAfterPass(remote.tasks, applied.wrote);
       stateRef.current.seen = baseline.current;
-      saveSyncState(stateRef.current);
+      persist(stateRef.current);
       setStatus('idle');
       return { sent: applied.synced.length, failed: applied.failed.length };
     } catch (err) {
@@ -742,15 +838,16 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, onAu
     } finally {
       runningRef.current = false;
     }
-  }, [token, sched, calendarId, now, loseAuth]);
+  }, [token, sched, calendarId, now, loseAuth, persist]);
 
   const forget = useCallback(() => {
     saveCalendarId(null);
     setCalendarId(null);
     librarySettled.current = false;
+    remoteSeen.current = null;
     stateRef.current = emptyState();
-    saveSyncState(stateRef.current);
-  }, []);
+    persist(stateRef.current);
+  }, [persist]);
 
   return {
     calendarId,
