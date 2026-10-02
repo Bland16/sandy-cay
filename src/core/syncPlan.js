@@ -129,6 +129,55 @@ export function outsideEdits(baseline, remote) {
   return out;
 }
 
+/**
+ * The baseline a session STARTS from — what we last knew of each event.
+ *
+ * ⚠️ IT USED TO BE THE FIRST PULL ITSELF, and that hid every edit made while
+ * this device was closed. Seeding from the calendar as it is NOW records the
+ * other device's changes as "already seen", so `outsideEdits` found nothing on
+ * opening: skip a gym session on the laptop, open the phone, and the phone kept
+ * its old copy. Its next local change then pushed that stale copy over the
+ * laptop's, and the laptop adopted it back — skipped sessions reappearing, and
+ * edits to existing tasks never reaching the phone at all.
+ *
+ * So the baseline is SAVED with the sync record and carried between sessions.
+ * Where nothing was saved for an event (a record from before this was kept), an
+ * event we have synced before falls back to `lastSyncAt` — anything Google
+ * stamped after our last sync was changed elsewhere. Only an event we have never
+ * synced is taken at face value; it is the create/adopt branches' business.
+ *
+ * @param saved  `{ [eventId]: updatedMs }` from the stored record, or null
+ * @param remote the pulled tasks, `[{ task, googleEventIds, updated }]`
+ * @param state  the stored sync record
+ */
+export function seedBaseline(saved, remote, state = emptyState()) {
+  const known = saved || {};
+  const entries = state.entries || {};
+  const lastSyncAt = state.lastSyncAt || 0;
+  const out = {};
+  for (const r of remote || []) {
+    const id = r && r.task && r.task.id;
+    for (const eventId of eventIdsOf(r)) {
+      if (known[eventId] != null) out[eventId] = known[eventId];
+      else if (id != null && entries[id] && lastSyncAt) out[eventId] = Math.min(r.updated || 0, lastSyncAt);
+      else out[eventId] = r.updated || 0;
+    }
+  }
+  return out;
+}
+
+/**
+ * What we know of each event once a pass has FINISHED: everything pulled has
+ * now been acted on — adopted, overwritten, or left as it was — and what we
+ * wrote ourselves carries the `updated` Google stamped on it. Rebuilt from the
+ * pull each pass, so deleted events fall out instead of piling up in storage.
+ */
+export function baselineAfterPass(remote, wrote) {
+  const out = {};
+  for (const r of remote || []) for (const eventId of eventIdsOf(r)) out[eventId] = r.updated || 0;
+  return Object.assign(out, wrote || {});
+}
+
 export function planSync(local, remote, state = emptyState(), { unreadable, changedOutside } = {}) {
   const entries = state.entries || {};
   const lastSyncAt = state.lastSyncAt || 0;
@@ -247,6 +296,44 @@ export function planSync(local, remote, state = emptyState(), { unreadable, chan
     }
   }
 
+  return plan;
+}
+
+/**
+ * TEMPORARY (2026-10-01) — "this device is right" for TASKS, from a button.
+ *
+ * Every local task goes up: overwriting its event where Google has one,
+ * created where it has none. It DELETES NOTHING, on either side — a task that
+ * exists only in Google may be one the phone added, and the ordinary sync is
+ * the right judge of that. Unreadable events are left alone, as `planSync`
+ * leaves them.
+ *
+ * Exists to repair the damage of the stale-baseline bug once (see
+ * `seedBaseline`): the phone had pushed old copies over the laptop's skips.
+ */
+export function forcePushPlan(local, remote, { unreadable } = {}) {
+  const blocked = unreadable instanceof Set ? unreadable : new Set(unreadable || []);
+  const remoteById = new Map();
+  for (const r of remote || []) if (r && r.task && r.task.id != null) remoteById.set(r.task.id, r);
+  const plan = {
+    create: [], update: [], deleteRemote: [], adopt: [], deleteLocal: [], conflicts: [], unchanged: [], blocked: [], decisions: [],
+  };
+  for (const task of local) {
+    const name = task.title ?? task.id;
+    if (blocked.has(task.id)) {
+      plan.blocked.push(task.id);
+      plan.decisions.push({ id: task.id, title: name, decision: 'blocked', reason: 'its event exists but could not be read' });
+      continue;
+    }
+    const r = remoteById.get(task.id);
+    if (r) {
+      plan.update.push({ task, eventIds: eventIdsOf(r) });
+      plan.decisions.push({ id: task.id, title: name, decision: 'update', reason: 'this device is right' });
+    } else {
+      plan.create.push(task);
+      plan.decisions.push({ id: task.id, title: name, decision: 'create', reason: 'this device is right' });
+    }
+  }
   return plan;
 }
 

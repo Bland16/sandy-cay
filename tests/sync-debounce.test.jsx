@@ -197,3 +197,47 @@ describe('a guest never syncs', () => {
     expect(showToast).not.toHaveBeenCalled();
   });
 });
+
+describe('⚠️ what the calendar looked like is remembered between sessions', () => {
+  // Reported 2026-10-01: a skip made on the laptop never reached the phone,
+  // because each session took its FIRST PULL as "already seen". Edits made
+  // while the app was closed were in that pull, so they were never adopted —
+  // and the stale copy was later pushed back over them.
+  const flush = async () => { for (let i = 0; i < 6; i += 1) await act(async () => { await Promise.resolve(); }); };
+
+  it('a session opening after an edit elsewhere adopts it', async () => {
+    const { sched, showToast, mutate } = setup();
+    const gym = sched.toJSON().tasks; // empty schedule; the task arrives below
+    const local = { id: 'gym', title: 'Gym' };
+    sched.toJSON = () => ({ ...Schedule.prototype.toJSON.call(sched), tasks: [...gym, local] });
+
+    // Session 1: the gym is in both places and gets synced.
+    pullMock.mockImplementation(async () => ({
+      tasks: [{ task: local, googleEventIds: ['ev-gym'], updated: 1000 }],
+      library: null, libraryError: null, dropped: [],
+    }));
+    applyPlanMock.mockImplementation(async (_api, _cal, plan) => ({
+      synced: plan.update.map(({ task }) => ({ task })), forgotten: [], failed: [],
+      wrote: plan.update.length ? { 'ev-gym': 2000 } : {},
+    }));
+    const first = mount({ enabled: true, sched, mutate, showToast });
+    await flush();
+    first.unmount();
+    expect(JSON.parse(window.localStorage.getItem('sandycay.sync.state')).seen).toEqual({ 'ev-gym': 2000 });
+
+    // Between sessions, the laptop skips a session: Google now holds a newer copy.
+    const laptop = { id: 'gym', title: 'Gym', occurrenceData: { '2026-09-29': { completion: 'skipped' } } };
+    pullMock.mockImplementation(async () => ({
+      tasks: [{ task: laptop, googleEventIds: ['ev-gym'], updated: 9000 }],
+      library: null, libraryError: null, dropped: [],
+    }));
+    applyPlanMock.mockClear();
+
+    // Session 2 — the phone opening.
+    mount({ enabled: true, sched, mutate, showToast });
+    await flush();
+    const plan = applyPlanMock.mock.calls[0][2];
+    expect(plan.adopt).toEqual([laptop]);
+    expect(plan.update).toHaveLength(0);
+  });
+});

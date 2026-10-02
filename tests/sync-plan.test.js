@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   planSync, markDirty, advanceState, emptyState, taskHash, describePlan, isBulkDelete,
-  outsideEdits,
+  outsideEdits, seedBaseline, baselineAfterPass, forcePushPlan,
 } from '../src/core/syncPlan.js';
 
 const task = (id, title = id) => ({ id, title });
@@ -367,5 +367,97 @@ describe('planSync uses the baseline when given one', () => {
     const plan = planSync([t], r, state, { changedOutside: new Set(['a']) });
     expect(plan.adopt).toHaveLength(1);
     expect(plan.adopt[0].title).toBe('edited in Google');
+  });
+});
+
+describe('⚠️ a device that was closed sees what changed while it was away', () => {
+  // THE REPORTED BUG (2026-10-01): skip a gym session on the laptop, open the
+  // phone, and the phone kept its old copy — its first pull WAS its baseline,
+  // so the laptop's edit read as already seen. The phone's next local change
+  // then pushed the stale copy over the skip, and the laptop adopted it back.
+  const gymOld = { id: 'gym', title: 'Gym', occurrenceData: {} };
+  const gymLaptop = { id: 'gym', title: 'Gym', occurrenceData: { '2026-09-29': { completion: 'skipped' } } };
+  // Both devices last synced the gym at T0; the laptop pushed the skip at T1.
+  const phoneState = { ...synced([gymOld], T0), seen: { 'ev-gym': T0 } };
+  const pulled = [{ task: gymLaptop, googleEventIds: ['ev-gym'], updated: T1 }];
+
+  it('the phone adopts the laptop’s skip on opening', () => {
+    const base = seedBaseline(phoneState.seen, pulled, phoneState);
+    const plan = planSync([gymOld], pulled, phoneState, { changedOutside: outsideEdits(base, pulled) });
+    expect(plan.adopt).toHaveLength(1);
+    expect(plan.adopt[0].occurrenceData).toEqual(gymLaptop.occurrenceData);
+    expect(plan.update).toHaveLength(0);           // and pushes nothing stale
+  });
+
+  it('proves the old seeding hid it — the reason this exists', () => {
+    const fromPull = { 'ev-gym': T1 };               // the first pull as baseline
+    const plan = planSync([gymOld], pulled, phoneState, { changedOutside: outsideEdits(fromPull, pulled) });
+    expect(plan.adopt).toHaveLength(0);
+    expect(plan.unchanged).toEqual(['gym']);
+  });
+
+  it('a record saved before the baseline was kept falls back to lastSyncAt', () => {
+    const legacy = synced([gymOld], T0);             // no `seen` at all
+    const base = seedBaseline(undefined, pulled, legacy);
+    expect(base['ev-gym']).toBe(T0);
+    expect([...outsideEdits(base, pulled)]).toEqual(['gym']);
+  });
+
+  it('an event stamped before our last sync is not an edit elsewhere', () => {
+    const legacy = synced([gymOld], T1);
+    const base = seedBaseline(undefined, [{ task: gymOld, googleEventIds: ['ev-gym'], updated: T0 }], legacy);
+    expect(outsideEdits(base, [{ task: gymOld, googleEventIds: ['ev-gym'], updated: T0 }]).size).toBe(0);
+  });
+
+  it('an event we have never synced is taken at face value', () => {
+    const base = seedBaseline(undefined, pulled, emptyState());
+    expect(base['ev-gym']).toBe(T1);
+    expect(outsideEdits(base, pulled).size).toBe(0);
+  });
+
+  it('⚠️ a copy that differs on opening loses to the calendar, and it is said', () => {
+    // dirtyAt is 0 on the opening pass: the difference has no known age, so a
+    // device that merely opened last must not beat a real edit made elsewhere.
+    const phoneCopy = { ...gymOld, title: 'Gym (old phone copy)' };
+    const state = markDirty(phoneState, [phoneCopy], 0);
+    const base = seedBaseline(state.seen, pulled, state);
+    const plan = planSync([phoneCopy], pulled, state, { changedOutside: outsideEdits(base, pulled) });
+    expect(plan.conflicts).toEqual([expect.objectContaining({ id: 'gym', winner: 'remote' })]);
+    expect(plan.adopt[0].occurrenceData).toEqual(gymLaptop.occurrenceData);
+  });
+
+  it('after a pass, what was pulled and what we wrote are both "seen"', () => {
+    const after = baselineAfterPass(pulled, { 'ev-new': T1 + 5 });
+    expect(after).toEqual({ 'ev-gym': T1, 'ev-new': T1 + 5 });
+    // Seen at its current stamp, so the next session does not adopt it again.
+    expect(outsideEdits(seedBaseline(after, pulled, phoneState), pulled).size).toBe(0);
+  });
+});
+
+describe('forcePushPlan — this device is right, for tasks (temporary)', () => {
+  const a = task('a', 'here');
+  const b = task('b');
+  const pulled = [
+    { task: task('a', 'stale'), googleEventIds: ['ev-a1', 'ev-a2'], updated: T1 },
+    { task: task('phone-only'), googleEventIds: ['ev-p'], updated: T1 },
+  ];
+
+  it('overwrites what Google has and creates what it lacks', () => {
+    const p = forcePushPlan([a, b], pulled);
+    expect(p.update).toEqual([{ task: a, eventIds: ['ev-a1', 'ev-a2'] }]);
+    expect(p.create).toEqual([b]);
+  });
+
+  it('⚠️ deletes nothing, on either side', () => {
+    const p = forcePushPlan([a], pulled);
+    expect(p.deleteRemote).toHaveLength(0);              // the phone-only task stays
+    expect(p.deleteLocal).toHaveLength(0);
+    expect(p.adopt).toHaveLength(0);
+  });
+
+  it('leaves an unreadable event alone', () => {
+    const p = forcePushPlan([a], pulled, { unreadable: new Set(['a']) });
+    expect(p.update).toHaveLength(0);
+    expect(p.blocked).toEqual(['a']);
   });
 });

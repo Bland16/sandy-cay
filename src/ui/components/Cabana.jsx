@@ -326,6 +326,24 @@ export default function Cabana({
                   </button>
                   <button className="btn2 ghost" onClick={sync.forget}>Use a different calendar</button>
                 </div>
+                {/* TEMPORARY (2026-10-01): repairs the stale-phone overwrite once.
+                    Remove when both devices have settled. See `forcePushPlan`. */}
+                {sync.pushAllTasksNow && (
+                  <div className="chest" style={{ marginTop: 8 }}>
+                    <button
+                      className="btn2"
+                      disabled={sync.status === 'syncing'}
+                      onClick={() => {
+                        if (!window.confirm('Send every task on THIS device to Google, overwriting the calendar\'s copy? Nothing is deleted.')) return;
+                        sync.pushAllTasksNow()
+                          .then((r) => r && showToast(`Sent ${r.sent} task(s) to Google${r.failed ? ` · ${r.failed} failed` : ''}`))
+                          .catch((e) => showToast(e.message));
+                      }}
+                    >
+                      This device&rsquo;s tasks are right — overwrite the calendar
+                    </button>
+                  </div>
+                )}
                 {/* Off by default. Logging that is always on stops being read —
                     it becomes noise you scroll past, and the one line that
                     mattered is invisible. */}

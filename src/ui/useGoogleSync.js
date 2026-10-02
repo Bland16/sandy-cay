@@ -24,7 +24,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   planSync, markDirty, advanceState, emptyState, describePlan, taskHash, isBulkDelete,
-  outsideEdits,
+  outsideEdits, seedBaseline, baselineAfterPass, forcePushPlan,
 } from '../core/syncPlan.js';
 import { libraryFrom, diffLibrary, applyLibrary } from '../core/googleLibrary.js';
 import { Schedule, defaultConfig, seedStarterBuckets, dateFromKey } from '../core/index.js';
@@ -369,20 +369,24 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, onAu
       }
 
       // Seed on the first pull of the session, before anything is decided or
-      // written — this is the "before" picture and it has to be taken first.
-      if (baseline.current === null) {
-        baseline.current = {};
-        for (const r of remote.tasks || []) {
-          for (const eventId of r.googleEventIds || []) baseline.current[eventId] = r.updated || 0;
-        }
-      }
+      // written. ⚠️ FROM THE SAVED RECORD, not from this pull — seeding from the
+      // calendar as it is now marks every edit made elsewhere while we were
+      // closed as already seen. See `seedBaseline`.
+      const opening = baseline.current === null;
+      if (opening) baseline.current = seedBaseline(stateRef.current.seen, remote.tasks, stateRef.current);
       const changedOutside = outsideEdits(baseline.current, remote.tasks);
 
       const t = now();
       const localTasks = sched.toJSON().tasks;
       logPull(remote, localTasks.length);
       if (changedOutside.size) logOutside(changedOutside, remote.tasks);
-      stateRef.current = markDirty(stateRef.current, localTasks, t);
+      // ⚠️ NOT STAMPED "NOW" ON THE OPENING PASS. `dirtyAt` is when this device
+      // NOTICED a difference, and on opening that is now — for an edit that may
+      // be days old, or no edit at all (a deploy that changes how a task is
+      // written makes every task differ). Stamped now, the device that opens
+      // LAST wins every conflict, which is how a stale phone beat the laptop.
+      // Unknown age means the calendar's version wins, and the conflict is said.
+      stateRef.current = markDirty(stateRef.current, localTasks, opening ? 0 : t);
       // `unreadable` is not optional bookkeeping: without it a corrupt event
       // reads as an absent one and this deletes the local task. See planSync.
       const plan = planSync(localTasks, remote.tasks, stateRef.current, {
@@ -478,7 +482,8 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, onAu
       logApplied(applied);
       // Fold our own writes back into the baseline, or the very next pass reads
       // them as somebody else's edits — the loop this whole mechanism exists to
-      // end.
+      // end. (Replaced wholesale at the end of the pass; this covers a pass that
+      // throws before it gets there.)
       Object.assign(baseline.current, applied.wrote || {});
 
       // ═══════════════════════════════════════════════════════════════════════
@@ -532,6 +537,10 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, onAu
       stateRef.current.noteEntries = advanceState(noteState, noteApplied, now()).entries;
       stateRef.current.blockedEntries = advanceState(blockedState, blockedApplied, now()).entries;
       stateRef.current.libHash = libNow;
+      // What this pass saw and wrote, carried to the next SESSION as well as
+      // the next pass — the record `seedBaseline` reads on opening.
+      baseline.current = baselineAfterPass(remote.tasks, applied.wrote);
+      stateRef.current.seen = baseline.current;
       saveSyncState(stateRef.current);
       setStatus('idle');
 
@@ -694,6 +703,47 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, onAu
     return r;
   }, [token, sched, mutate, calendarId]);
 
+  /**
+   * TEMPORARY (2026-10-01) — "this device is right" for TASKS. Overwrites every
+   * task Google holds with this device's copy and creates the ones it lacks;
+   * deletes nothing. See `forcePushPlan`. Called from a click, so asking for a
+   * token here is safe in a way it is not inside `runSync`.
+   */
+  const pushAllTasksNow = useCallback(async () => {
+    if (!calendarId || runningRef.current) return null;
+    runningRef.current = true;
+    setStatus('syncing');
+    setLastError(null);
+    try {
+      const api = makeApi(await token());
+      const remote = await pull(api, calendarId);
+      const plan = forcePushPlan(sched.toJSON().tasks, remote.tasks, { unreadable: remote.unreadable });
+      logPlan(plan);
+      const applied = await applyPlan(api, calendarId, plan, {
+        commitmentIds: new Set((sched.commitments || []).map((c) => c.id)),
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        groupNames: groupNamesFor(sched),
+      });
+      logApplied(applied);
+      // `advanceState` returns only `lastSyncAt` and `entries`, so the note and
+      // blocked-day maps and the library hash are carried over by hand.
+      stateRef.current = { ...stateRef.current, ...advanceState(stateRef.current, applied, now()) };
+      baseline.current = baselineAfterPass(remote.tasks, applied.wrote);
+      stateRef.current.seen = baseline.current;
+      saveSyncState(stateRef.current);
+      setStatus('idle');
+      return { sent: applied.synced.length, failed: applied.failed.length };
+    } catch (err) {
+      const msg = err?.message || String(err);
+      if (isAuthFailure(msg)) { loseAuth(msg); return null; }
+      setStatus('error');
+      setLastError(msg);
+      throw err;
+    } finally {
+      runningRef.current = false;
+    }
+  }, [token, sched, calendarId, now, loseAuth]);
+
   const forget = useCallback(() => {
     saveCalendarId(null);
     setCalendarId(null);
@@ -707,6 +757,7 @@ export function useGoogleSync({ enabled, sched, mutate, version, showToast, onAu
     status,
     lastError,
     syncNow: runSync,
+    pushAllTasksNow,
     chooseCalendar,
     forget,
     resetState,
