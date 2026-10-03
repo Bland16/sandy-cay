@@ -337,3 +337,231 @@ remove, and is withheld over a newer build's library.
 
 **Still open:** a Monday browser check (does the pause still appear?); S-7's
 cross-device task-id collision.
+
+---
+
+## 9. Step 2 spec: the model and its own sync (2026-10-03)
+
+Status: **SPEC, for audit.** Builds on §8.5 decision 1 ("own sync, per todo").
+
+### 9.1 The model: a `Todo` is an `Activity`, in a collection of its own
+
+`class Todo extends Activity`, held in **`schedule.todos`**, never in
+`schedule.activities`. Being in `todos` IS the one-shot marker, so there is no
+`oneShot` flag at all.
+
+This dissolves most of §8.2 for free:
+
+- **M-1 (deploy freeze) cannot happen.** `Activity.toJSON` is unchanged, so no
+  existing activity serialises differently.
+- **M-5's reader table shrinks to nothing.** `TagManager` (and its orphans
+  view), `RoutinesEditor`, `activityUsage`, `libraryMerge` and `bulkDrafts` all
+  read `activities` and never see a todo.
+- **§1's reuse argument still holds:** `Todo` inherits `durationFor`, `fits`,
+  `span` and the label/tags/range fields, so the picker treats it as an activity.
+
+| field | todo |
+|---|---|
+| `label`, `tags` | as `Activity` |
+| `durationMin` / `durationMax` | as `Activity`; **default 15 / 30** (D-2) |
+| `deadline` | NEW: `'YYYY-MM-DD'` or `null` (D-1), a real date |
+| `bucketId`, `load`, `priority` | always `null`. Energy comes from its own tags (P-5, and the "no dials" decision) |
+| `steps`, `travelMin` | forced `null` / `0` (M-4) |
+| `id` | **random suffix** (§9.5) |
+
+`Todo.toJSON` = `Activity.toJSON` + `deadline`. `isTodo` getter, as routines
+have `isRoutine` (P-6).
+
+### 9.2 The store's doors
+
+- **Form:** `addTodo(data)`, `updateTodo(id, changes)`, `removeTodo(id)`.
+- **Store:** `upsertTodoFromJSON(json)` for the sync. This is a separate door
+  for the reason `upsertDayNoteFromJSON` gives: a form whitelist must never be
+  able to strip a synced field.
+- **"Do it now":** `placeActivity(schedule, todo, …)`. If the item is a `Todo`:
+  1. **if it is no longer in `schedule.todos`, do nothing** and return
+     `{ task: null, gone: true }` (M-3: a double tap, or sync removed it);
+  2. create the task with **`activityId: null`** (M-2: the template is about to
+     go, and nothing needs the link);
+  3. `removeTodo` **in the same call**, so a single `mutate` covers both
+     (atomic locally, §8.2 M-4).
+- `Schedule.toJSON` / `fromJSON` carry `todos`. **`useEngine#replace` copies
+  `todos` in the same commit** (sharp edge #15: the fourth time it would have
+  been forgotten). `summarizeImport` gains `todoCount`.
+- **Footlocker:** a full import brings todos back, because it is a restore.
+  "Restore setup only" does NOT, because a todo is not setup. **T-2 below.**
+
+### 9.3 In Google: one all-day event per todo
+
+A new kind, `sc.kind = 'todo'`, in `googleDayNotes.js`'s shape (or a sibling
+`googleTodos.js`):
+
+- `summary` ← `label` (native, so a rename in Google lands, GS-4)
+- `start.date` ← `deadline`, or **`1970-01-01` when undated**: the date the
+  library already uses to keep out of sight
+- `transparency: 'transparent'`, so it never shows you as busy
+- everything else (tags, range) in the checksummed `sc.json` payload
+- decoding: `1970-01-01` means undated. A todo dragged in Google to a real day
+  gains that deadline; one dragged back to 1970 loses it.
+- decoding refuses rather than throws, and **reports the id** on failure
+  (`decodeDayEvent`'s rule), so a corrupt todo is `unreadable`, never "deleted".
+
+⚠️ **T-1 below:** a dated todo is visible in Google Calendar on its due day.
+
+### 9.4 The sync slice
+
+A fourth slice beside tasks, notes and blocked days, through the SAME
+`planSync` (one planner, every guard):
+
+- `remote.todos` from `pull`, shaped `{ task, googleEventIds, updated }`
+- `todoEntries` in the sync record, a separate map (ids collide only by luck)
+- `markDirty(..., opening ? 0 : t)`. ⚠️ Like tasks (73551fd), **not** like
+  notes: an opening pass must not stamp a stale device's copy as "just edited".
+- `unreadable` passed in
+- **the bulk-delete guard gains a `todos` row**
+- `applyLocalTodos` uses `upsertTodoFromJSON` / `removeTodo`
+- ⚠️ **ORDER: todo writes go BEFORE task writes.** A "Do it now" deletes the
+  todo and creates a task. Done in this order, a device that pulls mid-pass sees
+  the todo gone and the task not yet there (the task arrives next pass), never
+  both at once.
+- entries advanced by what Google CONFIRMED, as the others are
+- `resetState`, `chooseCalendar` and `forget` clear it with the rest
+  (`emptyState()` already drops the extra maps)
+
+**What two devices do, by planSync's existing rules:**
+
+| case | result |
+|---|---|
+| done on A, A syncs, then B syncs | A: `deleteRemote`; B: `deleteLocal`. **Never resurrected.** |
+| done on A, edited on B, before either syncs | **delete wins** (planSync: known and missing → delete). B's edit is lost; the todo is already a task, so that is right |
+| added on both | two todos (different random ids) |
+| done on BOTH before either syncs | two tasks. **T-3 below** |
+| renamed in Google | adopted |
+
+### 9.5 Ids
+
+`ids.js`'s counter restarts at every page load, so two devices can mint the
+same id (S-7). For tasks that is a latent bug; for todos, created daily on two
+devices, it would be a live one. **A todo's id is `slug(label)` plus 6 random
+base-36 characters**, with the random source injectable for tests. Tasks are
+untouched here: S-7 stays open.
+
+### 9.6 The library
+
+`todos` is **not** in `LIBRARY_KEYS`. It goes into `NOT_LIBRARY` beside
+`dayNotes` ("all-day events"), so `missingFromLibrary` does not report it as
+homeless.
+
+### 9.7 Out of this step
+
+The picker (§7 step 4: P-1's reserved slot, P-2's tier, P-3's toggle, P-4's
+missing cases), the Cabana card (step 3) and the quick-add line. Step 2 is
+provable with no UI.
+
+### 9.8 Tests (must exist before it ships)
+
+- Revival round-trip: `Todo` → JSON → `Todo`, including `deadline: null`.
+- **An existing schedule's `activities` serialise byte-for-byte as before**
+  (the M-1 guard).
+- `placeActivity` on a todo: task created, todo gone, a single mutation;
+  **twice in a row creates ONE task**.
+- `replace` (footlocker) carries `todos`; `missingFromLibrary` stays empty.
+- Encode/decode: dated, undated, renamed in Google, dragged to a date, dragged
+  back to 1970, corrupt payload → unreadable with its id.
+- **Through the real hook:** a todo done on A disappears from B, B's task
+  arrives, and **a second pass is quiet** (convergence). The bulk guard trips on
+  a mass todo deletion. Todo writes precede task writes.
+
+### 9.9 For the user
+
+- **T-1. Should a dated todo show in your Google Calendar on its due day?**
+  Recommend **yes**, as a transparent all-day item (it never blocks time),
+  editable from Google like a day note. Undated todos stay out of sight.
+- **T-2. Should "Restore setup only" bring back todos from a backup?**
+  Recommend **no**: a todo is not setup, and an old backup would bring back
+  todos you have since done. A full import does bring them back.
+- **T-3. Same todo done on both devices before either synced → two tasks.**
+  Recommend **accept**: it needs two "Do it now"s within one sync interval
+  (about 5 s apart while both are open), and either task can be deleted.
+
+### 9.10 Existing bug found writing this (not a todo bug)
+
+**N-1. Day notes stamp `dirtyAt = now` on the opening pass**
+(`useGoogleSync.js`, the `markDirty(…, localNotes, t)` call). That is the same
+stale-device bug 73551fd fixed for tasks: a device that opens last wins every
+day-note conflict, even with an old copy. **Proposed:** the same one-word fix
+(`opening ? 0 : t`), in its own commit.
+
+### 9.11 Audit of §9 (2026-10-03): two agents, sync and model
+
+**Sync**
+
+- **A-1 BLOCKER: an OLD bundle on the other device destroys todos.** Proved by
+  running the real code: an old `pull` reads a `sc.kind='todo'` event through
+  the TASK decoder (`isOurs` on `sc.id`, `decodeEvent` ignores `sc.kind`,
+  `v <= 1` passes), adopts it as a task, then writes it back as a timed task.
+  The new device then sees its todos gone. **Fix: todo events carry
+  `sc.v = "2"`**, accepted only by the todo decoder. Tasks stay at v1 (a global
+  bump would make an old bundle refuse every task). Probed: the old bundle then
+  reports `unreadable` and `planSync` leaves them alone.
+- **A-2 must-fix: the per-event baseline must cover todos.** `lastSyncAt` is the
+  device clock compared with Google's `updated`; skew means our own writes
+  look like edits, or real edits are missed. Feed `seedBaseline` /
+  `baselineAfterPass` / `wrote` with todo events too, and call `outsideEdits`
+  per slice (ids collide across slices). As written, `baselineAfterPass`
+  rebuilds from tasks only, so a rename in Google would never be adopted.
+- **A-3 must-fix: the bulk guard trips on normal use.** `isBulkDelete` = ≥3 and
+  ≥half; finishing 3 of 5 todos on the phone would stop the laptop's whole
+  sync. Todos row: trip only when ≥3 would go AND the calendar returned NO
+  todos at all (what a re-made calendar looks like). Test: 3 of 4 does NOT.
+- **A-4: "todos before tasks" is achievable but weaker than claimed.** A failed
+  delete is caught into `failed` and the task create still runs; Google's list
+  is not documented as read-after-write. Reword: it usually prevents a second
+  device seeing both. The real protection is M-3 (idempotence).
+- **A-5: T-3 was wrong.** There is no periodic pull: a sync runs on opening and
+  5 s after a local edit. An idle open device keeps showing a finished todo
+  until it edits something or reloads, so the window for a double "Do it now"
+  is unbounded. And because of S-7, the two tasks can share an id, in which
+  case one silently overwrites the other.
+- **A-6: N-1 is real**, and `opening ? 0 : t` is the right fix.
+- **Notes:** strip `label`/`deadline` from the payload (native fields only);
+  decode must rebuild exactly `Todo.toJSON` or the hash never settles; end
+  date is `dayAfter(start)` (not the library's start = end); a todo made to
+  repeat in Google should be ignored or refused; the dropped-events toast,
+  `describePlan` and conflict toasts are task-only, so add todos;
+  `forcePushPlan` stays tasks-only (say so). 1970 events ARE returned by `pull`
+  (no `timeMin`), so the sentinel works.
+
+**Model**
+
+- **A-7 BLOCKER: a refused placement would delete the todo.** `placeActivity`
+  drops `resolveDropConflicts`' `rejected` / `occurrenceMenu`. Probed: "Walk"
+  placed over a fixed lecture → both at 10:00, overlapping, and the panel
+  toasts success. **Existing bug for library activities today.** Order:
+  look the todo up BY ID in `schedule.todos` (a sync upsert replaces the
+  instance) → missing: `{ task: null, gone: true }` → `addFlexible` →
+  `resolveDropConflicts` → rejected: remove the new task, KEEP the todo, return
+  `{ rejected, reason }` → only then `removeTodo`. Same fix for plain
+  activities. Pass `now` in (sharp edge #8; it reads the wall clock today).
+- **A-8 must-fix:** `Activity.fromJSON` returns `new Activity` — use
+  `new this(json)` so `Todo.fromJSON` revives a `Todo`. The constructor passes
+  `durationMax ?? 30` explicitly (the base defaults to 60) and label `'Todo'`.
+- **A-9 must-fix:** `updateTodo` rebuilds through the constructor
+  (`updateDayNote`'s way), never `Object.assign`, or `steps` gets back in.
+- **A-10 must-fix:** deadline validated like `DayNote`'s `asKey`: a real
+  `YYYY-MM-DD` or `null`; `'1970-01-01'` → `null`. Never `new Date('YYYY-MM-DD')`.
+- **A-11 must-fix, ids:** `ids.js` gains an injectable random source
+  (`crypto.getRandomValues` behind a guard, `Math.random` fallback), building
+  the suffix one character at a time. `_uniqueInColl` / `_dedupeIds` re-mint with
+  the counter `makeId`; for todos they must use the random minter, or a re-mint
+  orphans the Google event.
+- **A-12 wiring §9 missed:** `_dedupeIds(todos)`; the Cabana import confirm
+  ("N todos"); `src/core/index.js` export; the `fullyLoaded()` footlocker
+  fixture (its guard fails until a todo is in it, which is the point).
+- **A-13 tests:** "activities byte-for-byte" is a tautology unless golden, so
+  use "the library hash is identical with and without a todo". "A single
+  mutation" cannot be measured in core; drop it. Add: rejected placement keeps
+  the todo; restore-setup leaves todos alone; `updateTodo({steps})` cannot make
+  a routine; a bad deadline revives as `null`; an injected rng gives exact ids;
+  `toBeInstanceOf(Todo)`. Don't copy the Cabana confirm test that rebuilds its
+  own string; render the Cabana instead.
