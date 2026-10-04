@@ -619,12 +619,19 @@ export function useGoogleSync({
       // edit and adopted them, which called mutate, which bumped the version,
       // which scheduled another sync. Every sync bought a second one, and the
       // app sat on "syncing" for two or three debounce cycles instead of one.
+      // ⚠️ `advanceState` returns ONLY `lastSyncAt` and `entries`, so everything
+      // else in the record has to be put back by hand — and `libHash` was not,
+      // on the one path where it matters: a library push that FAILED. The record
+      // then forgot what it had last synced, and the next session, with no
+      // witness, fell back to compare-and-freeze over a difference that was only
+      // ever this device's own unsaved edit.
+      const libHashBefore = stateRef.current.libHash;
       stateRef.current = advanceState(stateRef.current, applied, now());
       // The two all-day collections keep their own entry maps, advanced by the
       // same rule: what Google CONFIRMED, never what was planned.
       stateRef.current.noteEntries = advanceState(noteState, noteApplied, now()).entries;
       stateRef.current.blockedEntries = advanceState(blockedState, blockedApplied, now()).entries;
-      if (!libPushError) stateRef.current.libHash = libNow;
+      stateRef.current.libHash = libPushError ? libHashBefore : libNow;
       // What this pass saw and wrote, carried to the next SESSION as well as
       // the next pass — the record `seedBaseline` reads on opening.
       baseline.current = baselineAfterPass(remote.tasks, applied.wrote);

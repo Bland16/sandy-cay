@@ -778,6 +778,7 @@ describe('⚠️ settled is not the same as "the calendar stopped moving" (bug-c
 describe('the library push, failing', () => {
   it('a library that cannot be written does not stop the TASKS, and it is said', async () => {
     const sched = usedSchedule();
+    storeState({ libHash: 'what-we-last-synced' });
     pushLibraryMock.mockImplementationOnce(async () => { throw new Error('quota exceeded'); });
     const { result } = mount({ sched, mutate: vi.fn((fn) => fn(sched)), showToast: vi.fn() });
     await act(async () => { await Promise.resolve(); });
@@ -785,9 +786,11 @@ describe('the library push, failing', () => {
     expect(applyPlanMock).toHaveBeenCalled();
     expect(result.current.status).toBe('error');
     expect(result.current.lastError).toMatch(/setup could not be saved.*quota/);
-    // Not recorded as synced, so the next pass tries again.
+    // Not recorded as synced, so the next pass tries again — and ⚠️ NOT
+    // FORGOTTEN either. `advanceState` drops every key but two, and a record
+    // with no `libHash` at all makes the next session freeze over nothing.
     const stored = JSON.parse(window.localStorage.getItem('sandycay.sync.state'));
-    expect(stored.libHash).not.toBe(hashOf(sched));
+    expect(stored.libHash).toBe('what-we-last-synced');
   });
 
   it('"replace the calendar" does not claim success over copies it could not remove', async () => {
