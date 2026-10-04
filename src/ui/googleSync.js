@@ -19,6 +19,7 @@ import { encodeLibrary, decodeLibrary } from '../core/googleLibrary.js';
 import {
   dayKindOf, decodeDayEvent, encodeDayNote, encodeBlockedDay, KIND_BLOCKED,
 } from '../core/googleDayNotes.js';
+import { isTodoEvent, decodeTodoEvent, encodeTodo } from '../core/googleTodos.js';
 import {
   listAllEvents, insertEvent, patchEvent, deleteEvent,
 } from './google.js';
@@ -82,6 +83,15 @@ export async function pull(api, calendarId) {
   // so they come back here rather than inside the blob.
   const notes = [];
   const blockedDays = [];
+  // Todos are all-day events too (design/TODO-LIST.md §9.3), one each.
+  //
+  // ⚠️ KEYED BY TODO ID, as tasks are. One each is what we WRITE; a copy made
+  // in Google ("Duplicate") carries the same `sc.id`. Listed separately, the
+  // planner kept one and "Do it now" deleted one — and the survivor brought the
+  // finished todo back on both devices. Grouped, the whole set is replaced or
+  // removed together.
+  const todoById = new Map();
+  const unreadableTodos = new Set();
 
   for (const ev of events) {
     if (!isOurs(ev)) continue;
@@ -101,6 +111,27 @@ export async function pull(api, calendarId) {
         blockedDays.push({ task: { id: d.id, day: d.day }, googleEventIds: [ev.id], updated: Date.parse(ev.updated || 0) || 0 });
       } else {
         notes.push({ task: d.note, googleEventIds: [ev.id], updated: Date.parse(ev.updated || 0) || 0 });
+      }
+      continue;
+    }
+
+    // ⚠️ BEFORE THE TASK DECODER. `decodeEvent` does not look at `sc.kind`, so a
+    // todo that reached it would come back as a task with no times.
+    if (isTodoEvent(ev)) {
+      const d = decodeTodoEvent(ev);
+      if (d.ok) {
+        const updated = Date.parse(ev.updated || 0) || 0;
+        const seen = todoById.get(d.id);
+        if (seen) {
+          seen.googleEventIds.push(ev.id);
+          // The newest copy is the one a person last touched.
+          if (updated > seen.updated) { seen.updated = updated; seen.task = d.todo; }
+        } else {
+          todoById.set(d.id, { task: d.todo, googleEventIds: [ev.id], updated });
+        }
+      } else if (!d.skip) {
+        dropped.push({ id: ev.id, taskId: d.id || null, summary: ev.summary, error: d.error, todo: true });
+        if (d.id) unreadableTodos.add(d.id);
       }
       continue;
     }
@@ -141,6 +172,10 @@ export async function pull(api, calendarId) {
     tasks,
     notes,
     blockedDays,
+    todos: [...todoById.values()],
+    // ⚠️ Its OWN set. `unreadable` below is one set for every collection, so a
+    // corrupt todo whose id happened to equal a task's froze that task too.
+    unreadableTodos,
     incomplete,
     library: lib.ok ? lib.library : null,
     libraryError: lib.ok || lib.empty ? null : lib.error,
@@ -148,7 +183,7 @@ export async function pull(api, calendarId) {
     libraryNewer: lib.code === 'newer',
     dropped,
     /** Task ids that exist in Google but could not be read. */
-    unreadable: new Set(dropped.map((d) => d.taskId).filter(Boolean)),
+    unreadable: new Set(dropped.filter((d) => !d.todo).map((d) => d.taskId).filter(Boolean)),
   };
 }
 
@@ -275,6 +310,7 @@ export async function applyPlan(api, calendarId, plan, {
  * nothing and keeps the executor unaware of the difference.
  */
 export const encodeNoteParts = (note) => [encodeDayNote(note)];
+export const encodeTodoParts = (todo) => [encodeTodo(todo)];
 export const encodeBlockedParts = (b) => [encodeBlockedDay(b.day)];
 
 /**

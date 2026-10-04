@@ -99,6 +99,11 @@ export default function WhatToDoPanel({ sched, now, mutate, onOpenTask, onClose,
     if (!opening) return;
     let outcome = null;
     mutate((s) => { outcome = s.placeActivity(activity, opening.start, opening.minutes, { now }); });
+    // A todo already done (a second tap, or the other device) made no task.
+    if (outcome && outcome.gone) {
+      showToast(`${activity.label} is already done`);
+      return;
+    }
     // Honour a refusal, as `doItNow` does: nothing was placed, so say why.
     if (outcome && outcome.rejected) {
       showToast(outcome.reason || `${activity.label} would not fit there`);

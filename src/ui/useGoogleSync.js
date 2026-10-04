@@ -24,12 +24,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   planSync, markDirty, advanceState, emptyState, describePlan, taskHash, isBulkDelete,
-  outsideEdits, seedBaseline, baselineAfterPass, forcePushPlan,
+  outsideEdits, seedBaseline, baselineAfterPass, forcePushPlan, recordLocalHalf,
 } from '../core/syncPlan.js';
 import { libraryFrom, libraryGate, applyLibrary } from '../core/googleLibrary.js';
 import { Schedule, defaultConfig, seedStarterBuckets, dateFromKey } from '../core/index.js';
 import {
   makeApi, pull, applyPlan, pushLibrary, inspectCalendar, encodeNoteParts, encodeBlockedParts,
+  encodeTodoParts,
 } from './googleSync.js';
 import {
   getAccessToken, readClientId, cachedAccessToken, clearAccessToken,
@@ -103,6 +104,15 @@ export function applyLocalNotes(sched, plan) {
   let removed = 0;
   for (const note of plan.adopt) { sched.upsertDayNoteFromJSON(note); adopted += 1; }
   for (const id of plan.deleteLocal) { if (sched.removeDayNote(id)) removed += 1; }
+  return { adopted, removed };
+}
+
+/** Todos (design/TODO-LIST.md §9.4) — through the store's door, like notes. */
+export function applyLocalTodos(sched, plan) {
+  let adopted = 0;
+  let removed = 0;
+  for (const todo of plan.adopt) { sched.upsertTodoFromJSON(todo); adopted += 1; }
+  for (const id of plan.deleteLocal) { if (sched.removeTodo(id)) removed += 1; }
   return { adopted, removed };
 }
 
@@ -435,7 +445,17 @@ export function useGoogleSync({
       // calendar as it is now marks every edit made elsewhere while we were
       // closed as already seen. See `seedBaseline`.
       const opening = baseline.current === null;
-      if (opening) baseline.current = seedBaseline(stateRef.current.seen, remote.tasks, stateRef.current);
+      // ⚠️ ONE baseline, keyed by EVENT id, covers tasks and todos alike — but it
+      // is seeded and asked PER COLLECTION, because `seedBaseline`'s fallback and
+      // `outsideEdits`' answer are keyed by the thing's own id, and a todo and a
+      // task may share one.
+      const todoRecord = { lastSyncAt: stateRef.current.lastSyncAt || 0, entries: stateRef.current.todoEntries || {} };
+      if (opening) {
+        baseline.current = {
+          ...seedBaseline(stateRef.current.seen, remote.tasks, stateRef.current),
+          ...seedBaseline(stateRef.current.seen, remote.todos || [], todoRecord),
+        };
+      }
       const changedOutside = outsideEdits(baseline.current, remote.tasks);
 
       const t = now();
@@ -504,8 +524,24 @@ export function useGoogleSync({
         unreadable: remote.unreadable,
       });
 
+      // ═══════════════════════════════════════════════════════════════════════
+      // TODOS (design/TODO-LIST.md §9.4) — a fourth slice, the same planner.
+      // ═══════════════════════════════════════════════════════════════════════
+      //
+      // Stamped like a TASK on the opening pass (age unknown → 0), and judged
+      // against the per-event baseline rather than `lastSyncAt`: that one is
+      // this device's clock compared with Google's, so any skew reads our own
+      // writes as somebody's edit, or hides a real one.
+      const localTodos = sched.todos.map((x) => x.toJSON());
+      const todoState = markDirty(todoRecord, localTodos, opening ? 0 : t);
+      const todoPlan = planSync(localTodos, remote.todos || [], todoState, {
+        unreadable: remote.unreadableTodos || new Set(),
+        changedOutside: outsideEdits(baseline.current, remote.todos || []),
+      });
+
       logPlan(notePlan);
       logPlan(blockedPlan);
+      logPlan(todoPlan);
 
       // ⚠️ STOP BEFORE EMPTYING THE SCHEDULE — AND THAT MEANS ALL OF IT. A sync
       // about to delete most of anything at once is far likelier to be a bug
@@ -517,11 +553,27 @@ export function useGoogleSync({
       // days went through the same planner with none of it, so an emptied
       // calendar took every holiday and every blocked day with it, silently.
       // Proven by `design/probes/probe-bulk-delete-gap.mjs`.
+      //
+      // ⚠️ TODOS ARE DIFFERENT, and the same rule would trip on ordinary use.
+      // Finishing most of a short list — or ALL of it — is what a todo list is
+      // for: three of five done on the phone is "≥3 and ≥half", and would have
+      // stopped the laptop's whole sync with advice to change calendars.
+      //
+      // "The calendar came back with no todos" is not the test either, though it
+      // was the first one tried: that is exactly what finishing every todo looks
+      // like, and it wedged the other device for good — status `error`, the new
+      // tasks never arriving, nothing it added ever pushed (bug-check,
+      // 2026-10-04). A re-made calendar is not one with no todos; it is one with
+      // NOTHING OF OURS, and a finished list always leaves the tasks it became.
+      const calendarIsBare = !remote.library && !remote.libraryError
+        && (remote.tasks || []).length === 0 && (remote.notes || []).length === 0
+        && (remote.blockedDays || []).length === 0 && (remote.dropped || []).length === 0;
       const bulk = [
-        ['tasks', plan, localTasks.length],
-        ['day notes', notePlan, sched.dayNotes.length],
-        ['blocked days', blockedPlan, sched.blockedDays.length],
-      ].find(([, p, n]) => isBulkDelete(p, n));
+        ['tasks', plan, localTasks.length, true],
+        ['day notes', notePlan, sched.dayNotes.length, true],
+        ['blocked days', blockedPlan, sched.blockedDays.length, true],
+        ['todos', todoPlan, sched.todos.length, calendarIsBare],
+      ].find(([, p, n, also]) => also && isBulkDelete(p, n));
 
       if (bulk) {
         const [what, p, n] = bulk;
@@ -569,6 +621,16 @@ export function useGoogleSync({
         }
       }
 
+      // ⚠️ TODOS BEFORE TASKS. "Do it now" deletes a todo and creates a task. In
+      // this order a device that pulls part-way usually sees the todo gone and
+      // the task not yet there (it arrives next pass) rather than both. It is
+      // not a guarantee — a failed delete is retried next pass while the create
+      // goes ahead — and it does not need to be: `placeActivity` will not do a
+      // todo twice on one device, and coming back to a tab pulls.
+      const todoApplied = await applyPlan(api, calendarId, todoPlan, { encode: encodeTodoParts });
+      logApplied(todoApplied);
+      Object.assign(baseline.current, todoApplied.wrote || {});
+
       const applied = await applyPlan(api, calendarId, plan, {
         commitmentIds: new Set((sched.commitments || []).map((c) => c.id)),
         timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -607,6 +669,7 @@ export function useGoogleSync({
 
       if (notePlan.adopt.length || notePlan.deleteLocal.length) mutate((s) => applyLocalNotes(s, notePlan));
       if (blockedPlan.adopt.length || blockedPlan.deleteLocal.length) mutate((s) => applyLocalBlocked(s, blockedPlan));
+      if (todoPlan.adopt.length || todoPlan.deleteLocal.length) mutate((s) => applyLocalTodos(s, todoPlan));
 
       if (plan.adopt.length || plan.deleteLocal.length) {
         mutate((s) => applyLocal(s, plan));
@@ -631,10 +694,23 @@ export function useGoogleSync({
       // same rule: what Google CONFIRMED, never what was planned.
       stateRef.current.noteEntries = advanceState(noteState, noteApplied, now()).entries;
       stateRef.current.blockedEntries = advanceState(blockedState, blockedApplied, now()).entries;
+      // Todos also record their LOCAL half now, rather than waiting for a later
+      // pass to echo an adopted todo back up — see `recordLocalHalf`.
+      stateRef.current.todoEntries = recordLocalHalf(
+        advanceState(todoState, todoApplied, now()).entries,
+        todoPlan,
+        (id) => { const live = sched.todos.find((x) => x.id === id); return live ? live.toJSON() : null; },
+      );
       stateRef.current.libHash = libPushError ? libHashBefore : libNow;
       // What this pass saw and wrote, carried to the next SESSION as well as
       // the next pass — the record `seedBaseline` reads on opening.
-      baseline.current = baselineAfterPass(remote.tasks, applied.wrote);
+      // ⚠️ Todo events too. Rebuilt from tasks alone, every todo event would drop
+      // out of the baseline each pass, read as "never seen", and a rename made in
+      // Google would never be adopted.
+      baseline.current = {
+        ...baselineAfterPass(remote.tasks, applied.wrote),
+        ...baselineAfterPass(remote.todos || [], todoApplied.wrote),
+      };
       stateRef.current.seen = baseline.current;
       persist(stateRef.current);
       if (libPushError) {
@@ -650,8 +726,12 @@ export function useGoogleSync({
       for (const c of plan.conflicts) {
         showToast(`"${c.title}" changed in both places — kept the ${c.winner === 'local' ? 'version here' : 'version from Google'}`);
       }
-      if (applied.failed.length) {
-        showToast(`${applied.failed.length} didn't save — will retry`);
+      for (const c of todoPlan.conflicts) {
+        showToast(`The todo "${c.title}" changed in both places — kept the ${c.winner === 'local' ? 'version here' : 'version from Google'}`);
+      }
+      const unsaved = applied.failed.length + todoApplied.failed.length;
+      if (unsaved) {
+        showToast(`${unsaved} didn't save — will retry`);
       }
       if (remote.dropped.length) {
         // Said plainly, including that nothing was touched — a user who sees
@@ -875,7 +955,13 @@ export function useGoogleSync({
       // `advanceState` returns only `lastSyncAt` and `entries`, so the note and
       // blocked-day maps and the library hash are carried over by hand.
       stateRef.current = { ...stateRef.current, ...advanceState(stateRef.current, applied, now()) };
-      baseline.current = baselineAfterPass(remote.tasks, applied.wrote);
+      // ⚠️ Todo events stay in the baseline even though this button does not
+      // write todos. Rebuilt from tasks alone, they dropped out — and the next
+      // rename made in Google read as "never seen" and was never adopted.
+      baseline.current = {
+        ...baselineAfterPass(remote.tasks, applied.wrote),
+        ...baselineAfterPass(remote.todos || [], {}),
+      };
       stateRef.current.seen = baseline.current;
       persist(stateRef.current);
       setStatus('idle');

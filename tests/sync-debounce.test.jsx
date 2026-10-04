@@ -48,6 +48,7 @@ vi.mock('../src/ui/googleSync.js', () => ({
   // never pushed" — which is how this was found.
   encodeNoteParts: (n) => [n],
   encodeBlockedParts: (b) => [b],
+  encodeTodoParts: (t) => [t],
 }));
 
 const { useGoogleSync, DEBOUNCE_MS, RETURN_PULL_MS, SYNC_CALENDAR_KEY } = await import('../src/ui/useGoogleSync.js');
@@ -236,7 +237,7 @@ describe('⚠️ what the calendar looked like is remembered between sessions', 
     // Session 2 — the phone opening.
     mount({ enabled: true, sched, mutate, showToast });
     await flush();
-    const plan = applyPlanMock.mock.calls[0][2];
+    const plan = applyPlanMock.mock.calls.find((c) => c[3] && c[3].commitmentIds)[2];
     expect(plan.adopt).toEqual([laptop]);
     expect(plan.update).toHaveLength(0);
   });

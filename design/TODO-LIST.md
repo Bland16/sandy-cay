@@ -576,3 +576,36 @@ day-note conflict, even with an old copy. **Proposed:** the same one-word fix
 - **Existing bugs, each its own commit:** N-1 (day notes stamped dirty on
   opening) and A-7 for library activities (a refused "Do it now" reported as
   placed).
+
+### 9.13 Step 2 shipped 2026-10-04: the model and its sync
+
+Built as §9 with every §9.11 fix: `Todo` in `schedule.todos`, random ids,
+`placeActivity` by id and refusal-safe, one all-day event per todo at `sc.v=2`,
+a fourth `planSync` slice on the per-event baseline, todos written before
+tasks. Existing bugs fixed on the way, each its own commit: N-1 (day notes),
+a refused "Do it now" reported as placed, and a tab-return pull (T-3).
+
+**Found by the two-device test:** an item adopted FROM the calendar had no
+sync entry until a later pass echoed it back up; deleted elsewhere in that
+window, it was re-created. Closed for todos (`recordLocalHalf`).
+
+**Found by the bug-check, fixed:** the todo bulk guard wedged the other device
+when you finished ALL your todos (it now trips only on a calendar holding
+nothing of ours); a todo copied in Google came back after being done (events
+are grouped by id); `pushAllTasksNow` made the sync deaf to a todo renamed in
+Google; a corrupt todo could freeze a task sharing its id.
+
+**Still open**
+
+- **Tasks and day notes still take the adopt echo**, with the same ~5 s
+  re-create window. Awaiting the user.
+- **A todo given a TIME in Google, then edited here:** our PATCH sends
+  `start: { date }` over an event holding `start.dateTime`. Whether the real
+  API accepts that is unverified (the fake replaces rather than merges). Worst
+  case is "1 didn't save, will retry" until it is all-day again. Needs a real
+  check.
+- A debounce that fires while a pass is running is dropped, not re-queued
+  (pre-existing). `describePlan` and the dropped-events toast speak only of
+  tasks. S-7 (task ids across devices) is unchanged.
+- An old cached bundle toasts "N events could not be read" each pass while any
+  todo exists, until that device reloads. It destroys nothing.

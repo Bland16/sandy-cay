@@ -53,6 +53,7 @@ vi.mock('../src/ui/googleSync.js', () => ({
   // never pushed".
   encodeNoteParts: (n) => [n],
   encodeBlockedParts: (b) => [b],
+  encodeTodoParts: (t) => [t],
 }));
 
 const { useGoogleSync, SYNC_CALENDAR_KEY, freshLibraryHash } = await import('../src/ui/useGoogleSync.js');

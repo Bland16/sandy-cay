@@ -362,6 +362,34 @@ export function advanceState(state, applied, now) {
 }
 
 /**
+ * Fold a plan's LOCAL half into the record: what was adopted from the calendar
+ * is, by definition, in step with it — and what was removed here is gone.
+ *
+ * ⚠️ `advanceState` records only what was WRITTEN to Google, so an item taken
+ * FROM Google had no entry until a later pass pushed it straight back up as an
+ * "update" — an echo. Until that echo ran, the item read as never-synced: if
+ * the other device deleted it in the meantime, "present here, absent there, no
+ * entry" is the CREATE branch, and it was put back. For a todo, that is a
+ * finished todo returning (found by the two-device test, 2026-10-04).
+ *
+ * `liveById` gives the item AS THIS DEVICE NOW HOLDS IT, and that is what is
+ * hashed — not the JSON that arrived. They are the same thing in two spellings
+ * when revival normalises a field, and hashing the arrival would read the
+ * difference as a local edit on the next pass.
+ *
+ * Used by the todo slice. Tasks and day notes still take the echo.
+ */
+export function recordLocalHalf(entries, plan, liveById) {
+  const out = { ...entries };
+  for (const id of plan.deleteLocal || []) delete out[id];
+  for (const adopted of plan.adopt || []) {
+    const live = liveById(adopted.id);
+    if (live) out[adopted.id] = { hash: taskHash(live), eventId: null, dirtyAt: 0 };
+  }
+  return out;
+}
+
+/**
  * Is this plan about to delete so much of your schedule that it is more likely
  * a bug than an intention?
  *
