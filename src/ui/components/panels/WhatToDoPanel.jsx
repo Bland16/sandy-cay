@@ -98,7 +98,12 @@ export default function WhatToDoPanel({ sched, now, mutate, onOpenTask, onClose,
   const doActivityNow = (activity) => {
     if (!opening) return;
     let outcome = null;
-    mutate((s) => { outcome = s.placeActivity(activity, opening.start, opening.minutes); });
+    mutate((s) => { outcome = s.placeActivity(activity, opening.start, opening.minutes, { now }); });
+    // Honour a refusal, as `doItNow` does: nothing was placed, so say why.
+    if (outcome && outcome.rejected) {
+      showToast(outcome.reason || `${activity.label} would not fit there`);
+      return;
+    }
     const moved = outcome && outcome.displaced ? outcome.displaced.length : 0;
     showToast(`${activity.label} → ${formatHHMM(opening.start)}${moved ? ` · ${moved} moved aside` : ''}`);
   };

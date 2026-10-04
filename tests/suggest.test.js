@@ -234,3 +234,58 @@ describe('P-1 — the read path records nothing', () => {
     expect(s.learning.sampleCount).toBe(0);
   });
 });
+
+describe('⚠️ placeActivity honours a refusal (design/TODO-LIST.md A-7)', () => {
+  beforeEach(() => resetIds());
+  // It returned only `{ task, displaced }`, so a drop `resolveDropConflicts`
+  // REJECTED stayed on the grid, on top of the thing that refused it, and the
+  // panel toasted success. Probed 2026-10-03: "Walk" at 10:00 across a fixed
+  // 10:00 lecture.
+  it('a fixed task in the way → nothing is placed, and it says why', () => {
+    const s = withBuckets(new Schedule({ config: wideCfg() }));
+    s.addFixed({ title: 'Lecture', tags: ['x'], startTime: D(15, 10), endTime: D(15, 11) });
+    const a = s.addActivity({ bucketId: s.buckets[1].id, label: 'Walk', tags: ['rest'], durationMin: 30, durationMax: 60 });
+    const before = s.tasks.length;
+
+    const out = s.placeActivity(a, D(15, 10), 60, { now: D(15, 9) });
+
+    expect(out.rejected).toBe(true);
+    expect(out.task).toBeNull();
+    expect(out.reason).toMatch(/Lecture/);
+    expect(s.tasks).toHaveLength(before);
+  });
+
+  it('a repeating task in the way is a refusal too, not a silent overlap', () => {
+    const s = withBuckets(new Schedule({ config: wideCfg() }));
+    s.addFixed({
+      title: 'Seminar', tags: ['x'], startTime: D(13, 10), endTime: D(13, 11),
+      recurrence: {
+        periods: [{
+          windows: [{ day: 'mon', start: '10:00', end: '11:00' }, { day: 'wed', start: '10:00', end: '11:00' }],
+          interval: 1, effectiveFrom: null, effectiveUntil: null,
+        }],
+        anchorDate: D(13),
+        exceptions: [],
+      },
+    });
+    const a = s.addActivity({ bucketId: s.buckets[1].id, label: 'Walk', tags: ['rest'], durationMin: 30, durationMax: 60 });
+    const before = s.tasks.length;
+
+    const out = s.placeActivity(a, D(15, 10), 60, { now: D(15, 9) });
+
+    expect(out.rejected).toBe(true);
+    expect(s.tasks).toHaveLength(before);
+  });
+
+  it('an ordinary flexible task in the way is still displaced, as before', () => {
+    const s = withBuckets(new Schedule({ config: wideCfg() }));
+    const other = s.addFlexible({ title: 'Read', tags: ['x'], startTime: D(15, 10), endTime: D(15, 11) });
+    const a = s.addActivity({ bucketId: s.buckets[1].id, label: 'Walk', tags: ['rest'], durationMin: 30, durationMax: 60 });
+
+    const out = s.placeActivity(a, D(15, 10), 60, { now: D(15, 9) });
+
+    expect(out.rejected).toBeUndefined();
+    expect(out.task).toBeTruthy();
+    expect(out.displaced.map((t) => t.id)).toEqual([other.id]);
+  });
+});

@@ -270,8 +270,19 @@ export function suggestActivities(schedule, now = new Date(), opts = {}) {
  * (clamp(opening, min, max)) — the "Do it now" commit. Goes in as an ordinary
  * flexible task via resolveDropConflicts, so displacement behaves as it would for
  * any hand-placed task. Mutates.
+ *
+ * ⚠️ A REFUSAL IS HONOURED, and it was not. `resolveDropConflicts` answers
+ * `rejected` (a pinned, fixed, protected or finished task is in the way) or
+ * `occurrenceMenu` (a repeating one is) — and this returned only
+ * `{ task, displaced }`, so the new task stayed where it was, on top of the
+ * thing that refused it, and the panel toasted success. Measured: "Walk" placed
+ * 10:00 straight across a fixed 10:00 lecture. The same defect `doItNow` had for
+ * tasks (D-15). Nothing has been displaced when either answer comes back (both
+ * return before the eviction loop), so undoing it is removing the one task.
+ *
+ * @returns {{ task: Task|null, displaced: Task[], rejected?: boolean, reason?: string }}
  */
-export function placeActivity(schedule, activity, start, openingMin) {
+export function placeActivity(schedule, activity, start, openingMin, opts = {}) {
   const duration = activity.durationFor(openingMin);
   // Only carry an EXPLICIT activity override onto the task; otherwise leave load
   // null so the task derives its energy from its tags (loadForTask) — that way the
@@ -290,6 +301,12 @@ export function placeActivity(schedule, activity, start, openingMin) {
     // top of this file).
     activityId: activity.id,
   });
-  const res = schedule.resolveDropConflicts(task);
+  const res = schedule.resolveDropConflicts(task, opts.now ? { now: opts.now } : {});
+  if (res && (res.rejected || res.occurrenceMenu)) {
+    schedule.removeTask(task.id);
+    const reason = res.reason
+      || (res.occurrence ? `Conflicts with repeating: ${res.occurrence.title}` : `${activity.label} would not fit there`);
+    return { task: null, displaced: [], rejected: true, reason };
+  }
   return { task, displaced: (res && res.displaced) || [] };
 }

@@ -1044,8 +1044,8 @@ export class Schedule {
   }
 
   /** "Do it now" for a library activity: instantiate it into the opening. */
-  placeActivity(activity, start, openingMin) {
-    return runPlaceActivity(this, activity, start, openingMin);
+  placeActivity(activity, start, openingMin, opts = {}) {
+    return runPlaceActivity(this, activity, start, openingMin, opts);
   }
 
   /** Would "Do it now" split this sitting to fit the opening? (D-15.) Writes
