@@ -565,3 +565,14 @@ day-note conflict, even with an old copy. **Proposed:** the same one-word fix
   a routine; a bad deadline revives as `null`; an injected rng gives exact ids;
   `toBeInstanceOf(Todo)`. Don't copy the Cabana confirm test that rebuilds its
   own string; render the Cabana instead.
+
+### 9.12 Decided 2026-10-04 (the user took every recommendation)
+
+- **T-1: yes.** A dated todo shows in Google on its due day, transparent.
+- **T-2: no.** "Restore setup only" leaves todos alone; a full import brings
+  them back.
+- **T-3: re-check the calendar when the tab comes back** (focus / visible), so
+  an idle device stops showing a todo finished elsewhere. Its own commit.
+- **Existing bugs, each its own commit:** N-1 (day notes stamped dirty on
+  opening) and A-7 for library activities (a refused "Do it now" reported as
+  placed).

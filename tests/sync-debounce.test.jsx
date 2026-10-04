@@ -50,7 +50,7 @@ vi.mock('../src/ui/googleSync.js', () => ({
   encodeBlockedParts: (b) => [b],
 }));
 
-const { useGoogleSync, DEBOUNCE_MS, SYNC_CALENDAR_KEY } = await import('../src/ui/useGoogleSync.js');
+const { useGoogleSync, DEBOUNCE_MS, RETURN_PULL_MS, SYNC_CALENDAR_KEY } = await import('../src/ui/useGoogleSync.js');
 
 beforeEach(() => {
   window.localStorage.clear();
@@ -239,5 +239,64 @@ describe('⚠️ what the calendar looked like is remembered between sessions', 
     const plan = applyPlanMock.mock.calls[0][2];
     expect(plan.adopt).toEqual([laptop]);
     expect(plan.update).toHaveLength(0);
+  });
+});
+
+describe('⚠️ coming back to the tab pulls (design/TODO-LIST.md T-3)', () => {
+  // An idle open device never pulled: only opening and a LOCAL edit did. So it
+  // went on showing what the other device had already changed, indefinitely.
+  const settle = async () => { await act(async () => { await Promise.resolve(); }); };
+  const comeBack = async () => {
+    await act(async () => { window.dispatchEvent(new Event('focus')); await Promise.resolve(); });
+  };
+
+  it('a return after a while pulls again', async () => {
+    const { sched, showToast, mutate } = setup();
+    mount({ enabled: true, sched, mutate, showToast });
+    await settle();
+    expect(runs()).toBe(1);
+
+    await act(async () => { vi.advanceTimersByTime(RETURN_PULL_MS + 1); });
+    await comeBack();
+    expect(runs()).toBe(2);
+  });
+
+  it('but not on every alt-tab: one per RETURN_PULL_MS', async () => {
+    const { sched, showToast, mutate } = setup();
+    mount({ enabled: true, sched, mutate, showToast });
+    await settle();
+
+    // Straight after opening: the opening pull already covered it.
+    await comeBack();
+    expect(runs()).toBe(1);
+
+    await act(async () => { vi.advanceTimersByTime(RETURN_PULL_MS + 1); });
+    await comeBack();
+    await comeBack();
+    document.dispatchEvent(new Event('visibilitychange'));
+    await settle();
+    expect(runs()).toBe(2);
+  });
+
+  it('is SILENT without a token — a courtesy pull must not raise "connect again"', async () => {
+    const { sched, showToast, mutate } = setup();
+    const onAuthLost = vi.fn();
+    mount({ enabled: true, sched, mutate, showToast, onAuthLost });
+    await settle();
+    onAuthLost.mockClear();
+
+    tokenHeld = false;
+    await act(async () => { vi.advanceTimersByTime(RETURN_PULL_MS + 1); });
+    await comeBack();
+    expect(runs()).toBe(1);
+    expect(onAuthLost).not.toHaveBeenCalled();
+  });
+
+  it('a guest never pulls on return either', async () => {
+    const { sched, showToast, mutate } = setup();
+    mount({ enabled: false, sched, mutate, showToast });
+    await act(async () => { vi.advanceTimersByTime(RETURN_PULL_MS + 1); });
+    await comeBack();
+    expect(runs()).toBe(0);
   });
 });

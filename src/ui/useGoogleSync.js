@@ -61,6 +61,8 @@ export function freshLibraryHash() {
 export const SYNC_STATE_KEY = 'sandycay.sync.state';
 export const SYNC_CALENDAR_KEY = 'sandycay.sync.calendar';
 export const DEBOUNCE_MS = 5000;
+/** The least time between two pulls triggered by returning to the tab. */
+export const RETURN_PULL_MS = 30000;
 
 const read = (key, fallback) => {
   try {
@@ -708,6 +710,44 @@ export function useGoogleSync({
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => { runRef.current(); }, DEBOUNCE_MS);
   }, [version, enabled, calendarId]);
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // COMING BACK TO THE TAB PULLS (design/TODO-LIST.md §9.12 T-3).
+  // ═══════════════════════════════════════════════════════════════════════
+  //
+  // There was no pull except on opening and 5s after a LOCAL edit. So a device
+  // left open and idle went on showing whatever it last saw, for as long as it
+  // sat there — a session skipped on the phone at lunch was still on the laptop
+  // at five. With todos that is a todo you already did, still offering "Do it
+  // now". Returning to the tab is the moment a person looks, so it is the
+  // moment to ask.
+  //
+  // ⚠️ THROTTLED, because focus and visibilitychange both fire on one return and
+  // alt-tabbing is constant: at most one such pull per `RETURN_PULL_MS`.
+  // ⚠️ SILENT WITHOUT A TOKEN. `runSync` reports a missing token as lost auth,
+  // which is right when a sync was owed and wrong for a courtesy pull — it
+  // would raise "connect again" every time the window was clicked.
+  const lastReturnPull = useRef(0);
+  useEffect(() => {
+    if (!enabled || !calendarId) return undefined;
+    // The opening pull has just happened (or is about to); a focus event that
+    // arrives with the page load must not buy a second one.
+    lastReturnPull.current = now();
+    const onReturn = () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      if (!cachedAccessToken()) return;
+      const at = now();
+      if (at - lastReturnPull.current < RETURN_PULL_MS) return;
+      lastReturnPull.current = at;
+      runRef.current();
+    };
+    window.addEventListener('focus', onReturn);
+    document.addEventListener('visibilitychange', onReturn);
+    return () => {
+      window.removeEventListener('focus', onReturn);
+      document.removeEventListener('visibilitychange', onReturn);
+    };
+  }, [enabled, calendarId, now]);
 
   // Unmount only — a pending write is abandoned when the app goes away, not
   // when it merely redraws.
