@@ -475,11 +475,15 @@ export function useGoogleSync({
       // and a conflict resolves on `(known && known.dirtyAt) || 0`, which meant
       // 0, which meant REMOTE WON EVERY TIME. Rename a holiday here and
       // anywhere else and yours lost silently, however recent it was.
+      //
+      // ⚠️ AND NOT STAMPED "NOW" ON THE OPENING PASS, for the reason given for
+      // tasks above: a difference found on opening has an unknown age, and
+      // stamping it now let whichever device opened LAST win every note conflict.
       const localNotes = sched.dayNotes.map((n) => n.toJSON());
       const noteState = markDirty(
         { lastSyncAt: stateRef.current.lastSyncAt || 0, entries: stateRef.current.noteEntries || {} },
         localNotes,
-        t,
+        opening ? 0 : t,
       );
       // Blocked days need no such stamp: the record is `{ id: 'blocked-<day>',
       // day }`, so its hash is a pure function of its id and it cannot go dirty

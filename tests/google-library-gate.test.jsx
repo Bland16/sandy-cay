@@ -846,3 +846,30 @@ describe('⚠️ the record never lands ahead of the schedule — measured on st
     for (const w of seenAtRecordWrite) expect(w.savedHash).toBe(w.libHash);
   });
 });
+
+describe('⚠️ N-1: a day note edited elsewhere is not beaten by the device that opens last', () => {
+  // The same bug 73551fd fixed for tasks. The opening pass stamped a differing
+  // note `dirtyAt = now`, and "now" beats any `updated` Google holds — so a
+  // stale copy won every day-note conflict simply by being opened last.
+  it('on the opening pass, a both-changed note takes the calendar\'s version', async () => {
+    const sched = usedSchedule();
+    const note = sched.addDayNote({ label: 'Mum visiting', from: '2026-10-03', to: '2026-10-03' });
+    const theirs = { ...note.toJSON(), label: 'Mum visiting (moved)', from: '2026-10-10', to: '2026-10-10' };
+    storeState({
+      lastSyncAt: 1000,
+      libHash: hashOf(sched),
+      noteEntries: { [note.id]: { hash: 'what-we-last-synced', eventId: 'ev-note', dirtyAt: 0 } },
+    });
+    pullMock.mockImplementation(pullWith(libraryFrom(sched.toJSON()), {
+      notes: [{ task: theirs, googleEventIds: ['ev-note'], updated: 5000 }],
+      blockedDays: [],
+    }));
+
+    mount({ sched, mutate: vi.fn((fn) => fn(sched)), showToast: vi.fn() });
+    await act(async () => { await Promise.resolve(); });
+
+    const notePlan = applyPlanMock.mock.calls.map((c) => c[2]).find((p) => p.conflicts.length);
+    expect(notePlan.conflicts[0]).toMatchObject({ id: note.id, winner: 'remote' });
+    expect(sched.dayNotes[0].label).toBe('Mum visiting (moved)');
+  });
+});
