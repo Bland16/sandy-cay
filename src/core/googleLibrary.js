@@ -140,6 +140,12 @@ const NOT_LIBRARY = new Set([
   'schemaVersion',  // constant
   'dayNotes',       // all-day events (googleDayNotes.js) — GS-11
   'blockedDays',    // all-day events (googleDayNotes.js) — GS-11
+  // One all-day event each (googleTodos.js). ⚠️ NOT in LIBRARY_KEYS and not to
+  // be moved there: a todo is added and finished one at a time, which a blob
+  // copied whole cannot merge — a finished todo came back from the other
+  // device (design/TODO-LIST.md §8.1 S-3). Not in RESTORABLE_KEYS either:
+  // "Restore setup only" must not bring back todos you have since done.
+  'todos',
 ]);
 
 /**

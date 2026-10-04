@@ -146,6 +146,7 @@ describe('useEngine#replace — structurally, so key #17 cannot slip through', (
     s.retireTag('old-tag');
     s.addDayNote({ label: 'Thanksgiving', kind: 'holiday', from: '2026-11-25', to: '2026-11-27' });
     s.blockedDays.push('2026-12-25');
+    s.addTodo({ label: 'Email the registrar', tags: ['study'], deadline: '2026-10-03' });
 
     const c = new Commitment({ title: 'ESF 2', tags: ['study'], amountMinPerWeek: 120 });
     s.commitments.push(c);

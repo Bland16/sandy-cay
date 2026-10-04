@@ -134,6 +134,7 @@ export function summarizeImport(blob) {
     // entirely; a summary that stays silent about a collection is how nobody
     // notices it never arrived.
     dayNoteCount: (blob.dayNotes || []).length,
+    todoCount: (blob.todos || []).length,
     blockedDayCount: (blob.blockedDays || []).length,
     commitmentCount: (blob.commitments || []).length,
     routineCount: (blob.routineInstances || []).length,

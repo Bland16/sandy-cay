@@ -282,7 +282,19 @@ export function suggestActivities(schedule, now = new Date(), opts = {}) {
  *
  * @returns {{ task: Task|null, displaced: Task[], rejected?: boolean, reason?: string }}
  */
-export function placeActivity(schedule, activity, start, openingMin, opts = {}) {
+export function placeActivity(schedule, given, start, openingMin, opts = {}) {
+  // ── A TODO is done by being placed, and leaves its list in this same call
+  // (design/TODO-LIST.md §2, §9.2). ──────────────────────────────────────────
+  //
+  // ⚠️ LOOKED UP BY ID, not trusted as handed in. The panel holds the object it
+  // rendered; by the time "Do it now" is pressed a second tap may already have
+  // placed it, or a sync may have removed it (done on the other device) or
+  // REPLACED the instance (`upsertTodoFromJSON`). A todo that is no longer in
+  // the list is not done twice — that is the whole duplicate-task bug (M-3).
+  const isTodo = !!(given && given.isTodo);
+  const activity = isTodo ? (schedule.todos || []).find((t) => t.id === given.id) : given;
+  if (isTodo && !activity) return { task: null, displaced: [], gone: true };
+
   const duration = activity.durationFor(openingMin);
   // Only carry an EXPLICIT activity override onto the task; otherwise leave load
   // null so the task derives its energy from its tags (loadForTask) — that way the
@@ -299,7 +311,10 @@ export function placeActivity(schedule, activity, start, openingMin, opts = {}) 
     // activityUsage for the "most used" sort. It records that you CHOSE this
     // activity — never that you skipped one (P-1, see the boundary note at the
     // top of this file).
-    activityId: activity.id,
+    //
+    // ⚠️ NOT for a todo. Its template is about to be deleted, nothing reads the
+    // link, and a todo's id must not be mistaken for a library activity's.
+    activityId: isTodo ? null : activity.id,
   });
   const res = schedule.resolveDropConflicts(task, opts.now ? { now: opts.now } : {});
   if (res && (res.rejected || res.occurrenceMenu)) {
@@ -308,5 +323,8 @@ export function placeActivity(schedule, activity, start, openingMin, opts = {}) 
       || (res.occurrence ? `Conflicts with repeating: ${res.occurrence.title}` : `${activity.label} would not fit there`);
     return { task: null, displaced: [], rejected: true, reason };
   }
+  // ⚠️ ONLY NOW, after the placement has actually stood. Removing it before the
+  // refusal check would delete a todo for a task that was never placed.
+  if (isTodo) schedule.removeTodo(activity.id);
   return { task, displaced: (res && res.displaced) || [] };
 }

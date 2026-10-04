@@ -155,7 +155,10 @@ export class Activity {
     };
   }
 
+  // `new this`, not `new Activity`: a subclass (Todo) revives as itself. With
+  // the class named here, `Todo.fromJSON` handed back a plain Activity and the
+  // deadline was gone.
   static fromJSON(json) {
-    return new Activity(json);
+    return new this(json);
   }
 }

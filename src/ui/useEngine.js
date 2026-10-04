@@ -119,6 +119,10 @@ export function useEngine() {
         // half-wired, and this function is the half that gets forgotten.
         s.dayNotes = next.dayNotes;
         s.blockedDays = next.blockedDays;
+        // Todos, in the SAME commit as the constructor and toJSON halves (the
+        // rule above). A full import is a restore, so they come back; "Restore
+        // setup only" deliberately does not carry them (TODO-LIST §9.12 T-2).
+        s.todos = next.todos;
         // Standing commitments, added in the SAME commit as the constructor and
         // toJSON halves — which is the whole rule sharp edge #15 exists to
         // state. Dropping them here would restore a footlocker with the

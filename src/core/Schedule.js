@@ -6,9 +6,10 @@ import { Zone } from './Zone.js';
 import { Bucket } from './Bucket.js';
 import { Activity } from './Activity.js';
 import { DayNote } from './DayNote.js';
+import { Todo } from './Todo.js';
 import { Commitment } from './Commitment.js';
 import { RoutineInstance } from './RoutineInstance.js';
-import { makeId } from './ids.js';
+import { makeId, makeRandomId } from './ids.js';
 import { blendColors } from './color.js';
 import { makeConfig } from './config.js';
 import { normalizeWeights } from './scoring.js';
@@ -76,6 +77,14 @@ export class Schedule {
     // (sharp edge #15). They consume no time and do not affect placement.
     this.dayNotes = (init.dayNotes || []).map((n) => (n instanceof DayNote ? n : DayNote.fromJSON(n)));
     this._dedupeIds(this.dayNotes);
+    // Todos — one-shot activities (design/TODO-LIST.md §9). Their OWN
+    // collection, never inside `activities`: that is what makes one a todo, and
+    // what keeps every reader of the library from having to skip them. Additive
+    // like the rest; schemaVersion stays 1.
+    this.todos = (init.todos || []).map((t) => (t instanceof Todo ? t : Todo.fromJSON(t)));
+    // ⚠️ Repaired with the RANDOM minter. The counter one (`makeId`) restarts
+    // every page load, so it is exactly the id two devices would both mint.
+    this._dedupeIds(this.todos, makeRandomId);
     // Days the SCHEDULER stays out of (design/DAY-NOTES.md D-6). Held as
     // 'YYYY-MM-DD' strings for the same reason a day note is: a day has no time
     // of day, and a string cannot be misread as UTC midnight (sharp edge #4 in
@@ -277,15 +286,15 @@ export class Schedule {
   /** The task collision guard, generalized to any {id,label} collection (Bucket/
    *  Activity/Zone). On add, keep a new item's id unique; on load, repair dupes.
    *  Fixes the two-new-buckets bug (design/RECONCILIATION.md, unique ids). */
-  _uniqueInColl(item, coll) {
-    while (coll.some((x) => x !== item && x.id === item.id)) item.id = makeId(item.label);
+  _uniqueInColl(item, coll, mint = makeId) {
+    while (coll.some((x) => x !== item && x.id === item.id)) item.id = mint(item.label);
     return item;
   }
 
-  _dedupeIds(coll) {
+  _dedupeIds(coll, mint = makeId) {
     const seen = new Set();
     for (const it of coll) {
-      if (seen.has(it.id)) while (seen.has(it.id) || coll.some((x) => x !== it && x.id === it.id)) it.id = makeId(it.label);
+      if (seen.has(it.id)) while (seen.has(it.id) || coll.some((x) => x !== it && x.id === it.id)) it.id = mint(it.label);
       seen.add(it.id);
     }
   }
@@ -602,6 +611,51 @@ export class Schedule {
     Object.assign(n, new DayNote({ ...n.toJSON(), ...changes, id: n.id }));
     this._touch();
     return n;
+  }
+
+  // ---- todos (design/TODO-LIST.md §9.2) ----------------------------------
+
+  addTodo(data) {
+    const t = new Todo(data);
+    this._uniqueInColl(t, this.todos, makeRandomId);
+    this.todos.push(t);
+    this._touch();
+    return t;
+  }
+
+  removeTodo(id) {
+    const i = this.todos.findIndex((t) => t.id === id);
+    if (i < 0) return null;
+    const [gone] = this.todos.splice(i, 1);
+    this._touch();
+    return gone;
+  }
+
+  /**
+   * The FORM's door. Rebuilt through the constructor, as `updateDayNote` is,
+   * and never `Object.assign(todo, changes)` — which is how `updateActivity`
+   * works and would let `steps`, a bucket or a load dial straight back in.
+   */
+  updateTodo(id, changes) {
+    const i = this.todos.findIndex((t) => t.id === id);
+    if (i < 0) return null;
+    this.todos[i] = new Todo({ ...this.todos[i].toJSON(), ...changes, id });
+    this._touch();
+    return this.todos[i];
+  }
+
+  /**
+   * The STORE's door — the sync adopts through this. Separate from the form's
+   * for the reason `upsertDayNoteFromJSON` gives: a store that borrows a form's
+   * door inherits whatever the form later decides to whitelist.
+   */
+  upsertTodoFromJSON(json) {
+    const next = Todo.fromJSON(json);
+    const i = this.todos.findIndex((t) => t.id === next.id);
+    if (i >= 0) this.todos[i] = next;
+    else this.todos.push(next);
+    this._touch();
+    return next;
   }
 
   /** Every note covering a date — the day header's whole question. */
@@ -1200,6 +1254,7 @@ export class Schedule {
       activities: this.activities.map((a) => a.toJSON()),
       retiredTags: [...this.retiredTags],
       dayNotes: this.dayNotes.map((n) => n.toJSON()),
+      todos: this.todos.map((t) => t.toJSON()),
       blockedDays: [...this.blockedDays],
       commitments: this.commitments.map((c) => c.toJSON()),
       routineInstances: this.routineInstances.map((r) => r.toJSON()),
@@ -1225,6 +1280,7 @@ export class Schedule {
       activities: (json.activities || []).map((a) => Activity.fromJSON(a)),
       retiredTags: json.retiredTags,
       dayNotes: json.dayNotes,
+      todos: json.todos,
       blockedDays: json.blockedDays,
       commitments: json.commitments,
       routineInstances: json.routineInstances,

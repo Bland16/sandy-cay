@@ -78,6 +78,7 @@ export default function Cabana({
         const extra = [
           sum.dayNoteCount ? `${sum.dayNoteCount} day note${sum.dayNoteCount === 1 ? '' : 's'}` : null,
           sum.blockedDayCount ? `${sum.blockedDayCount} blocked day${sum.blockedDayCount === 1 ? '' : 's'}` : null,
+          sum.todoCount ? `${sum.todoCount} todo${sum.todoCount === 1 ? '' : 's'}` : null,
           sum.commitmentCount ? `${sum.commitmentCount} standing commitment${sum.commitmentCount === 1 ? '' : 's'}` : null,
           sum.routineCount ? `${sum.routineCount} routine run${sum.routineCount === 1 ? '' : 's'}` : null,
         ].filter(Boolean).join(', ');

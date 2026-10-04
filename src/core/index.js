@@ -10,6 +10,7 @@ export { Task } from './Task.js';
 export { Zone } from './Zone.js';
 export { Bucket } from './Bucket.js';
 export { Activity } from './Activity.js';
+export { Todo, UNDATED } from './Todo.js';
 export { Schedule } from './Schedule.js';
 export { LearningModule, humanLabel, isNarratable, MODEL_LAYOUT_VERSION } from './learning.js';
 export { StorageAdapter, exportState, summarizeImport, pickBackend } from './storage.js';
@@ -68,7 +69,7 @@ export {
 export { planImport, mergeImported, applyImport, describeImport } from './importPlan.js';
 export { score, normalizeWeights } from './scoring.js';
 export { findBestSlot, placeTask, dayWindowBounds, intervalsOf } from './placement.js';
-export { resetIds } from './ids.js';
+export { resetIds, setIdRandom, makeRandomId } from './ids.js';
 
 // Starter buckets (design/ACTIVITY-LIBRARY.md): a proposed set the user edits.
 //
