@@ -609,3 +609,33 @@ Google; a corrupt todo could freeze a task sharing its id.
   tasks. S-7 (task ids across devices) is unchanged.
 - An old cached bundle toasts "N events could not be read" each pass while any
   todo exists, until that device reloads. It destroys nothing.
+
+### 9.14 Steps 3 and 4 shipped 2026-10-05: the Cabana card and the picker
+
+The mock-up (`design/todo-cabana-mockups.html`) was approved as drawn.
+
+- **Picker (`suggestActivities`):** todos are in the pool. Due today / overdue
+  is a sort TIER above the library (oldest first), applied before the limit;
+  one of the five places is kept for the best-fitting todo (not when `limit`
+  is 1); `todosOnly`; `waitingTodos` for the ones that cannot be done now.
+- **Right-now panel:** a "Todos · N" switch on its own line (hides waiting
+  tasks), neutral `.duefact` dates, a waiting list, a "+ todo" box.
+- **Cabana:** `TodosEditor`, first after Tuning. Name, tags, length, optional
+  due date. No bucket, priority or dial.
+
+**Found by the bug-check, fixed:** the panel said "Nothing waiting" directly
+under "Todos · 1" when the switch was off; typing a year into the due date
+blanked it and typing "45" into a length snapped to 15 at the "4" (the field
+now keeps a local draft and commits a finished value); a tag only a todo
+carried had no mood chip; "due today" was printed twice.
+
+**Known, left as is**
+
+- Five or more fitting due/overdue todos take all five places until they are
+  done. That is what "stays lifted" (§8.5) means; say if it should be capped.
+- `CommitmentsEditor` and `ActivityEditor` number boxes still clamp on every
+  keystroke (the bug fixed here for todos). Same fix, not yet applied there.
+- `TagEditor` still accepts free text (P-8).
+- Step 5, the per-axis energy ramp, still waits on E-3.
+- Unverified against the real Google API: a todo given a TIME in Google and
+  then edited here (§9.13).

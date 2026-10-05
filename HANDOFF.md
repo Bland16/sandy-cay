@@ -15,7 +15,66 @@ work nobody can see, and a handoff describing a world that no longer exists.
 Finishing the write-up is part of the task, not what you do with what is left
 over.
 
-## ▶ SESSION 10 (2026-08-20/21) — READ THIS FIRST
+## ▶ TODOS AND THE SYNC REPAIRS (2026-10-01 → 05) — READ THIS FIRST
+
+**Everything is in `design/TODO-LIST.md`**: the spec, three rounds of agent
+audit, every decision and what is still open (§9.13, §9.14). Read that, not a
+summary of it. `main` is the only branch and all of it is pushed and live.
+
+**Todos shipped** — the model, their own sync, the Cabana card, the picker:
+
+- A todo is `class Todo extends Activity`, held in **`schedule.todos`**, never
+  in `activities`. Where it lives is the marker; there is no flag.
+- It syncs as **one all-day Google event each** (`googleTodos.js`, `sc.v = 2`),
+  a fourth slice through the same `planSync`. NOT in the library, on purpose.
+- "Do it now" is `placeActivity`: by id, refusal-safe, one task however often
+  it is pressed.
+
+**Sync repairs made on the way, all live:**
+
+| | |
+|---|---|
+| The library gate | three-way, with `libHash` as the witness (`libraryGate`). Only "both changed" still asks. It was pausing EVERY MONDAY on one device |
+| Stale device wins | fixed for tasks (73551fd), then day notes (0f4fe46) |
+| Tab return | pulls, at most once per 30 s. There was no pull except on opening and after a local edit |
+| A refused "Do it now" | no longer left on the grid and toasted as success |
+
+### ⚠️ THE BUILD PATTERN THAT FOUND ALL OF IT: spec → audit by agents → build → bug-check by agent
+
+Every stage found something the stage before could not. The audits turned up
+two blockers before a line was written (an old bundle would have eaten every
+todo; the library was the wrong home). The bug-checks then found three more in
+code whose tests were green — and one of them was in the test itself, which
+had enshrined the bug as the expected behaviour.
+
+### ⚠️ DRIVE TWO DEVICES, NOT ONE
+
+`tests/todo-sync.test.jsx` runs the real hook, the real `pull` and the real
+`applyPlan` against a fake Google that is only a list of events, as two
+devices. It found, in its first run, that an item adopted FROM the calendar
+has no sync entry until a later pass echoes it back up — so one deleted
+elsewhere in that window is re-created. **Closed for todos (`recordLocalHalf`).
+STILL OPEN for tasks and day notes**, awaiting the user.
+
+### Still open
+
+- The adopt echo for tasks and day notes (above).
+- A todo given a time in Google, then edited here: unverified against the real
+  API (the fake replaces on PATCH; Google merges).
+- `CommitmentsEditor` / `ActivityEditor` number boxes clamp per keystroke.
+- S-7: task ids are a per-page-load counter, so two devices can mint the same.
+- The TEMPORARY "This device's tasks are right" button in the Cabana — remove
+  once both devices have settled.
+- User browser checks: the Monday pause is gone; the phone resync holds.
+
+### A machine note
+
+Scripted edits through Python text mode rewrote LF files as CRLF here. Use
+`newline=''` or bytes, and check `git show HEAD:<file>` for CRLF afterwards.
+
+---
+
+## ▶ SESSION 10 (2026-08-20/21)
 
 **Shipped:** Find-a-time ranking, the two footlocker import doors, and a service
 worker fix that matters more than it sounds.

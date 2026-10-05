@@ -867,6 +867,26 @@ body.sc-dragging { user-select: none; }
 .alts { margin-top: 9px; display: flex; flex-direction: column; gap: 6px; }
 .alt { display: flex; justify-content: space-between; gap: 8px; align-items: center; font-size: 11.5px; padding: 7px 9px; border: 1.5px solid var(--hair); border-radius: 9px; background: var(--paper); cursor: pointer; text-align: left; }
 .alt .why { color: var(--ink-soft); font-size: 9.5px; }
+/* ---------- todos in the picker (design/TODO-LIST.md §8.3) ----------
+   A todo's date is a FACT, never a warning: neutral ink, not .dueno's coral.
+   "was due 28 Sep" must read exactly as calmly as "due 3 Oct". */
+.duefact { color: var(--ink-soft); font-weight: 700; font-size: 10px; white-space: nowrap; }
+/* The todos switch is a pill but it is NOT a tag, so it sits on a line of its
+   own above the mood chips rather than among them. */
+.todotoggle { display: flex; gap: 8px; align-items: center; margin: 0 0 4px; }
+/* A todo that cannot be done right now: listed, not pressable. */
+.todolist { margin-top: 6px; display: flex; flex-direction: column; gap: 6px; }
+.alt.waiting { cursor: default; opacity: .75; }
+.quickadd { display: flex; gap: 6px; margin-top: 12px; }
+.quickadd input {
+  flex: 1; min-width: 0; font-family: var(--font-body); font-size: 12px; padding: 6px 9px;
+  border: 1.5px solid var(--hair); border-radius: 8px; background: var(--paper); color: var(--ink);
+}
+.quickadd button {
+  font-family: var(--font-body); font-weight: 800; font-size: 11.5px; border: 2px solid var(--ink);
+  border-radius: 8px; background: var(--paper); color: var(--ink); padding: 5px 10px; cursor: pointer;
+}
+.quickadd button:disabled { opacity: .45; cursor: not-allowed; }
 .slotlist { display: flex; flex-direction: column; gap: 6px; }
 .slot { display: flex; justify-content: space-between; gap: 8px; font-family: var(--font-type); font-size: 11.5px; padding: 7px 10px; border: 1.5px solid var(--hair); border-radius: 8px; background: var(--paper); cursor: pointer; width: 100%; color: var(--ink); }
 .slot:hover { border-color: var(--ink); }
@@ -1044,6 +1064,9 @@ body.sc-dragging { user-select: none; }
    (design/COMMITMENT-USE-CASES.md, case E3). */
 .cwdone { display: block; margin-top: 3px; opacity: .8; }
 .drillactions { margin-top: 4px; }
+/* The todo rows scroll inside their card: a long list must not push every
+   other card off a phone's screen (the grid is one column there). */
+.todorows { max-height: 300px; overflow-y: auto; }
 .drillactions .btn2 { padding: 5px 9px; }
 /* destructive action: bottom, ghost, and set apart from the rest */
 .editremove { margin-top: 12px; padding: 5px 9px; }

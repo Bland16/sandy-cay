@@ -3,18 +3,33 @@
 // it (whatToDo), and can schedule the pick into that opening ("Do it now").
 // Tag chips narrow the question — "what should I do in study mode?".
 import { useState } from 'react';
-import { currentOpening, openingLabel, resolveDropConflicts, addMinutes, formatHHMM } from '../../../core/index.js';
+import {
+  currentOpening, openingLabel, resolveDropConflicts, addMinutes, formatHHMM, waitingTodos, dateKey,
+} from '../../../core/index.js';
 import { tagsInUse } from '../TagEditor.jsx';
-import { fmtDur } from '../../format.js';
+import { fmtDur, todoDueText } from '../../format.js';
 import PanelHeader from '../PanelHeader.jsx';
 import Icon from '../../Icon.jsx';
 
 export default function WhatToDoPanel({ sched, now, mutate, onOpenTask, onClose, showToast }) {
   const [head, setHead] = useState(0);
   const [tags, setTags] = useState([]);
+  // Todos (design/TODO-LIST.md §8.3). Its OWN switch, not a tag in the row
+  // below: a pseudo-tag would collide with a real tag called "todos", be handed
+  // to both tag filters, and vanish with the row when no task carries a tag.
+  const [todosWanted, setTodosWanted] = useState(false);
+  const [draft, setDraft] = useState('');
+  const todoCount = (sched.todos || []).length;
+  // ⚠️ Derived, not the raw switch. Do the last todo with the filter on and the
+  // switch itself disappears (there is nothing left to filter) — leaving a panel
+  // stuck on "todos only", showing nothing, with no way to turn it off.
+  const todosOnly = todosWanted && todoCount > 0;
+  const todayKey = dateKey(now);
 
   const opening = currentOpening(sched, now);
-  const pool = tagsInUse(sched);
+  // ⚠️ Todo tags too. `tagsInUse` reads TASKS, so a tag only a todo carried had
+  // no chip — the one filter that could find that todo did not exist.
+  const pool = Array.from(new Set([...tagsInUse(sched), ...(sched.todos || []).flatMap((t) => t.tags || [])]));
   const filterTags = tags.length ? tags : null;
 
   const toggleTag = (t) => {
@@ -110,20 +125,43 @@ export default function WhatToDoPanel({ sched, now, mutate, onOpenTask, onClose,
       return;
     }
     const moved = outcome && outcome.displaced ? outcome.displaced.length : 0;
-    showToast(`${activity.label} → ${formatHHMM(opening.start)}${moved ? ` · ${moved} moved aside` : ''}`);
+    // Said, because it is not undoable from here: the todo is a task now, and
+    // deleting that task does not bring the todo back (D-4).
+    const left = activity.isTodo ? ' · moved off your todo list' : '';
+    showToast(`${activity.label} → ${formatHHMM(opening.start)}${moved ? ` · ${moved} moved aside` : ''}${left}`);
+    setHead(0);
+  };
+
+  /** "+ todo": a name is enough. 15–30m and no tags; the Cabana card has the rest. */
+  const addTodo = (e) => {
+    e.preventDefault();
+    const label = draft.trim();
+    if (!label) return;
+    mutate((s) => s.addTodo({ label }));
+    setDraft('');
+    setHead(0);
+    showToast(`Added to your todos: ${label}`);
   };
 
   // Real waiting tasks first; library activities are the fallback that surfaces as
   // you cycle past them (or when nothing waiting fits). One combined cycle list.
-  const taskPicks = sched.whatToDo(now, { tags: filterTags });
+  // With the todos filter on, waiting tasks step aside: the question asked was
+  // "which of my todos", and three tasks ahead of every answer is not an answer.
+  const taskPicks = todosOnly ? [] : sched.whatToDo(now, { tags: filterTags });
   // ⚠️ THE FILTER GOES IN, IT IS NOT APPLIED TO WHAT COMES OUT. Taking the top 5
   // and filtering the survivors meant picking a category showed nothing unless
   // one of its activities made an unfiltered top five — measured on the real
   // library, 7 of 9 categories came back empty with 2–7 fitting activities each.
   // See the note on `suggestActivities`.
   const libraryPicks = opening
-    ? sched.suggestActivities(now, { opening, limit: 5, tags: filterTags })
+    ? sched.suggestActivities(now, { opening, limit: 5, tags: filterTags, todosOnly })
     : [];
+  // The todos that cannot be done right now — too long for this opening, or no
+  // opening at all — so the panel never claims that nothing is waiting over a
+  // list that plainly is. ⚠️ Worked out WHETHER OR NOT the filter is on: with it
+  // off, an evening with one overdue todo read "Todos · 1" directly above
+  // "Nothing waiting. Enjoy the shore."
+  const cannotNow = waitingTodos(sched, now, { opening, tags: filterTags });
   const entries = [
     ...taskPicks.map((p) => ({
       type: 'task', key: `t:${p.task.id}`, title: p.task.title, reasons: p.reasons,
@@ -131,11 +169,21 @@ export default function WhatToDoPanel({ sched, now, mutate, onOpenTask, onClose,
       onOpen: () => onOpenTask(p.task), onDo: () => doItNow(p.task),
     })),
     ...libraryPicks.map((p) => ({
-      type: 'activity', key: `a:${p.activity.id}`, title: p.activity.label, reasons: p.reasons,
-      fromLibrary: true, deadline: null,
+      type: p.isTodo ? 'todo' : 'activity',
+      key: `${p.isTodo ? 'd' : 'a'}:${p.activity.id}`,
+      title: p.activity.label,
+      reasons: p.reasons,
+      fromLibrary: !p.isTodo,
+      isTodo: !!p.isTodo,
+      // A FACT about a date, in neutral ink — never `.dueno`'s coral (§8.5).
+      dueText: p.isTodo ? todoDueText(p.deadline, todayKey) : '',
+      deadline: null,
       onOpen: null, onDo: () => doActivityNow(p.activity),
     })),
   ];
+
+  // Listed when you asked for todos — or when there is nothing else to say.
+  const waiting = todosOnly || entries.length === 0 ? cannotNow : [];
 
   const openingLine = opening
     ? opening.startsLater
@@ -148,6 +196,19 @@ export default function WhatToDoPanel({ sched, now, mutate, onOpenTask, onClose,
       <PanelHeader title="Right now" sub="what to do" onClose={onClose} />
 
       <p className="psub-note" style={{ marginBottom: 10 }}>{openingLine}</p>
+
+      {todoCount > 0 && (
+        <div className="todotoggle">
+          <button
+            type="button"
+            className={`pill${todosOnly ? ' on' : ''}`}
+            aria-pressed={todosOnly}
+            onClick={() => { setTodosWanted((v) => !v); setHead(0); }}
+          >
+            Todos · {todoCount}
+          </button>
+        </div>
+      )}
 
       {pool.length > 0 && (
         <div className="fieldrow">
@@ -172,10 +233,16 @@ export default function WhatToDoPanel({ sched, now, mutate, onOpenTask, onClose,
       )}
 
       {entries.length === 0 ? (
-        <div className="empty">
-          <Icon name="crab" style={{ width: 26, height: 26 }} /><br />
-          {tags.length ? 'Nothing tagged that way is waiting.' : 'Nothing waiting. Enjoy the shore.'}
-        </div>
+        // With todos waiting below, the crab would be saying "nothing" over a
+        // list of them; the list speaks for itself.
+        waiting.length === 0 && (
+          <div className="empty">
+            <Icon name="crab" style={{ width: 26, height: 26 }} /><br />
+            {todosOnly
+              ? 'No todos tagged that way.'
+              : tags.length ? 'Nothing tagged that way is waiting.' : 'Nothing waiting. Enjoy the shore.'}
+          </div>
+        )
       ) : (
         <>
           {(() => {
@@ -191,6 +258,7 @@ export default function WhatToDoPanel({ sched, now, mutate, onOpenTask, onClose,
                     <span>{pick.title}</span>
                     {pick.fromLibrary && <span className="dueno">from your library</span>}
                     {pick.deadline && <span className="dueno">has a deadline</span>}
+                    {pick.isTodo && <span className="duefact">{pick.dueText || 'a todo'}</span>}
                   </div>
                   <div className="why">{capitalize(pick.reasons.join(' · '))}</div>
                 </div>
@@ -209,8 +277,8 @@ export default function WhatToDoPanel({ sched, now, mutate, onOpenTask, onClose,
                         className="alt"
                         onClick={a.onOpen ? a.onOpen : () => setHead(entries.findIndex((e) => e.key === a.key))}
                       >
-                        <span>{a.title}{a.fromLibrary ? ' · library' : ''}</span>
-                        <span className="why">{a.reasons[0]}</span>
+                        <span>{a.title}{a.fromLibrary ? ' · library' : ''}{a.isTodo ? ' · todo' : ''}</span>
+                        <span className={a.dueText ? 'duefact' : 'why'}>{a.dueText || a.reasons[0]}</span>
                       </button>
                     ))}
                   </div>
@@ -224,6 +292,35 @@ export default function WhatToDoPanel({ sched, now, mutate, onOpenTask, onClose,
           })()}
         </>
       )}
+
+      {waiting.length > 0 && (
+        <>
+          <p className="psub-note" style={{ marginTop: 12, marginBottom: 0 }}>
+            {opening ? 'Too long for this opening:' : 'Nothing can be done now, but these are waiting:'}
+          </p>
+          <div className="todolist" aria-label="Todos that cannot be done right now">
+            {waiting.map((w) => (
+              <div key={w.todo.id} className="alt waiting">
+                <span>{w.todo.label}</span>
+                <span className="duefact">
+                  {[opening ? `needs ${fmtDur(w.needsMin)}+` : '', todoDueText(w.todo.deadline, todayKey)].filter(Boolean).join(' · ')}
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* "+ todo" — add one without leaving the week (§8.5, decision 4). */}
+      <form className="quickadd" onSubmit={addTodo}>
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder="＋ todo — a one-off thing to do"
+          aria-label="New todo"
+        />
+        <button type="submit" disabled={!draft.trim()}>Add</button>
+      </form>
 
       <p className="psub-note" style={{ marginTop: 12 }}>Never auto-opens, never nags — it just answers &quot;what now?&quot; when you ask. (P-1)</p>
     </>

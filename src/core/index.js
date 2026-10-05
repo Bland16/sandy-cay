@@ -47,7 +47,7 @@ export {
   dayGaps, getBreakCompression, getSatisfactionMatrix,
 } from './queries.js';
 export { whatToDo, currentOpening, openingLabel } from './whatToDo.js';
-export { suggestActivities, placeActivity, steerBias, priorityPressure } from './suggest.js';
+export { suggestActivities, waitingTodos, placeActivity, steerBias, priorityPressure } from './suggest.js';
 export {
   activityUsage, activityPage, filterActivities, sortActivities, paginate, activityCfg,
   dedupeDrafts, dedupeBulk, parseActivityLine, parseBulkBlock, SORTS, SORT_LABELS,

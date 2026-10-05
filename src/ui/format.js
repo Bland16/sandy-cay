@@ -102,3 +102,28 @@ export function isOccurrence(task) {
 export function pct(ratio) {
   return `${Math.round(Math.min(1, Math.max(0, ratio)) * 100)}%`;
 }
+
+/**
+ * A todo's date, said as a FACT (design/TODO-LIST.md §8.5): "due 3 Oct",
+ * "due today", "was due 28 Sep". Never coral and never a count of days late —
+ * the same rule the commitments footer follows ("no 'you missed'").
+ * `deadline` and `todayKey` are 'YYYY-MM-DD'; returns '' for an undated todo.
+ */
+export function todoDueText(deadline, todayKey) {
+  if (!deadline) return '';
+  if (deadline === todayKey) return 'due today';
+  const [, m, d] = deadline.split('-').map(Number);
+  const day = `${d} ${MONTHS[m - 1]}`;
+  return deadline < todayKey ? `was due ${day}` : `due ${day}`;
+}
+
+/** The one-line summary a todo's row shows: "15–30m · due 3 Oct". */
+export function todoMeta(todo, todayKey) {
+  // "15–30m", one unit for the pair, when both are under an hour; "1h–2h" else.
+  let len;
+  if (todo.durationMin === todo.durationMax) len = fmtDur(todo.durationMin);
+  else if (todo.durationMax < 60) len = `${todo.durationMin}–${todo.durationMax}m`;
+  else len = `${fmtDur(todo.durationMin)}–${fmtDur(todo.durationMax)}`;
+  const due = todoDueText(todo.deadline, todayKey);
+  return due ? `${len} · ${due}` : len;
+}

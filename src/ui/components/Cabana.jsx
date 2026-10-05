@@ -17,6 +17,7 @@ import TagManager from './TagManager.jsx';
 import EnergyCard from './EnergyCard.jsx';
 import ZonesEditor from './ZonesEditor.jsx';
 import CommitmentsEditor from './CommitmentsEditor.jsx';
+import TodosEditor from './TodosEditor.jsx';
 import RoutinesEditor from './RoutinesEditor.jsx';
 
 const WEIGHT_KEYS = [['proximity', 'Proximity'], ['balance', 'Balance'], ['stability', 'Stability'], ['preference', 'Preference (learned)'], ['buffer', 'Finish early']];
@@ -221,6 +222,11 @@ export default function Cabana({
           </div>
           <button className="btn2" style={{ marginTop: 8 }} onClick={reoptimize}><Icon name="refresh" /> Re-optimize week</button>
         </div>
+
+        {/* Todos — FIRST after Tuning, ahead of everything authored once a
+            term. The grid is one column on a phone, so card order is scroll
+            distance, and this is the list touched daily (TODO-LIST §8.3 P-10). */}
+        <TodosEditor sched={sched} mutate={mutate} />
 
         {/* Standing commitments — how much a period owes, on the same drill-in
             idiom (design/WEEKLY-PLANNING.md §4). Above zones because it is the

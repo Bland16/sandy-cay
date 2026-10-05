@@ -9,7 +9,7 @@
 //   • User-authored only. It reorders YOUR activities; it never invents any.
 // placeActivity is the sole mutation and fires only on an explicit "Do it now".
 
-import { addMinutes, dayStart, addDays, weekStart as weekStartOf } from './time.js';
+import { addMinutes, dayStart, addDays, weekStart as weekStartOf, dateKey } from './time.js';
 import { dayCapacityMin } from './placement.js';
 import { openingLabel } from './whatToDo.js';
 import { normalizeLoad, LOAD_AXES, loadForTask, reserveAt } from './energy.js';
@@ -240,7 +240,25 @@ export function suggestActivities(schedule, now = new Date(), opts = {}) {
   let worst = null; let worstVal = 0;
   for (const a of LOAD_AXES) if (reserve[a] < worstVal) { worstVal = reserve[a]; worst = a; }
 
-  const ranked = schedule.activities
+  // ── TODOS are in the pool (design/TODO-LIST.md §4.1, §8.3). ───────────────
+  // A todo is an Activity, so it is scored by the same arithmetic. Two things
+  // are different about it, and BOTH are rules about how the LIST is made up —
+  // like "tasks first" — never terms in the score:
+  //
+  //   1. A todo due today or overdue goes ABOVE the library (the tier below).
+  //      A due date is discrete in the user's own terms, and "due today" traces
+  //      to something they typed. As a score bonus it would be exactly the
+  //      predicate-inside-a-sum §3.1 forbids.
+  //   2. One of the `limit` places is KEPT for the best-fitting todo (after the
+  //      slice). Ranked as a plain activity a todo never made the five at all:
+  //      0 of 70 openings against a real 49-activity library, median rank
+  //      20–50, because the steering bias goes to restful buckets and ties
+  //      break by label. "Offered when you have the energy" was "never offered".
+  const todayKey = dateKey(now);
+  const todosOnly = !!opts.todosOnly;
+  const todos = schedule.todos || [];
+  const pool = todosOnly ? todos : [...schedule.activities, ...todos];
+  const ranked = pool
     .filter((a) => a.durationMin <= openMin) // fits the opening
     .filter((a) => !filterTags || (a.tags || []).some((t) => filterTags.includes(t)))
     .map((a) => {
@@ -259,10 +277,65 @@ export function suggestActivities(schedule, now = new Date(), opts = {}) {
       const rs = [`fills your ${openingLabel(openMin)} opening`];
       if (bias > 0 && reason) rs.push(reason);
       else if (reserveBias > 0 && reserveReason) rs.push(reserveReason);
-      return { activity: a, load, duration, score, reasons: rs };
+      const isTodo = !!a.isTodo;
+      // 'today' | 'overdue' | null. Overdue STAYS lifted until done or deleted
+      // (§8.5): neutral in wording, never dropped back down the list.
+      // The date itself is the caller's to show (`deadline`), once — not also
+      // folded into `reasons`, where it was printed a second time.
+      const due = isTodo && a.isDueBy(todayKey) ? (a.deadline === todayKey ? 'today' : 'overdue') : null;
+      return {
+        activity: a, load, duration, score, reasons: rs, isTodo, due, deadline: isTodo ? a.deadline : null,
+      };
     });
-  ranked.sort((x, y) => y.score - x.score || x.activity.label.localeCompare(y.activity.label));
-  return ranked.slice(0, limit);
+  // ⚠️ THE TIER, THEN THE SCORE — and before the limit, for the reason `tags`
+  // narrows before it: lifted afterwards, a due todo ranked 40th has already
+  // been sliced away. Among due todos, the longest-overdue comes first.
+  ranked.sort((x, y) => (
+    Number(!!y.due) - Number(!!x.due)
+    || (x.due && y.due ? String(x.deadline).localeCompare(String(y.deadline)) : 0)
+    || y.score - x.score
+    || x.activity.label.localeCompare(y.activity.label)
+  ));
+  const top = ranked.slice(0, limit);
+  // `limit > 1`: with a single place, keeping it for a todo would mean the best
+  // activity is never the answer at all.
+  if (!todosOnly && limit > 1 && !top.some((r) => r.isTodo)) {
+    const best = ranked.find((r) => r.isTodo);
+    if (best) {
+      if (top.length >= limit) top[top.length - 1] = best;
+      else top.push(best);
+    }
+  }
+  return top;
+}
+
+/**
+ * The todos that CANNOT be offered a "Do it now" at this moment — longer than
+ * the opening, or there is no opening at all — so the panel can still show
+ * that they exist (design/TODO-LIST.md §8.3 P-4).
+ *
+ * Without this they vanished: `suggestActivities` filters to what fits, and
+ * with no opening it returns nothing, so the todos filter said "nothing is
+ * waiting" over a list of four. Read-only. Due ones first, oldest first.
+ *
+ * @returns {{ todo: Todo, needsMin: number }[]}
+ */
+export function waitingTodos(schedule, now = new Date(), opts = {}) {
+  const opening = opts.opening;
+  const openMin = opening && opening.minutes > 0 ? opening.minutes : 0;
+  const filterTags = Array.isArray(opts.tags) && opts.tags.length ? opts.tags : null;
+  const todayKey = dateKey(now);
+  return (schedule.todos || [])
+    .filter((t) => t.durationMin > openMin)
+    .filter((t) => !filterTags || (t.tags || []).some((x) => filterTags.includes(x)))
+    .map((t) => ({ todo: t, needsMin: t.durationMin, due: t.isDueBy(todayKey) }))
+    // Due first, then whatever has a date (soonest first), then the undated.
+    .sort((x, y) => (
+      Number(y.due) - Number(x.due)
+      || Number(!!y.todo.deadline) - Number(!!x.todo.deadline)
+      || String(x.todo.deadline || '').localeCompare(String(y.todo.deadline || ''))
+      || x.todo.label.localeCompare(y.todo.label)
+    ));
 }
 
 /**
